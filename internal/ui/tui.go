@@ -1,12 +1,16 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/shitcoding/tmux_yankee/internal/linenums"
+	"github.com/shitcoding/tmux_yankee/internal/selection"
+	"github.com/shitcoding/tmux_yankee/internal/tmux"
 	"golang.org/x/term"
 )
 
@@ -16,6 +20,8 @@ type TUI struct {
 	content     []string
 	mode        string
 	formatter   *linenums.Formatter
+	selection   *selection.Selection
+	client      *tmux.Client
 	cursorLine  int
 	viewportTop int
 	width       int
@@ -42,6 +48,8 @@ func NewTUI(paneID string, content []string, mode string) *TUI {
 		content:     content,
 		mode:        mode,
 		formatter:   linenums.NewFormatter(lineNumMode, maxLine),
+		selection:   selection.New(),
+		client:      tmux.NewClient(),
 		cursorLine:  0,
 		viewportTop: 0,
 	}
@@ -70,7 +78,8 @@ func (t *TUI) Run() error {
 	t.render()
 
 	// Event loop
-	buf := make([]byte, 3)
+	const maxKeySequenceBytes = 3 // Escape sequences like \x1b[A
+	buf := make([]byte, maxKeySequenceBytes)
 	for {
 		n, err := os.Stdin.Read(buf)
 		if err != nil {
@@ -80,16 +89,24 @@ func (t *TUI) Run() error {
 			return fmt.Errorf("read failed: %w", err)
 		}
 
-		key := buf[:n]
+		// Process each byte individually to handle rapid key presses
+		needsRender := false
+		for i := 0; i < n; i++ {
+			key := buf[i : i+1]
 
-		// Handle input
-		quit := t.handleInput(key)
-		if quit {
-			break
+			// Handle input
+			quit := t.handleInput(key)
+			if quit {
+				return nil
+			}
+
+			needsRender = true
 		}
 
-		// Re-render
-		t.render()
+		// Re-render once after processing all bytes to reduce flicker
+		if needsRender {
+			t.render()
+		}
 	}
 
 	return nil
@@ -120,6 +137,10 @@ func (t *TUI) handleInput(key []byte) bool {
 	switch {
 	case len(key) == 1 && key[0] == 'q':
 		return true
+	case len(key) == 1 && key[0] == 'v':
+		t.toggleSelection()
+	case len(key) == 1 && (key[0] == 'y' || key[0] == 13): // 'y' or Enter
+		return t.yank()
 	case len(key) == 1 && key[0] == 'j':
 		t.moveCursorDown()
 	case len(key) == 1 && key[0] == 'k':
@@ -146,6 +167,19 @@ func (t *TUI) toggleMode() {
 	}
 }
 
+// toggleSelection toggles visual selection mode
+func (t *TUI) toggleSelection() {
+	if !t.selection.IsActive() {
+		// Activate selection at current cursor position
+		t.selection.SetStart(t.cursorLine, 0)
+		t.selection.UpdateEnd(t.cursorLine, 0)
+		t.selection.Toggle()
+	} else {
+		// Deactivate selection
+		t.selection.Toggle()
+	}
+}
+
 // moveCursorDown moves cursor down one line
 func (t *TUI) moveCursorDown() {
 	if t.cursorLine < len(t.content)-1 {
@@ -153,6 +187,10 @@ func (t *TUI) moveCursorDown() {
 		// Adjust viewport if cursor moves off screen
 		if t.cursorLine >= t.viewportTop+t.height {
 			t.viewportTop++
+		}
+		// Update selection end if active
+		if t.selection.IsActive() {
+			t.selection.UpdateEnd(t.cursorLine, 0)
 		}
 	}
 }
@@ -164,6 +202,10 @@ func (t *TUI) moveCursorUp() {
 		// Adjust viewport if cursor moves off screen
 		if t.cursorLine < t.viewportTop {
 			t.viewportTop--
+		}
+		// Update selection end if active
+		if t.selection.IsActive() {
+			t.selection.UpdateEnd(t.cursorLine, 0)
 		}
 	}
 }
@@ -181,6 +223,12 @@ func (t *TUI) render() {
 		endLine = len(t.content)
 	}
 
+	// Get selection range if active
+	var selStart, selEnd int
+	if t.selection.IsActive() {
+		selStart, selEnd = t.selection.Range()
+	}
+
 	// Render visible lines
 	for i := t.viewportTop; i < endLine; i++ {
 		line := t.content[i]
@@ -189,9 +237,14 @@ func (t *TUI) render() {
 		gutter := t.formatter.RenderGutter(i+1, t.cursorLine+1)
 		b.WriteString(gutter)
 
-		// Highlight cursor line
-		if i == t.cursorLine {
-			b.WriteString("\x1b[7m") // Reverse video
+		// Determine if this line is selected
+		isSelected := t.selection.IsActive() && i >= selStart && i <= selEnd
+
+		// Highlight cursor line or selected line
+		if isSelected {
+			b.WriteString("\x1b[7m") // Reverse video for selection
+		} else if i == t.cursorLine {
+			b.WriteString("\x1b[7m") // Reverse video for cursor
 		}
 
 		// Truncate line if too long (account for gutter width)
@@ -245,4 +298,85 @@ func stripANSI(s string) string {
 // GetMode returns the current line number mode
 func (t *TUI) GetMode() string {
 	return t.mode
+}
+
+// yank extracts selected text, copies to clipboard and tmux buffer
+// Returns true to quit TUI after yank
+func (t *TUI) yank() bool {
+	// Only yank if selection is active
+	if !t.selection.IsActive() {
+		return false
+	}
+
+	// Build rendered content with gutters for extraction
+	renderedContent := t.buildRenderedContent()
+
+	// Extract selected text (gutter will be stripped)
+	text, err := t.selection.Extract(renderedContent)
+	if err != nil {
+		// Silently fail - could log error in production
+		return false
+	}
+
+	// ALWAYS set tmux buffer first (reliable fallback)
+	if err := t.client.SetBuffer(text); err != nil {
+		// Silently fail - could log error in production
+	}
+
+	// THEN try clipboard copy (optional, may fail gracefully)
+	if err := t.copyToClipboard(text); err != nil {
+		// Silently fail - clipboard copy is optional, buffer is already set
+	}
+
+	// Clear selection
+	t.selection.Clear()
+
+	// Exit TUI after yank (yank-and-cancel behavior)
+	return true
+}
+
+// buildRenderedContent builds the full content array with rendered gutters
+// This is needed for gutter stripping during extraction
+func (t *TUI) buildRenderedContent() []string {
+	rendered := make([]string, len(t.content))
+	for i, line := range t.content {
+		// Check if line already has gutter (for tests)
+		if strings.Contains(line, "│") {
+			// Content already has gutter, use as-is
+			rendered[i] = line
+		} else {
+			// Content is plain text, add gutter
+			gutter := t.formatter.RenderGutter(i+1, t.cursorLine+1)
+			rendered[i] = gutter + line
+		}
+	}
+	return rendered
+}
+
+// copyToClipboard copies text to system clipboard via copy_stdin.sh
+func (t *TUI) copyToClipboard(text string) error {
+	// Find copy_stdin.sh script
+	// Try multiple possible locations
+	possiblePaths := []string{
+		"scripts/copy_stdin.sh",        // From project root
+		"../../scripts/copy_stdin.sh",  // From internal/ui directory (for tests)
+		"/usr/local/bin/copy_stdin.sh", // System-wide install
+	}
+
+	var scriptPath string
+	for _, path := range possiblePaths {
+		if _, err := os.Stat(path); err == nil {
+			scriptPath = path
+			break
+		}
+	}
+
+	if scriptPath == "" {
+		return fmt.Errorf("copy_stdin.sh not found")
+	}
+
+	cmd := exec.Command(scriptPath)
+	cmd.Stdin = bytes.NewBufferString(text)
+
+	return cmd.Run()
 }

@@ -13,5 +13,14 @@ source "${SCRIPT_DIR}/helpers.sh"
 # Get clipboard copy command from tmux-yank helpers
 copy_command=$(clipboard_copy_command)
 
-# Copy stdin to clipboard
-$copy_command
+# Validate command exists
+if [ -z "$copy_command" ]; then
+    display_message "tmux-yankee: No clipboard command available. Text saved to tmux buffer only."
+    exit 1
+fi
+
+# Copy stdin to clipboard with error handling
+if ! $copy_command; then
+    display_message "tmux-yankee: Clipboard copy failed. Text saved to tmux buffer only."
+    exit 1
+fi
