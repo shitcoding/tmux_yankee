@@ -4,6 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/shitcoding/tmux_yankee/internal/tmux"
+	"github.com/shitcoding/tmux_yankee/internal/ui"
 )
 
 func main() {
@@ -29,13 +34,38 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: Phase 3 will implement the TUI loop here
-	fmt.Printf("tmux-yankee starting...\n")
-	fmt.Printf("Pane: %s\n", *paneID)
-	fmt.Printf("Mode: %s\n", *mode)
-	fmt.Println("\nPress 'q' to exit (TUI not yet implemented)")
+	// Setup signal handling for clean exit
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// Wait for 'q' keystroke
-	var input string
-	fmt.Scanln(&input)
+	// Create tmux client
+	client := tmux.NewClient()
+
+	// Capture pane content
+	content, err := client.CapturePane(*paneID, 0, -1)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error capturing pane: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create TUI
+	tui := ui.NewTUI(*paneID, content, *mode)
+
+	// Run TUI in goroutine
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- tui.Run()
+	}()
+
+	// Wait for TUI exit or signal
+	select {
+	case err := <-errChan:
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+			os.Exit(1)
+		}
+	case <-sigChan:
+		// Signal received, exit cleanly
+		// TUI cleanup happens via defer in tui.Run()
+	}
 }
