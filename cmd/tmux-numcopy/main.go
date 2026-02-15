@@ -41,8 +41,8 @@ func main() {
 	// Create tmux client
 	client := tmux.NewClient()
 
-	// Capture pane content
-	content, err := client.CapturePane(*paneID, 0, -1)
+	// Capture pane content with ANSI color codes preserved
+	content, err := client.CapturePane(*paneID, 0, -1, true)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error capturing pane: %v\n", err)
 		os.Exit(1)

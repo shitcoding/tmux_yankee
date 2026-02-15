@@ -267,13 +267,13 @@ func captureRender(tui *TUI) string {
 
 	// Calculate visible range
 	endLine := tui.viewportTop + tui.height
-	if endLine > len(tui.content) {
-		endLine = len(tui.content)
+	if endLine > tui.doc.LineCount() {
+		endLine = tui.doc.LineCount()
 	}
 
 	// Render visible lines (simplified version of render())
 	for i := tui.viewportTop; i < endLine; i++ {
-		line := tui.content[i]
+		line := tui.doc.Line(i)
 
 		// Render line number gutter (1-indexed for display)
 		gutter := tui.formatter.RenderGutter(i+1, tui.cursorLine+1)

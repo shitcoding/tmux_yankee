@@ -18,8 +18,14 @@ func NewClient() *Client {
 // CapturePane captures the content of a tmux pane
 // start: starting line (0-based), use 0 for beginning
 // end: ending line, use -1 for end of history
-func (c *Client) CapturePane(paneID string, start, end int) ([]string, error) {
+// preserveColors: if true, includes ANSI escape sequences via -e flag
+func (c *Client) CapturePane(paneID string, start, end int, preserveColors bool) ([]string, error) {
 	args := []string{"capture-pane", "-p", "-t", paneID}
+
+	// Add -e flag to preserve ANSI escape sequences
+	if preserveColors {
+		args = append(args, "-e")
+	}
 
 	if start > 0 {
 		args = append(args, "-S", strconv.Itoa(start))

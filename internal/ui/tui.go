@@ -25,8 +25,8 @@ type tmuxClient interface {
 // TUI represents the terminal UI
 type TUI struct {
 	paneID        string
-	content       []string
-	lineNumMode   string // Line number mode (absolute/relative/hybrid)
+	doc           *Document // Document with color preservation
+	lineNumMode   string    // Line number mode (absolute/relative/hybrid)
 	formatter     *linenums.Formatter
 	selection     *selection.Selection // Legacy - will be removed in Task 12
 	modeMachine   *vmode.Machine
@@ -49,15 +49,18 @@ func NewTUI(paneID string, content []string, mode string) *TUI {
 		lineNumMode = linenums.ModeHybrid
 	}
 
+	// Create document from raw content (with ANSI codes)
+	doc := NewDocument(content)
+
 	// Calculate max line number
-	maxLine := len(content)
+	maxLine := doc.LineCount()
 	if maxLine == 0 {
 		maxLine = 1
 	}
 
 	return &TUI{
 		paneID:        paneID,
-		content:       content,
+		doc:           doc,
 		lineNumMode:   mode,
 		formatter:     linenums.NewFormatter(lineNumMode, maxLine),
 		selection:     selection.New(), // Legacy - will be removed in Task 12
@@ -257,8 +260,8 @@ func (t *TUI) render() {
 
 	// Calculate visible range
 	endLine := t.viewportTop + t.height
-	if endLine > len(t.content) {
-		endLine = len(t.content)
+	if endLine > t.doc.LineCount() {
+		endLine = t.doc.LineCount()
 	}
 
 	// Get selection region from mode machine
@@ -278,8 +281,6 @@ func (t *TUI) render() {
 
 	// Render visible lines
 	for i := t.viewportTop; i < endLine; i++ {
-		line := t.content[i]
-
 		// Render line number gutter (1-indexed for display)
 		gutter := t.formatter.RenderGutter(i+1, t.cursorLine+1)
 		b.WriteString(gutter)
@@ -287,25 +288,23 @@ func (t *TUI) render() {
 		// Determine if this line is selected
 		isSelected := hasSelection && i >= selStart && i <= selEnd
 
-		// Highlight cursor line or selected line
-		if isSelected {
-			b.WriteString("\x1b[7m") // Reverse video for selection
-		} else if i == t.cursorLine {
-			b.WriteString("\x1b[7m") // Reverse video for cursor
+		// Get raw ANSI line and determine cursor position
+		rawLine := t.doc.RawLine(i)
+		cursorCol := -1 // -1 means no cursor on this line
+		if i == t.cursorLine && !isSelected {
+			cursorCol = t.cursorCol
 		}
 
-		// Truncate line if too long (account for gutter width)
+		// Calculate available width (account for gutter)
 		gutterWidth := len(stripANSI(gutter))
 		availableWidth := t.width - gutterWidth
-		runes := []rune(line)
-		if len(runes) > availableWidth {
-			line = string(runes[:availableWidth])
-		}
 
-		b.WriteString(line)
+		// Render line with ANSI color preservation and cursor/selection overlay
+		renderedLine := RenderLine(rawLine, cursorCol, isSelected, availableWidth)
+		b.WriteString(renderedLine)
 
-		// Reset style and clear to end of line
-		b.WriteString("\x1b[0m\x1b[K")
+		// Clear to end of line
+		b.WriteString("\x1b[K")
 
 		// Newline if not last line
 		if i < endLine-1 {
@@ -322,52 +321,27 @@ func (t *TUI) render() {
 	fmt.Print(b.String())
 }
 
-// stripANSI removes ANSI escape codes from a string
-func stripANSI(s string) string {
-	result := ""
-	inEscape := false
-	for _, r := range s {
-		if r == '\x1b' {
-			inEscape = true
-			continue
-		}
-		if inEscape {
-			if r == 'm' {
-				inEscape = false
-			}
-			continue
-		}
-		result += string(r)
-	}
-	return result
-}
-
 // GetMode returns the current line number mode
 func (t *TUI) GetMode() string {
 	return t.lineNumMode
 }
 
 // Document interface implementation for motion.Handler
+// Delegates to internal Document
 
 // LineCount returns the total number of lines in the document.
 func (t *TUI) LineCount() int {
-	return len(t.content)
+	return t.doc.LineCount()
 }
 
-// Line returns the content of the line at the given index.
+// Line returns the plain text content of the line at the given index.
 func (t *TUI) Line(index int) string {
-	if index < 0 || index >= len(t.content) {
-		return ""
-	}
-	return t.content[index]
+	return t.doc.Line(index)
 }
 
 // LineRuneCount returns the number of runes in the line.
 func (t *TUI) LineRuneCount(index int) int {
-	if index < 0 || index >= len(t.content) {
-		return 0
-	}
-	return len([]rune(t.content[index]))
+	return t.doc.LineRuneCount(index)
 }
 
 // yank extracts selected text, copies to clipboard and tmux buffer
@@ -381,8 +355,14 @@ func (t *TUI) yank() bool {
 		return false
 	}
 
+	// Extract plain text lines for selection extraction
+	plainLines := make([]string, t.doc.LineCount())
+	for i := 0; i < t.doc.LineCount(); i++ {
+		plainLines[i] = t.doc.Line(i)
+	}
+
 	// Extract selected text using region-based extraction (no gutter stripping needed)
-	text, err := selection.ExtractRegion(t.content, region)
+	text, err := selection.ExtractRegion(plainLines, region)
 	if err != nil {
 		// Silently fail - could log error in production
 		return false
