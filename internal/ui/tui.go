@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/shitcoding/tmux_yankee/internal/linenums"
 	"golang.org/x/term"
 )
 
@@ -14,6 +15,7 @@ type TUI struct {
 	paneID      string
 	content     []string
 	mode        string
+	formatter   *linenums.Formatter
 	cursorLine  int
 	viewportTop int
 	width       int
@@ -23,10 +25,23 @@ type TUI struct {
 
 // NewTUI creates a new TUI instance
 func NewTUI(paneID string, content []string, mode string) *TUI {
+	// Parse mode string
+	lineNumMode, err := linenums.ModeFromString(mode)
+	if err != nil {
+		lineNumMode = linenums.ModeHybrid
+	}
+
+	// Calculate max line number
+	maxLine := len(content)
+	if maxLine == 0 {
+		maxLine = 1
+	}
+
 	return &TUI{
 		paneID:      paneID,
 		content:     content,
 		mode:        mode,
+		formatter:   linenums.NewFormatter(lineNumMode, maxLine),
 		cursorLine:  0,
 		viewportTop: 0,
 	}
@@ -109,10 +124,26 @@ func (t *TUI) handleInput(key []byte) bool {
 		t.moveCursorDown()
 	case len(key) == 1 && key[0] == 'k':
 		t.moveCursorUp()
+	case len(key) == 1 && key[0] == 'L':
+		t.toggleMode()
 	case len(key) == 1 && key[0] == 3: // Ctrl-C
 		return true
 	}
 	return false
+}
+
+// toggleMode cycles through line number modes
+func (t *TUI) toggleMode() {
+	t.formatter.ToggleMode()
+	// Update mode string for consistency
+	switch t.formatter.CurrentMode() {
+	case linenums.ModeAbsolute:
+		t.mode = "absolute"
+	case linenums.ModeRelative:
+		t.mode = "relative"
+	case linenums.ModeHybrid:
+		t.mode = "hybrid"
+	}
 }
 
 // moveCursorDown moves cursor down one line
@@ -154,14 +185,21 @@ func (t *TUI) render() {
 	for i := t.viewportTop; i < endLine; i++ {
 		line := t.content[i]
 
+		// Render line number gutter (1-indexed for display)
+		gutter := t.formatter.RenderGutter(i+1, t.cursorLine+1)
+		b.WriteString(gutter)
+
 		// Highlight cursor line
 		if i == t.cursorLine {
 			b.WriteString("\x1b[7m") // Reverse video
 		}
 
-		// Truncate line if too long
-		if len(line) > t.width {
-			line = line[:t.width]
+		// Truncate line if too long (account for gutter width)
+		gutterWidth := len(stripANSI(gutter))
+		availableWidth := t.width - gutterWidth
+		runes := []rune(line)
+		if len(runes) > availableWidth {
+			line = string(runes[:availableWidth])
 		}
 
 		b.WriteString(line)
@@ -182,4 +220,29 @@ func (t *TUI) render() {
 
 	// Write to stdout
 	fmt.Print(b.String())
+}
+
+// stripANSI removes ANSI escape codes from a string
+func stripANSI(s string) string {
+	result := ""
+	inEscape := false
+	for _, r := range s {
+		if r == '\x1b' {
+			inEscape = true
+			continue
+		}
+		if inEscape {
+			if r == 'm' {
+				inEscape = false
+			}
+			continue
+		}
+		result += string(r)
+	}
+	return result
+}
+
+// GetMode returns the current line number mode
+func (t *TUI) GetMode() string {
+	return t.mode
 }
