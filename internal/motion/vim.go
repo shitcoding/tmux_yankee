@@ -1,0 +1,634 @@
+package motion
+
+// VimHandler implements vim-like motion semantics.
+type VimHandler struct {
+	goalCol int  // Remember desired column for vertical movements
+	hasGoal bool // Track if goal column is set
+}
+
+// NewVimHandler creates a new vim motion handler.
+func NewVimHandler() *VimHandler {
+	return &VimHandler{}
+}
+
+// Apply executes the given motion with the specified count.
+// count=0 means "no count specified" (e.g., just 'j' or 'G').
+// count>=1 means explicit count (e.g., '5j' has count=5, '1G' has count=1).
+func (h *VimHandler) Apply(doc Document, cursor Cursor, viewport Viewport, motion Motion, count int) Result {
+	if count < 0 {
+		count = 0
+	}
+
+	// For motions that don't use count, treat 0 as 1
+	effectiveCount := count
+	if effectiveCount == 0 {
+		effectiveCount = 1
+	}
+
+	result := Result{
+		Cursor:   cursor,
+		Viewport: viewport,
+	}
+
+	switch motion {
+	case MotionUp:
+		result.Cursor = h.moveVertical(doc, cursor, -effectiveCount)
+	case MotionDown:
+		result.Cursor = h.moveVertical(doc, cursor, effectiveCount)
+	case MotionLeft:
+		result.Cursor = h.moveLeft(doc, cursor, effectiveCount)
+	case MotionRight:
+		result.Cursor = h.moveRight(doc, cursor, effectiveCount)
+	case MotionLineStart:
+		result.Cursor = h.moveLineStart(cursor)
+	case MotionLineEnd:
+		result.Cursor = h.moveLineEnd(doc, cursor)
+	case MotionFirstLine:
+		result.Cursor = h.moveFirstLine(doc, cursor, count)
+	case MotionLastLine:
+		result.Cursor = h.moveLastLine(doc, cursor, count)
+	case MotionHalfPageUp:
+		result = h.moveHalfPageUp(doc, cursor, viewport)
+	case MotionHalfPageDown:
+		result = h.moveHalfPageDown(doc, cursor, viewport)
+	case MotionWordForward:
+		result.Cursor = h.moveWordForward(doc, cursor, effectiveCount)
+	case MotionWordBackward:
+		result.Cursor = h.moveWordBackward(doc, cursor, effectiveCount)
+	case MotionWordEnd:
+		result.Cursor = h.moveWordEnd(doc, cursor, effectiveCount)
+	}
+
+	// Ensure cursor is within viewport
+	result.Viewport = h.adjustViewport(result.Cursor, result.Viewport, doc.LineCount())
+
+	return result
+}
+
+// moveVertical moves the cursor up or down by delta lines, preserving goal column.
+func (h *VimHandler) moveVertical(doc Document, cursor Cursor, delta int) Cursor {
+	// Ensure goal column is set
+	if !h.hasGoal {
+		h.goalCol = cursor.Col
+		h.hasGoal = true
+	}
+
+	newLine := cursor.Line + delta
+	lineCount := doc.LineCount()
+
+	// Clamp to valid line range
+	if newLine < 0 {
+		newLine = 0
+	} else if newLine >= lineCount {
+		newLine = lineCount - 1
+	}
+
+	// Apply goal column, clamping to line length
+	newCol := h.goalCol
+	lineLen := doc.LineRuneCount(newLine)
+	if newCol > lineLen {
+		newCol = lineLen
+	}
+	if newCol < 0 {
+		newCol = 0
+	}
+
+	return Cursor{Line: newLine, Col: newCol}
+}
+
+// moveLeft moves the cursor left by count columns.
+func (h *VimHandler) moveLeft(doc Document, cursor Cursor, count int) Cursor {
+	newCol := cursor.Col - count
+	if newCol < 0 {
+		newCol = 0
+	}
+
+	// Set goal column to new position
+	h.goalCol = newCol
+	h.hasGoal = true
+
+	return Cursor{Line: cursor.Line, Col: newCol}
+}
+
+// moveRight moves the cursor right by count columns.
+func (h *VimHandler) moveRight(doc Document, cursor Cursor, count int) Cursor {
+	lineLen := doc.LineRuneCount(cursor.Line)
+	newCol := cursor.Col + count
+	if newCol > lineLen {
+		newCol = lineLen
+	}
+
+	// Set goal column to new position
+	h.goalCol = newCol
+	h.hasGoal = true
+
+	return Cursor{Line: cursor.Line, Col: newCol}
+}
+
+// moveLineStart moves cursor to column 0.
+func (h *VimHandler) moveLineStart(cursor Cursor) Cursor {
+	h.goalCol = 0
+	h.hasGoal = true
+	return Cursor{Line: cursor.Line, Col: 0}
+}
+
+// moveLineEnd moves cursor to end of current line.
+func (h *VimHandler) moveLineEnd(doc Document, cursor Cursor) Cursor {
+	lineLen := doc.LineRuneCount(cursor.Line)
+	h.goalCol = lineLen
+	h.hasGoal = true
+	return Cursor{Line: cursor.Line, Col: lineLen}
+}
+
+// moveFirstLine moves to first line (gg with no count) or to line N (Ngg).
+// count=0 means no explicit count (gg → line 0).
+// count>=1 means explicit line number (1gg → line 1, 5gg → line 5).
+func (h *VimHandler) moveFirstLine(doc Document, cursor Cursor, count int) Cursor {
+	var targetLine int
+	if count == 0 {
+		targetLine = 0 // gg with no count → first line
+	} else {
+		targetLine = count - 1 // Ngg goes to line N (0-indexed = N-1)
+	}
+
+	lineCount := doc.LineCount()
+	if targetLine < 0 {
+		targetLine = 0
+	} else if targetLine >= lineCount {
+		targetLine = lineCount - 1
+	}
+
+	// gg/G are vertical motions, so preserve goal column
+	// If no goal column set, use current cursor column
+	if !h.hasGoal {
+		h.goalCol = cursor.Col
+		h.hasGoal = true
+	}
+
+	col := h.goalCol
+	lineLen := doc.LineRuneCount(targetLine)
+	if col > lineLen {
+		col = lineLen
+	}
+	if col < 0 {
+		col = 0
+	}
+
+	return Cursor{Line: targetLine, Col: col}
+}
+
+// moveLastLine moves to last line (G with no count) or to line N (NG).
+// count=0 means no explicit count (G → last line).
+// count>=1 means explicit line number (1G → line 1, 5G → line 5).
+func (h *VimHandler) moveLastLine(doc Document, cursor Cursor, count int) Cursor {
+	lineCount := doc.LineCount()
+	if lineCount == 0 {
+		return Cursor{Line: 0, Col: 0}
+	}
+
+	var targetLine int
+	if count == 0 {
+		targetLine = lineCount - 1 // G with no count → last line
+	} else {
+		targetLine = count - 1 // NG goes to line N (0-indexed = N-1)
+	}
+
+	if targetLine < 0 {
+		targetLine = 0
+	} else if targetLine >= lineCount {
+		targetLine = lineCount - 1
+	}
+
+	// G is a vertical motion, so preserve goal column
+	// If no goal column set, use current cursor column
+	if !h.hasGoal {
+		h.goalCol = cursor.Col
+		h.hasGoal = true
+	}
+
+	col := h.goalCol
+	lineLen := doc.LineRuneCount(targetLine)
+	if col > lineLen {
+		col = lineLen
+	}
+	if col < 0 {
+		col = 0
+	}
+
+	return Cursor{Line: targetLine, Col: col}
+}
+
+// moveHalfPageUp scrolls viewport and cursor up by half a page.
+func (h *VimHandler) moveHalfPageUp(doc Document, cursor Cursor, viewport Viewport) Result {
+	halfPage := viewport.Height / 2
+	if halfPage < 1 {
+		halfPage = 1
+	}
+
+	newTop := viewport.Top - halfPage
+	if newTop < 0 {
+		newTop = 0
+	}
+
+	// Cursor moves with viewport (maintains relative position)
+	newCursorLine := cursor.Line - halfPage
+	if newCursorLine < 0 {
+		newCursorLine = 0
+	}
+
+	// Apply goal column
+	if !h.hasGoal {
+		h.goalCol = cursor.Col
+		h.hasGoal = true
+	}
+
+	newCol := h.goalCol
+	lineLen := doc.LineRuneCount(newCursorLine)
+	if newCol > lineLen {
+		newCol = lineLen
+	}
+	if newCol < 0 {
+		newCol = 0
+	}
+
+	return Result{
+		Cursor:   Cursor{Line: newCursorLine, Col: newCol},
+		Viewport: Viewport{Top: newTop, Height: viewport.Height},
+	}
+}
+
+// moveHalfPageDown scrolls viewport and cursor down by half a page.
+func (h *VimHandler) moveHalfPageDown(doc Document, cursor Cursor, viewport Viewport) Result {
+	halfPage := viewport.Height / 2
+	if halfPage < 1 {
+		halfPage = 1
+	}
+
+	lineCount := doc.LineCount()
+
+	newTop := viewport.Top + halfPage
+	// Don't scroll viewport past end of document
+	maxTop := lineCount - viewport.Height
+	if maxTop < 0 {
+		maxTop = 0
+	}
+	if newTop > maxTop {
+		newTop = maxTop
+	}
+
+	// Cursor moves with viewport (maintains relative position)
+	newCursorLine := cursor.Line + halfPage
+	if newCursorLine >= lineCount {
+		newCursorLine = lineCount - 1
+	}
+	if newCursorLine < 0 {
+		newCursorLine = 0
+	}
+
+	// Apply goal column
+	if !h.hasGoal {
+		h.goalCol = cursor.Col
+		h.hasGoal = true
+	}
+
+	newCol := h.goalCol
+	lineLen := doc.LineRuneCount(newCursorLine)
+	if newCol > lineLen {
+		newCol = lineLen
+	}
+	if newCol < 0 {
+		newCol = 0
+	}
+
+	return Result{
+		Cursor:   Cursor{Line: newCursorLine, Col: newCol},
+		Viewport: Viewport{Top: newTop, Height: viewport.Height},
+	}
+}
+
+// adjustViewport ensures the cursor is visible within the viewport.
+// Uses minimal scrolling strategy.
+func (h *VimHandler) adjustViewport(cursor Cursor, viewport Viewport, lineCount int) Viewport {
+	newViewport := viewport
+
+	// Cursor above viewport - scroll up
+	if cursor.Line < viewport.Top {
+		newViewport.Top = cursor.Line
+	}
+
+	// Cursor below viewport - scroll down
+	bottom := viewport.Top + viewport.Height - 1
+	if cursor.Line > bottom {
+		newViewport.Top = cursor.Line - viewport.Height + 1
+	}
+
+	// Ensure viewport doesn't go negative
+	if newViewport.Top < 0 {
+		newViewport.Top = 0
+	}
+
+	// Ensure viewport doesn't scroll past end of document
+	maxTop := lineCount - viewport.Height
+	if maxTop < 0 {
+		maxTop = 0
+	}
+	if newViewport.Top > maxTop {
+		newViewport.Top = maxTop
+	}
+
+	return newViewport
+}
+
+// charType represents the category of a character for word motion.
+type charType int
+
+const (
+	charTypeWhitespace charType = iota
+	charTypeWord                // alphanumeric + underscore
+	charTypePunctuation
+)
+
+// getCharType returns the category of a rune for word boundary detection.
+func getCharType(r rune) charType {
+	if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+		return charTypeWhitespace
+	}
+	if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+		return charTypeWord
+	}
+	return charTypePunctuation
+}
+
+// moveWordForward moves to the start of the next word (w motion).
+// Repeats count times.
+func (h *VimHandler) moveWordForward(doc Document, cursor Cursor, count int) Cursor {
+	line := cursor.Line
+	col := cursor.Col
+
+	for i := 0; i < count; i++ {
+		runes := []rune(doc.Line(line))
+		lineLen := len(runes)
+
+		// If at or past end of line, wrap to next line
+		if col >= lineLen {
+			if line+1 >= doc.LineCount() {
+				// At last line, can't move forward
+				break
+			}
+			line++
+			col = 0
+			runes = []rune(doc.Line(line))
+			lineLen = len(runes)
+
+			// Skip leading whitespace on new line
+			for col < lineLen && getCharType(runes[col]) == charTypeWhitespace {
+				col++
+			}
+
+			// If landed on a word, we're done with this iteration
+			if col < lineLen {
+				continue
+			}
+			// Otherwise, empty line, continue to next word
+		}
+
+		// Skip current word (same char type)
+		currentType := getCharType(runes[col])
+		for col < lineLen && getCharType(runes[col]) == currentType {
+			col++
+		}
+
+		// Skip whitespace after current word
+		for col < lineLen && getCharType(runes[col]) == charTypeWhitespace {
+			col++
+		}
+
+		// If at end of line after skipping, wrap to next line
+		if col >= lineLen {
+			if line+1 >= doc.LineCount() {
+				// At last line
+				break
+			}
+			line++
+			col = 0
+			runes = []rune(doc.Line(line))
+			lineLen = len(runes)
+
+			// Skip leading whitespace on new line
+			for col < lineLen && getCharType(runes[col]) == charTypeWhitespace {
+				col++
+			}
+		}
+	}
+
+	// Clamp to document bounds
+	if line >= doc.LineCount() {
+		line = doc.LineCount() - 1
+	}
+	if line < 0 {
+		line = 0
+	}
+
+	lineLen := doc.LineRuneCount(line)
+	if col > lineLen {
+		col = lineLen
+	}
+	if col < 0 {
+		col = 0
+	}
+
+	// Update goal column
+	h.goalCol = col
+	h.hasGoal = true
+
+	return Cursor{Line: line, Col: col}
+}
+
+// moveWordBackward moves to the start of the previous word (b motion).
+// Repeats count times.
+func (h *VimHandler) moveWordBackward(doc Document, cursor Cursor, count int) Cursor {
+	line := cursor.Line
+	col := cursor.Col
+
+	for i := 0; i < count; i++ {
+		runes := []rune(doc.Line(line))
+
+		// If at start of line, move to previous line
+		if col <= 0 {
+			if line <= 0 {
+				// At first line, can't move back
+				break
+			}
+			line--
+			runes = []rune(doc.Line(line))
+			col = len(runes)
+
+			// Skip trailing whitespace
+			for col > 0 && getCharType(runes[col-1]) == charTypeWhitespace {
+				col--
+			}
+
+			// If empty line (all whitespace), continue to previous word
+			if col == 0 {
+				continue
+			}
+
+			// Move to start of the word we landed in
+			currentType := getCharType(runes[col-1])
+			for col > 0 && getCharType(runes[col-1]) == currentType {
+				col--
+			}
+			continue
+		}
+
+		// Move back one position
+		col--
+
+		// Skip whitespace backwards
+		for col > 0 && getCharType(runes[col]) == charTypeWhitespace {
+			col--
+		}
+
+		// If we're in whitespace at position 0, wrap to previous line
+		if col == 0 && len(runes) > 0 && getCharType(runes[0]) == charTypeWhitespace {
+			if line <= 0 {
+				break
+			}
+			line--
+			runes = []rune(doc.Line(line))
+			col = len(runes)
+
+			// Skip trailing whitespace
+			for col > 0 && getCharType(runes[col-1]) == charTypeWhitespace {
+				col--
+			}
+
+			// Move to start of word
+			if col > 0 {
+				currentType := getCharType(runes[col-1])
+				for col > 0 && getCharType(runes[col-1]) == currentType {
+					col--
+				}
+			}
+			continue
+		}
+
+		// Now we're at a non-whitespace character, move to start of its word
+		if col < len(runes) {
+			currentType := getCharType(runes[col])
+			for col > 0 && getCharType(runes[col-1]) == currentType {
+				col--
+			}
+		}
+	}
+
+	// Clamp to document bounds
+	if line < 0 {
+		line = 0
+	}
+	if line >= doc.LineCount() {
+		line = doc.LineCount() - 1
+	}
+
+	lineLen := doc.LineRuneCount(line)
+	if col > lineLen {
+		col = lineLen
+	}
+	if col < 0 {
+		col = 0
+	}
+
+	// Update goal column
+	h.goalCol = col
+	h.hasGoal = true
+
+	return Cursor{Line: line, Col: col}
+}
+
+// moveWordEnd moves to the end of the current/next word (e motion).
+// Repeats count times.
+func (h *VimHandler) moveWordEnd(doc Document, cursor Cursor, count int) Cursor {
+	line := cursor.Line
+	col := cursor.Col
+
+	for i := 0; i < count; i++ {
+		// Get current line as runes
+		runes := []rune(doc.Line(line))
+		lineLen := len(runes)
+
+		// Move forward one position
+		col++
+
+		// If past end of line, move to next line
+		if col >= lineLen {
+			if line+1 < doc.LineCount() {
+				line++
+				col = 0
+				runes = []rune(doc.Line(line))
+				lineLen = len(runes)
+				// Skip leading whitespace
+				for col < lineLen && getCharType(runes[col]) == charTypeWhitespace {
+					col++
+				}
+			} else {
+				// At last line, clamp to end
+				col = lineLen
+				break
+			}
+		}
+
+		// Skip whitespace
+		for col < lineLen && getCharType(runes[col]) == charTypeWhitespace {
+			col++
+		}
+
+		// If reached end of line after skipping whitespace, move to next line
+		if col >= lineLen {
+			if line+1 < doc.LineCount() {
+				line++
+				col = 0
+				runes = []rune(doc.Line(line))
+				lineLen = len(runes)
+				// Skip leading whitespace
+				for col < lineLen && getCharType(runes[col]) == charTypeWhitespace {
+					col++
+				}
+			} else {
+				col = lineLen
+				break
+			}
+		}
+
+		// Get current character type
+		if col < lineLen {
+			currentType := getCharType(runes[col])
+
+			// Move to end of word (last character of same type)
+			for col+1 < lineLen && getCharType(runes[col+1]) == currentType {
+				col++
+			}
+		}
+	}
+
+	// Clamp to document bounds
+	if line >= doc.LineCount() {
+		line = doc.LineCount() - 1
+	}
+	if line < 0 {
+		line = 0
+	}
+
+	lineLen := doc.LineRuneCount(line)
+	if col > lineLen {
+		col = lineLen
+	}
+	if col < 0 {
+		col = 0
+	}
+
+	// Update goal column
+	h.goalCol = col
+	h.hasGoal = true
+
+	return Cursor{Line: line, Col: col}
+}

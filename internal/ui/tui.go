@@ -8,8 +8,10 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/shitcoding/tmux_yankee/internal/input"
 	"github.com/shitcoding/tmux_yankee/internal/linenums"
 	vmode "github.com/shitcoding/tmux_yankee/internal/mode"
+	"github.com/shitcoding/tmux_yankee/internal/motion"
 	"github.com/shitcoding/tmux_yankee/internal/selection"
 	"github.com/shitcoding/tmux_yankee/internal/tmux"
 	"golang.org/x/term"
@@ -22,19 +24,21 @@ type tmuxClient interface {
 
 // TUI represents the terminal UI
 type TUI struct {
-	paneID      string
-	content     []string
-	lineNumMode string // Line number mode (absolute/relative/hybrid)
-	formatter   *linenums.Formatter
-	selection   *selection.Selection // Legacy - will be removed in Task 12
-	modeMachine *vmode.Machine
-	client      tmuxClient
-	cursorLine  int
-	cursorCol   int
-	viewportTop int
-	width       int
-	height      int
-	oldState    *term.State
+	paneID        string
+	content       []string
+	lineNumMode   string // Line number mode (absolute/relative/hybrid)
+	formatter     *linenums.Formatter
+	selection     *selection.Selection // Legacy - will be removed in Task 12
+	modeMachine   *vmode.Machine
+	client        tmuxClient
+	parser        *input.Parser
+	motionHandler motion.Handler
+	cursorLine    int
+	cursorCol     int
+	viewportTop   int
+	width         int
+	height        int
+	oldState      *term.State
 }
 
 // NewTUI creates a new TUI instance
@@ -52,16 +56,18 @@ func NewTUI(paneID string, content []string, mode string) *TUI {
 	}
 
 	return &TUI{
-		paneID:      paneID,
-		content:     content,
-		lineNumMode: mode,
-		formatter:   linenums.NewFormatter(lineNumMode, maxLine),
-		selection:   selection.New(), // Legacy - will be removed in Task 12
-		modeMachine: vmode.NewMachine(),
-		client:      tmux.NewClient(),
-		cursorLine:  0,
-		cursorCol:   0,
-		viewportTop: 0,
+		paneID:        paneID,
+		content:       content,
+		lineNumMode:   mode,
+		formatter:     linenums.NewFormatter(lineNumMode, maxLine),
+		selection:     selection.New(), // Legacy - will be removed in Task 12
+		modeMachine:   vmode.NewMachine(),
+		client:        tmux.NewClient(),
+		parser:        input.NewParser(),
+		motionHandler: motion.NewVimHandler(),
+		cursorLine:    0,
+		cursorCol:     0,
+		viewportTop:   0,
 	}
 }
 
@@ -144,22 +150,55 @@ func (t *TUI) restoreTerminal() {
 // handleInput processes keyboard input
 // Returns true if should quit
 func (t *TUI) handleInput(key []byte) bool {
-	switch {
-	case len(key) == 1 && key[0] == 'q':
-		return true
-	case len(key) == 1 && key[0] == 'v':
+	// Only handle single-byte input for now (no escape sequences)
+	if len(key) != 1 {
+		return false
+	}
+
+	// Parse input byte into command
+	cmd := t.parser.Parse(key[0])
+
+	// Handle command
+	switch cmd.Type {
+	case input.CommandNone:
+		// Incomplete sequence (e.g., accumulating count or waiting for second key)
+		return false
+
+	case input.CommandMotion:
+		// Execute motion via motion handler
+		cursor := motion.Cursor{Line: t.cursorLine, Col: t.cursorCol}
+		viewport := motion.Viewport{Top: t.viewportTop, Height: t.height}
+		result := t.motionHandler.Apply(t, cursor, viewport, cmd.Motion, cmd.Count)
+
+		// Update cursor and viewport
+		t.cursorLine = result.Cursor.Line
+		t.cursorCol = result.Cursor.Col
+		t.viewportTop = result.Viewport.Top
+
+		// Notify mode machine of cursor movement
+		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
+		t.modeMachine.OnCursorMoved(pos)
+
+		// Update legacy selection end if active (will be removed in Task 12)
+		if t.selection.IsActive() {
+			t.selection.UpdateEnd(t.cursorLine, 0)
+		}
+
+	case input.CommandVisual:
 		// Toggle character-wise visual mode
 		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 		t.modeMachine.Handle(vmode.EventToggleVisualChar, pos)
 		// Keep legacy selection in sync (will be removed in Task 12)
 		t.toggleSelection()
-	case len(key) == 1 && key[0] == 'V':
-		// Toggle line-wise visual mode (NEW)
+
+	case input.CommandVisualLine:
+		// Toggle line-wise visual mode
 		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 		t.modeMachine.Handle(vmode.EventToggleVisualLine, pos)
 		// Keep legacy selection in sync (will be removed in Task 12)
 		t.toggleSelection()
-	case len(key) == 1 && key[0] == 27: // Escape key (NEW)
+
+	case input.CommandEscape:
 		// Exit visual mode back to normal
 		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 		t.modeMachine.Handle(vmode.EventEscape, pos)
@@ -167,17 +206,17 @@ func (t *TUI) handleInput(key []byte) bool {
 		if t.selection.IsActive() {
 			t.selection.Toggle()
 		}
-	case len(key) == 1 && (key[0] == 'y' || key[0] == 13): // 'y' or Enter
+
+	case input.CommandYank:
 		return t.yank()
-	case len(key) == 1 && key[0] == 'j':
-		t.moveCursorDown()
-	case len(key) == 1 && key[0] == 'k':
-		t.moveCursorUp()
-	case len(key) == 1 && key[0] == 'L':
+
+	case input.CommandToggleLineMode:
 		t.toggleMode()
-	case len(key) == 1 && key[0] == 3: // Ctrl-C
+
+	case input.CommandQuit:
 		return true
 	}
+
 	return false
 }
 
@@ -208,41 +247,6 @@ func (t *TUI) toggleSelection() {
 	}
 }
 
-// moveCursorDown moves cursor down one line
-func (t *TUI) moveCursorDown() {
-	if t.cursorLine < len(t.content)-1 {
-		t.cursorLine++
-		// Adjust viewport if cursor moves off screen
-		if t.cursorLine >= t.viewportTop+t.height {
-			t.viewportTop++
-		}
-		// Notify mode machine of cursor movement
-		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
-		t.modeMachine.OnCursorMoved(pos)
-		// Update legacy selection end if active (will be removed in Task 12)
-		if t.selection.IsActive() {
-			t.selection.UpdateEnd(t.cursorLine, 0)
-		}
-	}
-}
-
-// moveCursorUp moves cursor up one line
-func (t *TUI) moveCursorUp() {
-	if t.cursorLine > 0 {
-		t.cursorLine--
-		// Adjust viewport if cursor moves off screen
-		if t.cursorLine < t.viewportTop {
-			t.viewportTop--
-		}
-		// Notify mode machine of cursor movement
-		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
-		t.modeMachine.OnCursorMoved(pos)
-		// Update legacy selection end if active (will be removed in Task 12)
-		if t.selection.IsActive() {
-			t.selection.UpdateEnd(t.cursorLine, 0)
-		}
-	}
-}
 
 // render draws the TUI
 func (t *TUI) render() {
@@ -341,6 +345,29 @@ func stripANSI(s string) string {
 // GetMode returns the current line number mode
 func (t *TUI) GetMode() string {
 	return t.lineNumMode
+}
+
+// Document interface implementation for motion.Handler
+
+// LineCount returns the total number of lines in the document.
+func (t *TUI) LineCount() int {
+	return len(t.content)
+}
+
+// Line returns the content of the line at the given index.
+func (t *TUI) Line(index int) string {
+	if index < 0 || index >= len(t.content) {
+		return ""
+	}
+	return t.content[index]
+}
+
+// LineRuneCount returns the number of runes in the line.
+func (t *TUI) LineRuneCount(index int) int {
+	if index < 0 || index >= len(t.content) {
+		return 0
+	}
+	return len([]rune(t.content[index]))
 }
 
 // yank extracts selected text, copies to clipboard and tmux buffer
