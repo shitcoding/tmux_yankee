@@ -302,22 +302,23 @@ func TestTUIYankStripsGutter(t *testing.T) {
 		t.Skip("Not in tmux session")
 	}
 
+	// Content should be plain text (gutters are rendering-only)
 	content := []string{
-		"  1 │ Hello",
-		"  2 │ World",
+		"Hello",
+		"World",
 	}
 
 	tui := NewTUI("%1", content, "hybrid")
 	tui.height = 10
 
-	// Activate selection and select both lines
-	tui.handleInput([]byte{'v'})
+	// Activate line-wise selection and select both lines
+	tui.handleInput([]byte{'V'}) // Line-wise visual mode
 	tui.handleInput([]byte{'j'})
 
 	// Yank
 	tui.handleInput([]byte{'y'})
 
-	// Read tmux buffer to verify gutter was stripped
+	// Read tmux buffer to verify text is correct
 	cmd := exec.Command("tmux", "show-buffer")
 	output, err := cmd.Output()
 	if err != nil {
@@ -358,15 +359,16 @@ func TestTUIYankToSystemClipboard(t *testing.T) {
 		t.Skip("copy_stdin.sh not found, skipping clipboard test")
 	}
 
+	// Content should be plain text (gutters are rendering-only)
 	content := []string{
-		"  1 │ Clipboard test",
+		"Clipboard test",
 	}
 
 	tui := NewTUI("%1", content, "hybrid")
 	tui.height = 10
 
-	// Activate selection
-	tui.handleInput([]byte{'v'})
+	// Activate line-wise selection
+	tui.handleInput([]byte{'V'}) // Line-wise visual mode
 
 	// Yank
 	tui.handleInput([]byte{'y'})
@@ -410,17 +412,18 @@ func TestTUIYankMultilinePreservesNewlines(t *testing.T) {
 		t.Skip("Not in tmux session")
 	}
 
+	// Content should be plain text (gutters are rendering-only)
 	content := []string{
-		"  1 │ Line A",
-		"  2 │ Line B",
-		"  3 │ Line C",
+		"Line A",
+		"Line B",
+		"Line C",
 	}
 
 	tui := NewTUI("%1", content, "hybrid")
 	tui.height = 10
 
-	// Select all lines
-	tui.handleInput([]byte{'v'})
+	// Select all lines (line-wise)
+	tui.handleInput([]byte{'V'}) // Line-wise visual mode
 	tui.handleInput([]byte{'j'})
 	tui.handleInput([]byte{'j'})
 
@@ -459,16 +462,17 @@ func TestTUIYankEmptySelection(t *testing.T) {
 		t.Skip("Not in tmux session")
 	}
 
+	// Content should be plain text (gutters are rendering-only)
 	content := []string{
-		"  1 │ ",
-		"  2 │ ",
+		"",
+		"",
 	}
 
 	tui := NewTUI("%1", content, "hybrid")
 	tui.height = 10
 
-	// Select empty lines
-	tui.handleInput([]byte{'v'})
+	// Select empty lines (line-wise)
+	tui.handleInput([]byte{'V'}) // Line-wise visual mode
 	tui.handleInput([]byte{'j'})
 
 	// Yank
@@ -521,20 +525,21 @@ func TestTUIYankWithHybridGutter(t *testing.T) {
 		t.Skip("Not in tmux session")
 	}
 
+	// Content should be plain text (gutters are rendering-only)
 	content := []string{
-		"\x1b[33m  2\x1b[0m │ Above cursor",
-		"\x1b[33m  1\x1b[0m │ One away",
-		"\x1b[32;1m 10\x1b[0m │ At cursor",
-		"\x1b[33m  1\x1b[0m │ Below cursor",
+		"Above cursor",
+		"One away",
+		"At cursor",
+		"Below cursor",
 	}
 
 	tui := NewTUI("%1", content, "hybrid")
 	tui.height = 10
 	tui.cursorLine = 2 // Set cursor at "At cursor" line
 
-	// Select all
+	// Select all (line-wise)
 	tui.cursorLine = 0
-	tui.handleInput([]byte{'v'})
+	tui.handleInput([]byte{'V'}) // Line-wise visual mode
 	tui.handleInput([]byte{'j'})
 	tui.handleInput([]byte{'j'})
 	tui.handleInput([]byte{'j'})
@@ -634,11 +639,12 @@ func TestTUIYankIntegration(t *testing.T) {
 		t.Skip("Not in tmux session")
 	}
 
+	// Content should be plain text (gutters are rendering-only)
 	content := []string{
-		"  1 │ func main() {",
-		"  2 │ 	fmt.Println(\"Hello\")",
-		"  3 │ 	return",
-		"  4 │ }",
+		"func main() {",
+		"\tfmt.Println(\"Hello\")",
+		"\treturn",
+		"}",
 	}
 
 	tui := NewTUI("%1", content, "hybrid")
@@ -646,8 +652,8 @@ func TestTUIYankIntegration(t *testing.T) {
 
 	// Scenario: Select function body (lines 2-3)
 	tui.cursorLine = 1
-	tui.handleInput([]byte{'v'}) // Start selection
-	tui.handleInput([]byte{'j'}) // Extend to line 3
+	tui.handleInput([]byte{'V'}) // Start line-wise selection
+	tui.handleInput([]byte{'j'})  // Extend to line 3
 
 	// Verify selection is active and correct
 	if tui.selection == nil || !tui.selection.IsActive() {

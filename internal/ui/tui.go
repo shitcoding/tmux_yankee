@@ -9,20 +9,28 @@ import (
 	"strings"
 
 	"github.com/shitcoding/tmux_yankee/internal/linenums"
+	vmode "github.com/shitcoding/tmux_yankee/internal/mode"
 	"github.com/shitcoding/tmux_yankee/internal/selection"
 	"github.com/shitcoding/tmux_yankee/internal/tmux"
 	"golang.org/x/term"
 )
 
+// tmuxClient is an interface for tmux operations (for testability)
+type tmuxClient interface {
+	SetBuffer(text string) error
+}
+
 // TUI represents the terminal UI
 type TUI struct {
 	paneID      string
 	content     []string
-	mode        string
+	lineNumMode string // Line number mode (absolute/relative/hybrid)
 	formatter   *linenums.Formatter
-	selection   *selection.Selection
-	client      *tmux.Client
+	selection   *selection.Selection // Legacy - will be removed in Task 12
+	modeMachine *vmode.Machine
+	client      tmuxClient
 	cursorLine  int
+	cursorCol   int
 	viewportTop int
 	width       int
 	height      int
@@ -46,11 +54,13 @@ func NewTUI(paneID string, content []string, mode string) *TUI {
 	return &TUI{
 		paneID:      paneID,
 		content:     content,
-		mode:        mode,
+		lineNumMode: mode,
 		formatter:   linenums.NewFormatter(lineNumMode, maxLine),
-		selection:   selection.New(),
+		selection:   selection.New(), // Legacy - will be removed in Task 12
+		modeMachine: vmode.NewMachine(),
 		client:      tmux.NewClient(),
 		cursorLine:  0,
+		cursorCol:   0,
 		viewportTop: 0,
 	}
 }
@@ -138,7 +148,25 @@ func (t *TUI) handleInput(key []byte) bool {
 	case len(key) == 1 && key[0] == 'q':
 		return true
 	case len(key) == 1 && key[0] == 'v':
+		// Toggle character-wise visual mode
+		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
+		t.modeMachine.Handle(vmode.EventToggleVisualChar, pos)
+		// Keep legacy selection in sync (will be removed in Task 12)
 		t.toggleSelection()
+	case len(key) == 1 && key[0] == 'V':
+		// Toggle line-wise visual mode (NEW)
+		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
+		t.modeMachine.Handle(vmode.EventToggleVisualLine, pos)
+		// Keep legacy selection in sync (will be removed in Task 12)
+		t.toggleSelection()
+	case len(key) == 1 && key[0] == 27: // Escape key (NEW)
+		// Exit visual mode back to normal
+		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
+		t.modeMachine.Handle(vmode.EventEscape, pos)
+		// Keep legacy selection in sync (will be removed in Task 12)
+		if t.selection.IsActive() {
+			t.selection.Toggle()
+		}
 	case len(key) == 1 && (key[0] == 'y' || key[0] == 13): // 'y' or Enter
 		return t.yank()
 	case len(key) == 1 && key[0] == 'j':
@@ -159,11 +187,11 @@ func (t *TUI) toggleMode() {
 	// Update mode string for consistency
 	switch t.formatter.CurrentMode() {
 	case linenums.ModeAbsolute:
-		t.mode = "absolute"
+		t.lineNumMode = "absolute"
 	case linenums.ModeRelative:
-		t.mode = "relative"
+		t.lineNumMode = "relative"
 	case linenums.ModeHybrid:
-		t.mode = "hybrid"
+		t.lineNumMode = "hybrid"
 	}
 }
 
@@ -188,7 +216,10 @@ func (t *TUI) moveCursorDown() {
 		if t.cursorLine >= t.viewportTop+t.height {
 			t.viewportTop++
 		}
-		// Update selection end if active
+		// Notify mode machine of cursor movement
+		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
+		t.modeMachine.OnCursorMoved(pos)
+		// Update legacy selection end if active (will be removed in Task 12)
 		if t.selection.IsActive() {
 			t.selection.UpdateEnd(t.cursorLine, 0)
 		}
@@ -203,7 +234,10 @@ func (t *TUI) moveCursorUp() {
 		if t.cursorLine < t.viewportTop {
 			t.viewportTop--
 		}
-		// Update selection end if active
+		// Notify mode machine of cursor movement
+		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
+		t.modeMachine.OnCursorMoved(pos)
+		// Update legacy selection end if active (will be removed in Task 12)
 		if t.selection.IsActive() {
 			t.selection.UpdateEnd(t.cursorLine, 0)
 		}
@@ -223,10 +257,19 @@ func (t *TUI) render() {
 		endLine = len(t.content)
 	}
 
-	// Get selection range if active
+	// Get selection region from mode machine
+	region := t.modeMachine.Region()
 	var selStart, selEnd int
-	if t.selection.IsActive() {
-		selStart, selEnd = t.selection.Range()
+	hasSelection := region.Kind != selection.KindNone
+	if hasSelection {
+		// Normalize positions (ensure start <= end)
+		if region.Start.Line <= region.End.Line {
+			selStart = region.Start.Line
+			selEnd = region.End.Line
+		} else {
+			selStart = region.End.Line
+			selEnd = region.Start.Line
+		}
 	}
 
 	// Render visible lines
@@ -238,7 +281,7 @@ func (t *TUI) render() {
 		b.WriteString(gutter)
 
 		// Determine if this line is selected
-		isSelected := t.selection.IsActive() && i >= selStart && i <= selEnd
+		isSelected := hasSelection && i >= selStart && i <= selEnd
 
 		// Highlight cursor line or selected line
 		if isSelected {
@@ -297,22 +340,22 @@ func stripANSI(s string) string {
 
 // GetMode returns the current line number mode
 func (t *TUI) GetMode() string {
-	return t.mode
+	return t.lineNumMode
 }
 
 // yank extracts selected text, copies to clipboard and tmux buffer
 // Returns true to quit TUI after yank
 func (t *TUI) yank() bool {
-	// Only yank if selection is active
-	if !t.selection.IsActive() {
+	// Get current selection region from mode machine
+	region := t.modeMachine.Region()
+
+	// Only yank if there is an active selection
+	if region.Kind == selection.KindNone {
 		return false
 	}
 
-	// Build rendered content with gutters for extraction
-	renderedContent := t.buildRenderedContent()
-
-	// Extract selected text (gutter will be stripped)
-	text, err := t.selection.Extract(renderedContent)
+	// Extract selected text using region-based extraction (no gutter stripping needed)
+	text, err := selection.ExtractRegion(t.content, region)
 	if err != nil {
 		// Silently fail - could log error in production
 		return false
@@ -328,30 +371,19 @@ func (t *TUI) yank() bool {
 		// Silently fail - clipboard copy is optional, buffer is already set
 	}
 
-	// Clear selection
-	t.selection.Clear()
+	// Exit visual mode and return to Normal mode (vim behavior)
+	pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
+	t.modeMachine.Handle(vmode.EventEscape, pos)
+
+	// Keep legacy selection in sync (will be removed in Task 12)
+	if t.selection.IsActive() {
+		t.selection.Clear()
+	}
 
 	// Exit TUI after yank (yank-and-cancel behavior)
 	return true
 }
 
-// buildRenderedContent builds the full content array with rendered gutters
-// This is needed for gutter stripping during extraction
-func (t *TUI) buildRenderedContent() []string {
-	rendered := make([]string, len(t.content))
-	for i, line := range t.content {
-		// Check if line already has gutter (for tests)
-		if strings.Contains(line, "│") {
-			// Content already has gutter, use as-is
-			rendered[i] = line
-		} else {
-			// Content is plain text, add gutter
-			gutter := t.formatter.RenderGutter(i+1, t.cursorLine+1)
-			rendered[i] = gutter + line
-		}
-	}
-	return rendered
-}
 
 // copyToClipboard copies text to system clipboard via copy_stdin.sh
 func (t *TUI) copyToClipboard(text string) error {
