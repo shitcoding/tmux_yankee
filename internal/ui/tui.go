@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/shitcoding/tmux_yankee/internal/input"
@@ -237,18 +238,6 @@ func (t *TUI) render() {
 
 	// Get selection region from mode machine
 	region := t.modeMachine.Region()
-	var selStart, selEnd int
-	hasSelection := region.Kind != selection.KindNone
-	if hasSelection {
-		// Normalize positions (ensure start <= end)
-		if region.Start.Line <= region.End.Line {
-			selStart = region.Start.Line
-			selEnd = region.End.Line
-		} else {
-			selStart = region.End.Line
-			selEnd = region.Start.Line
-		}
-	}
 
 	// Render visible lines
 	for i := t.viewportTop; i < endLine; i++ {
@@ -256,14 +245,52 @@ func (t *TUI) render() {
 		gutter := t.formatter.RenderGutter(i+1, t.cursorLine+1)
 		b.WriteString(gutter)
 
-		// Determine if this line is selected
-		isSelected := hasSelection && i >= selStart && i <= selEnd
-
-		// Get raw ANSI line and determine cursor position
+		// Get raw ANSI line
 		rawLine := t.doc.RawLine(i)
-		cursorCol := -1 // -1 means no cursor on this line
-		if i == t.cursorLine && !isSelected {
+
+		// Calculate cursor and selection for this line
+		cursorCol := -1
+		selStart := -1
+		selEnd := -1
+
+		if i == t.cursorLine {
 			cursorCol = t.cursorCol
+		}
+
+		// Determine selection range for this line based on region kind
+		if region.Kind != selection.KindNone {
+			// Normalize region (swap if backwards)
+			start, end := region.Start, region.End
+			if start.Line > end.Line || (start.Line == end.Line && start.Col > end.Col) {
+				start, end = end, start
+			}
+
+			if region.Kind == selection.KindChar {
+				// Character-wise selection - column precision
+				if i == start.Line && i == end.Line {
+					// Single line selection
+					selStart = start.Col
+					selEnd = end.Col
+				} else if i == start.Line {
+					// First line of multi-line selection
+					selStart = start.Col
+					selEnd = 9999 // To end of line
+				} else if i == end.Line {
+					// Last line of multi-line selection
+					selStart = 0
+					selEnd = end.Col
+				} else if i > start.Line && i < end.Line {
+					// Middle line - select entire line
+					selStart = 0
+					selEnd = 9999
+				}
+			} else if region.Kind == selection.KindLine {
+				// Line-wise selection - entire lines
+				if i >= start.Line && i <= end.Line {
+					selStart = 0
+					selEnd = 9999
+				}
+			}
 		}
 
 		// Calculate available width (account for gutter)
@@ -271,7 +298,7 @@ func (t *TUI) render() {
 		availableWidth := t.width - gutterWidth
 
 		// Render line with ANSI color preservation and cursor/selection overlay
-		renderedLine := RenderLine(rawLine, cursorCol, isSelected, availableWidth)
+		renderedLine := RenderLine(rawLine, cursorCol, selStart, selEnd, availableWidth)
 		b.WriteString(renderedLine)
 
 		// Clear to end of line
@@ -335,18 +362,18 @@ func (t *TUI) yank() bool {
 	// Extract selected text using region-based extraction (no gutter stripping needed)
 	text, err := selection.ExtractRegion(plainLines, region)
 	if err != nil {
-		// Silently fail - could log error in production
+		fmt.Fprintf(os.Stderr, "yank: ExtractRegion failed: %v\n", err)
 		return false
 	}
 
 	// ALWAYS set tmux buffer first (reliable fallback)
 	if err := t.client.SetBuffer(text); err != nil {
-		// Silently fail - could log error in production
+		fmt.Fprintf(os.Stderr, "yank: SetBuffer failed: %v\n", err)
 	}
 
 	// THEN try clipboard copy (optional, may fail gracefully)
 	if err := t.copyToClipboard(text); err != nil {
-		// Silently fail - clipboard copy is optional, buffer is already set
+		fmt.Fprintf(os.Stderr, "yank: copyToClipboard failed: %v\n", err)
 	}
 
 	// Exit visual mode and return to Normal mode (vim behavior)
@@ -360,28 +387,36 @@ func (t *TUI) yank() bool {
 
 // copyToClipboard copies text to system clipboard via copy_stdin.sh
 func (t *TUI) copyToClipboard(text string) error {
-	// Find copy_stdin.sh script
-	// Try multiple possible locations
+	// Get the directory where the binary is located
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("cannot determine executable path: %w", err)
+	}
+	binDir := filepath.Dir(execPath)
+
+	// Try multiple possible locations relative to binary
 	possiblePaths := []string{
-		"scripts/copy_stdin.sh",        // From project root
-		"../../scripts/copy_stdin.sh",  // From internal/ui directory (for tests)
-		"/usr/local/bin/copy_stdin.sh", // System-wide install
+		filepath.Join(binDir, "..", "scripts", "copy_stdin.sh"), // ../scripts from bin/
+		"scripts/copy_stdin.sh",                                 // From project root (if run from there)
+		"/usr/local/bin/copy_stdin.sh",                          // System-wide install
 	}
 
 	var scriptPath string
 	for _, path := range possiblePaths {
-		if _, err := os.Stat(path); err == nil {
-			scriptPath = path
+		absPath, _ := filepath.Abs(path)
+		if _, err := os.Stat(absPath); err == nil {
+			scriptPath = absPath
 			break
 		}
 	}
 
 	if scriptPath == "" {
-		return fmt.Errorf("copy_stdin.sh not found")
+		return fmt.Errorf("copy_stdin.sh not found in any of: %v", possiblePaths)
 	}
 
 	cmd := exec.Command(scriptPath)
 	cmd.Stdin = bytes.NewBufferString(text)
+	cmd.Stderr = os.Stderr // Show errors from script
 
 	return cmd.Run()
 }

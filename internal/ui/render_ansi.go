@@ -161,49 +161,50 @@ func RenderCell(cell Cell, applyCursor, applySelection bool) string {
 	// Build style sequence
 	var codes []string
 
-	// Determine if we need reverse video from cursor/selection
-	needsReverse := applyCursor || applySelection
-
-	if needsReverse {
-		// Apply reverse video for cursor/selection
-		codes = append(codes, "7")
+	// Apply selection/cursor highlight with fixed colors
+	if applyCursor || applySelection {
+		// Orange highlight (#FE8018 = rgb(254, 128, 24)) with black text
+		codes = append(codes, "30")              // Black foreground
+		codes = append(codes, "48;2;254;128;24") // Orange background (RGB)
 	} else if cell.Style.Reverse {
 		// Use original reverse video
 		codes = append(codes, "7")
 	}
 
-	// Apply original style attributes (on top of cursor/selection if needed)
-	if cell.Style.Bold {
-		codes = append(codes, "1")
-	}
-	if cell.Style.Dim {
-		codes = append(codes, "2")
-	}
-	if cell.Style.Italic {
-		codes = append(codes, "3")
-	}
-	if cell.Style.Underline {
-		codes = append(codes, "4")
-	}
-
-	// Apply colors (if cursor/selection is active, colors might be inverted)
-	if cell.Style.FgColor > 0 {
-		if cell.Style.FgColor >= 256 {
-			// 256-color mode
-			n := cell.Style.FgColor - 256
-			codes = append(codes, fmt.Sprintf("38;5;%d", n))
-		} else {
-			codes = append(codes, strconv.Itoa(cell.Style.FgColor))
+	// Apply original style attributes (only if not in selection mode)
+	if !(applyCursor || applySelection) {
+		if cell.Style.Bold {
+			codes = append(codes, "1")
 		}
-	}
+		if cell.Style.Dim {
+			codes = append(codes, "2")
+		}
+		if cell.Style.Italic {
+			codes = append(codes, "3")
+		}
+		if cell.Style.Underline {
+			codes = append(codes, "4")
+		}
 
-	if cell.Style.BgColor > 0 {
-		if cell.Style.BgColor >= 256 {
-			// 256-color mode
-			n := cell.Style.BgColor - 256
-			codes = append(codes, fmt.Sprintf("48;5;%d", n))
-		} else {
-			codes = append(codes, strconv.Itoa(cell.Style.BgColor))
+		// Apply original colors
+		if cell.Style.FgColor > 0 {
+			if cell.Style.FgColor >= 256 {
+				// 256-color mode
+				n := cell.Style.FgColor - 256
+				codes = append(codes, fmt.Sprintf("38;5;%d", n))
+			} else {
+				codes = append(codes, strconv.Itoa(cell.Style.FgColor))
+			}
+		}
+
+		if cell.Style.BgColor > 0 {
+			if cell.Style.BgColor >= 256 {
+				// 256-color mode
+				n := cell.Style.BgColor - 256
+				codes = append(codes, fmt.Sprintf("48;5;%d", n))
+			} else {
+				codes = append(codes, strconv.Itoa(cell.Style.BgColor))
+			}
 		}
 	}
 
@@ -227,7 +228,8 @@ func RenderCell(cell Cell, applyCursor, applySelection bool) string {
 
 // RenderLine renders a line with ANSI colors preserved and cursor/selection overlay.
 // maxWidth truncates the line if needed (accounts for visible characters, not escape codes).
-func RenderLine(rawLine string, cursorCol int, isSelected bool, maxWidth int) string {
+// selStart and selEnd define the character-level selection range (-1 means no selection).
+func RenderLine(rawLine string, cursorCol, selStart, selEnd int, maxWidth int) string {
 	// Parse the raw ANSI line into cells
 	cells := ParseANSILine(rawLine)
 
@@ -239,8 +241,11 @@ func RenderLine(rawLine string, cursorCol int, isSelected bool, maxWidth int) st
 	var b strings.Builder
 
 	for i, cell := range cells {
-		applyCursor := (i == cursorCol) && !isSelected
-		applySelection := isSelected
+		// Check if this column is in selection range
+		inSelection := selStart >= 0 && i >= selStart && i <= selEnd
+
+		applyCursor := (i == cursorCol) && !inSelection
+		applySelection := inSelection
 
 		rendered := RenderCell(cell, applyCursor, applySelection)
 		b.WriteString(rendered)
