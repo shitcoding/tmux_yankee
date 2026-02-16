@@ -90,10 +90,55 @@ set -g @linenumbers-toggle-key "M"
 ## Usage
 
 1. Press `prefix + N` (or your configured key) to enter line numbers view
-2. Navigate using standard copy-mode-vi keys (`j`, `k`, `C-u`, `C-d`, etc.)
+2. Navigate using vim-style motion keys
 3. Press `L` to cycle between display modes (absolute -> relative -> hybrid)
-4. Select and yank text normally (`v`, `y`, `Enter`) -- the gutter is stripped automatically
+4. Select and yank text using visual mode
 5. Press `q` or `Escape` to exit and return to your shell
+
+### Vim-Style Keybindings
+
+#### Motion Keys
+
+| Key | Motion | Description |
+|-----|--------|-------------|
+| `j` | Down | Move cursor down one line |
+| `k` | Up | Move cursor up one line |
+| `h` | Left | Move cursor left one character |
+| `l` | Right | Move cursor right one character |
+| `w` | Word forward | Jump to start of next word |
+| `b` | Word backward | Jump to start of previous word |
+| `e` | Word end | Jump to end of current/next word |
+| `0` | Line start | Jump to beginning of line |
+| `$` | Line end | Jump to end of line |
+| `gg` | First line | Jump to first line of document |
+| `G` | Last line | Jump to last line of document |
+| `Ctrl-u` | Half page up | Scroll up half a page |
+| `Ctrl-d` | Half page down | Scroll down half a page |
+
+#### Visual Mode & Yanking
+
+| Key | Action | Description |
+|-----|--------|-------------|
+| `v` | Visual char | Enter character-wise visual mode |
+| `V` | Visual line | Enter line-wise visual mode |
+| `y` | Yank | Yank selected text and exit |
+| `Enter` | Yank | Yank selected text and exit (same as `y`) |
+| `Escape` | Exit visual | Return to normal mode |
+
+#### Other Keys
+
+| Key | Action | Description |
+|-----|--------|-------------|
+| `L` | Toggle mode | Cycle through line number modes |
+| `q` | Quit | Exit line numbers view |
+
+#### Count Prefixes
+
+All motion keys support count prefixes (like vim):
+- `5j` - Move down 5 lines
+- `3w` - Jump forward 3 words
+- `10G` - Jump to line 10
+- `2$` - Jump to end of next line
 
 ## How It Works
 

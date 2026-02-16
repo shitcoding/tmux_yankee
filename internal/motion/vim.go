@@ -57,6 +57,18 @@ func (h *VimHandler) Apply(doc Document, cursor Cursor, viewport Viewport, motio
 		result.Cursor = h.moveWordBackward(doc, cursor, effectiveCount)
 	case MotionWordEnd:
 		result.Cursor = h.moveWordEnd(doc, cursor, effectiveCount)
+	case MotionFirstNonBlank:
+		result.Cursor = h.moveFirstNonBlank(doc, cursor)
+	case MotionWORDEnd:
+		result.Cursor = h.moveWORDEnd(doc, cursor, effectiveCount)
+	case MotionWORDBackward:
+		result.Cursor = h.moveWORDBackward(doc, cursor, effectiveCount)
+	case MotionViewportTop:
+		result.Viewport = h.positionViewportTop(doc, cursor, viewport)
+	case MotionViewportCenter:
+		result.Viewport = h.positionViewportCenter(doc, cursor, viewport)
+	case MotionViewportBottom:
+		result.Viewport = h.positionViewportBottom(doc, cursor, viewport)
 	}
 
 	// Ensure cursor is within viewport
@@ -84,10 +96,15 @@ func (h *VimHandler) moveVertical(doc Document, cursor Cursor, delta int) Cursor
 	}
 
 	// Apply goal column, clamping to line length
+	// Cursor should be ON last character, not past it
 	newCol := h.goalCol
 	lineLen := doc.LineRuneCount(newLine)
-	if newCol > lineLen {
-		newCol = lineLen
+	maxCol := lineLen - 1
+	if maxCol < 0 {
+		maxCol = 0
+	}
+	if newCol > maxCol {
+		newCol = maxCol
 	}
 	if newCol < 0 {
 		newCol = 0
@@ -113,9 +130,15 @@ func (h *VimHandler) moveLeft(doc Document, cursor Cursor, count int) Cursor {
 // moveRight moves the cursor right by count columns.
 func (h *VimHandler) moveRight(doc Document, cursor Cursor, count int) Cursor {
 	lineLen := doc.LineRuneCount(cursor.Line)
+	// Cursor can go to last character, not past it (lineLen-1 max)
+	maxCol := lineLen - 1
+	if maxCol < 0 {
+		maxCol = 0
+	}
+
 	newCol := cursor.Col + count
-	if newCol > lineLen {
-		newCol = lineLen
+	if newCol > maxCol {
+		newCol = maxCol
 	}
 
 	// Set goal column to new position
@@ -132,12 +155,18 @@ func (h *VimHandler) moveLineStart(cursor Cursor) Cursor {
 	return Cursor{Line: cursor.Line, Col: 0}
 }
 
-// moveLineEnd moves cursor to end of current line.
+// moveLineEnd moves cursor to end of current line (last character, not past it).
 func (h *VimHandler) moveLineEnd(doc Document, cursor Cursor) Cursor {
 	lineLen := doc.LineRuneCount(cursor.Line)
-	h.goalCol = lineLen
+	// Vim places cursor ON the last character, not past it
+	// For empty lines (lineLen=0), cursor stays at col 0
+	targetCol := lineLen - 1
+	if targetCol < 0 {
+		targetCol = 0
+	}
+	h.goalCol = targetCol
 	h.hasGoal = true
-	return Cursor{Line: cursor.Line, Col: lineLen}
+	return Cursor{Line: cursor.Line, Col: targetCol}
 }
 
 // moveFirstLine moves to first line (gg with no count) or to line N (Ngg).
@@ -631,4 +660,284 @@ func (h *VimHandler) moveWordEnd(doc Document, cursor Cursor, count int) Cursor 
 	h.hasGoal = true
 
 	return Cursor{Line: line, Col: col}
+}
+
+// moveFirstNonBlank moves to the first non-blank character on the current line (^ motion).
+func (h *VimHandler) moveFirstNonBlank(doc Document, cursor Cursor) Cursor {
+	line := cursor.Line
+	runes := []rune(doc.Line(line))
+
+	// Find first non-whitespace character
+	col := 0
+	for col < len(runes) && (runes[col] == ' ' || runes[col] == '\t') {
+		col++
+	}
+
+	// If line is all whitespace, stay at position 0
+	if col >= len(runes) {
+		col = 0
+	}
+
+	// Update goal column
+	h.goalCol = col
+	h.hasGoal = true
+
+	return Cursor{Line: line, Col: col}
+}
+
+// isWORDChar returns true if the rune is non-whitespace (for WORD motions).
+// WORD in vim is any sequence of non-whitespace characters.
+func isWORDChar(r rune) bool {
+	return r != ' ' && r != '\t' && r != '\n' && r != '\r'
+}
+
+// moveWORDEnd moves to the end of the current/next WORD (E motion).
+// WORD is whitespace-separated (unlike word which considers punctuation).
+// Repeats count times.
+func (h *VimHandler) moveWORDEnd(doc Document, cursor Cursor, count int) Cursor {
+	line := cursor.Line
+	col := cursor.Col
+
+	for i := 0; i < count; i++ {
+		runes := []rune(doc.Line(line))
+		lineLen := len(runes)
+
+		// Move forward one position
+		col++
+
+		// If past end of line, move to next line
+		if col >= lineLen {
+			if line+1 < doc.LineCount() {
+				line++
+				col = 0
+				runes = []rune(doc.Line(line))
+				lineLen = len(runes)
+				// Skip leading whitespace
+				for col < lineLen && !isWORDChar(runes[col]) {
+					col++
+				}
+			} else {
+				// At last line, clamp to end
+				col = lineLen
+				break
+			}
+		}
+
+		// Skip whitespace
+		for col < lineLen && !isWORDChar(runes[col]) {
+			col++
+		}
+
+		// If reached end of line after skipping whitespace, move to next line
+		if col >= lineLen {
+			if line+1 < doc.LineCount() {
+				line++
+				col = 0
+				runes = []rune(doc.Line(line))
+				lineLen = len(runes)
+				// Skip leading whitespace
+				for col < lineLen && !isWORDChar(runes[col]) {
+					col++
+				}
+			} else {
+				col = lineLen
+				break
+			}
+		}
+
+		// Move to end of WORD (last non-whitespace character before whitespace)
+		if col < lineLen {
+			for col+1 < lineLen && isWORDChar(runes[col+1]) {
+				col++
+			}
+		}
+	}
+
+	// Clamp to document bounds
+	if line >= doc.LineCount() {
+		line = doc.LineCount() - 1
+	}
+	if line < 0 {
+		line = 0
+	}
+
+	lineLen := doc.LineRuneCount(line)
+	if col > lineLen {
+		col = lineLen
+	}
+	if col < 0 {
+		col = 0
+	}
+
+	// Update goal column
+	h.goalCol = col
+	h.hasGoal = true
+
+	return Cursor{Line: line, Col: col}
+}
+
+// moveWORDBackward moves to the start of the previous WORD (B motion).
+// WORD is whitespace-separated (unlike word which considers punctuation).
+// Repeats count times.
+func (h *VimHandler) moveWORDBackward(doc Document, cursor Cursor, count int) Cursor {
+	line := cursor.Line
+	col := cursor.Col
+
+	for i := 0; i < count; i++ {
+		runes := []rune(doc.Line(line))
+
+		// If at start of line, move to previous line
+		if col <= 0 {
+			if line <= 0 {
+				// At first line, can't move back
+				break
+			}
+			line--
+			runes = []rune(doc.Line(line))
+			col = len(runes)
+
+			// Skip trailing whitespace
+			for col > 0 && !isWORDChar(runes[col-1]) {
+				col--
+			}
+
+			// If empty line (all whitespace), continue to previous WORD
+			if col == 0 {
+				continue
+			}
+
+			// Move to start of the WORD we landed in
+			for col > 0 && isWORDChar(runes[col-1]) {
+				col--
+			}
+			continue
+		}
+
+		// Move back one position
+		col--
+
+		// Skip whitespace backwards
+		for col > 0 && !isWORDChar(runes[col]) {
+			col--
+		}
+
+		// If we're in whitespace at position 0, wrap to previous line
+		if col == 0 && len(runes) > 0 && !isWORDChar(runes[0]) {
+			if line <= 0 {
+				break
+			}
+			line--
+			runes = []rune(doc.Line(line))
+			col = len(runes)
+
+			// Skip trailing whitespace
+			for col > 0 && !isWORDChar(runes[col-1]) {
+				col--
+			}
+
+			// Move to start of WORD
+			if col > 0 {
+				for col > 0 && isWORDChar(runes[col-1]) {
+					col--
+				}
+			}
+			continue
+		}
+
+		// Now we're at a non-whitespace character, move to start of its WORD
+		if col < len(runes) && isWORDChar(runes[col]) {
+			for col > 0 && isWORDChar(runes[col-1]) {
+				col--
+			}
+		}
+	}
+
+	// Clamp to document bounds
+	if line < 0 {
+		line = 0
+	}
+	if line >= doc.LineCount() {
+		line = doc.LineCount() - 1
+	}
+
+	lineLen := doc.LineRuneCount(line)
+	if col > lineLen {
+		col = lineLen
+	}
+	if col < 0 {
+		col = 0
+	}
+
+	// Update goal column
+	h.goalCol = col
+	h.hasGoal = true
+
+	return Cursor{Line: line, Col: col}
+}
+
+// positionViewportTop positions the cursor line at the top of the viewport (zt motion).
+func (h *VimHandler) positionViewportTop(doc Document, cursor Cursor, viewport Viewport) Viewport {
+	newTop := cursor.Line
+	
+	// Ensure viewport doesn't go past document end
+	lineCount := doc.LineCount()
+	maxTop := lineCount - viewport.Height
+	if maxTop < 0 {
+		maxTop = 0
+	}
+	if newTop > maxTop {
+		newTop = maxTop
+	}
+	
+	// Ensure viewport doesn't go negative
+	if newTop < 0 {
+		newTop = 0
+	}
+	
+	return Viewport{Top: newTop, Height: viewport.Height}
+}
+
+// positionViewportCenter positions the cursor line at the center of the viewport (zz motion).
+func (h *VimHandler) positionViewportCenter(doc Document, cursor Cursor, viewport Viewport) Viewport {
+	halfHeight := viewport.Height / 2
+	newTop := cursor.Line - halfHeight
+	
+	// Ensure viewport doesn't go negative
+	if newTop < 0 {
+		newTop = 0
+	}
+	
+	// Ensure viewport doesn't go past document end
+	lineCount := doc.LineCount()
+	maxTop := lineCount - viewport.Height
+	if maxTop < 0 {
+		maxTop = 0
+	}
+	if newTop > maxTop {
+		newTop = maxTop
+	}
+	
+	return Viewport{Top: newTop, Height: viewport.Height}
+}
+
+// positionViewportBottom positions the cursor line at the bottom of the viewport (zb motion).
+func (h *VimHandler) positionViewportBottom(doc Document, cursor Cursor, viewport Viewport) Viewport {
+	newTop := cursor.Line - viewport.Height + 1
+	
+	// Ensure viewport doesn't go negative
+	if newTop < 0 {
+		newTop = 0
+	}
+	
+	// Ensure viewport doesn't go past document end
+	lineCount := doc.LineCount()
+	maxTop := lineCount - viewport.Height
+	if maxTop < 0 {
+		maxTop = 0
+	}
+	if newTop > maxTop {
+		newTop = maxTop
+	}
+	
+	return Viewport{Top: newTop, Height: viewport.Height}
 }

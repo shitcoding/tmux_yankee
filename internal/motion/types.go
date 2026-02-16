@@ -14,9 +14,15 @@ const (
 	MotionLastLine     // G - last line of document
 	MotionHalfPageUp   // Ctrl-U
 	MotionHalfPageDown // Ctrl-D
-	MotionWordForward  // w - next word start
-	MotionWordBackward // b - previous word start
-	MotionWordEnd      // e - current/next word end
+	MotionWordForward     // w - next word start
+	MotionWordBackward    // b - previous word start
+	MotionWordEnd         // e - current/next word end
+	MotionFirstNonBlank   // ^ - first non-blank character
+	MotionWORDEnd         // E - current/next WORD end (whitespace-separated)
+	MotionWORDBackward    // B - previous WORD start (whitespace-separated)
+	MotionViewportTop     // zt - position cursor line at top of viewport
+	MotionViewportCenter  // zz - position cursor line at center of viewport
+	MotionViewportBottom  // zb - position cursor line at bottom of viewport
 )
 
 // Cursor represents the cursor position in the document.

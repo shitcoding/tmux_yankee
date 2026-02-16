@@ -28,7 +28,6 @@ type TUI struct {
 	doc           *Document // Document with color preservation
 	lineNumMode   string    // Line number mode (absolute/relative/hybrid)
 	formatter     *linenums.Formatter
-	selection     *selection.Selection // Legacy - will be removed in Task 12
 	modeMachine   *vmode.Machine
 	client        tmuxClient
 	parser        *input.Parser
@@ -63,7 +62,6 @@ func NewTUI(paneID string, content []string, mode string) *TUI {
 		doc:           doc,
 		lineNumMode:   mode,
 		formatter:     linenums.NewFormatter(lineNumMode, maxLine),
-		selection:     selection.New(), // Legacy - will be removed in Task 12
 		modeMachine:   vmode.NewMachine(),
 		client:        tmux.NewClient(),
 		parser:        input.NewParser(),
@@ -182,33 +180,20 @@ func (t *TUI) handleInput(key []byte) bool {
 		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 		t.modeMachine.OnCursorMoved(pos)
 
-		// Update legacy selection end if active (will be removed in Task 12)
-		if t.selection.IsActive() {
-			t.selection.UpdateEnd(t.cursorLine, 0)
-		}
-
 	case input.CommandVisual:
 		// Toggle character-wise visual mode
 		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 		t.modeMachine.Handle(vmode.EventToggleVisualChar, pos)
-		// Keep legacy selection in sync (will be removed in Task 12)
-		t.toggleSelection()
 
 	case input.CommandVisualLine:
 		// Toggle line-wise visual mode
 		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 		t.modeMachine.Handle(vmode.EventToggleVisualLine, pos)
-		// Keep legacy selection in sync (will be removed in Task 12)
-		t.toggleSelection()
 
 	case input.CommandEscape:
 		// Exit visual mode back to normal
 		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 		t.modeMachine.Handle(vmode.EventEscape, pos)
-		// Keep legacy selection in sync (will be removed in Task 12)
-		if t.selection.IsActive() {
-			t.selection.Toggle()
-		}
 
 	case input.CommandYank:
 		return t.yank()
@@ -236,20 +221,6 @@ func (t *TUI) toggleMode() {
 		t.lineNumMode = "hybrid"
 	}
 }
-
-// toggleSelection toggles visual selection mode
-func (t *TUI) toggleSelection() {
-	if !t.selection.IsActive() {
-		// Activate selection at current cursor position
-		t.selection.SetStart(t.cursorLine, 0)
-		t.selection.UpdateEnd(t.cursorLine, 0)
-		t.selection.Toggle()
-	} else {
-		// Deactivate selection
-		t.selection.Toggle()
-	}
-}
-
 
 // render draws the TUI
 func (t *TUI) render() {
@@ -381,11 +352,6 @@ func (t *TUI) yank() bool {
 	// Exit visual mode and return to Normal mode (vim behavior)
 	pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 	t.modeMachine.Handle(vmode.EventEscape, pos)
-
-	// Keep legacy selection in sync (will be removed in Task 12)
-	if t.selection.IsActive() {
-		t.selection.Clear()
-	}
 
 	// Exit TUI after yank (yank-and-cancel behavior)
 	return true

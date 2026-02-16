@@ -117,6 +117,7 @@ func extractCharWise(lines []string, start, end Pos) (string, error) {
 
 // extractSingleLine extracts a substring from a line using rune indices
 // If endCol is -1, extracts to end of line
+// endCol is INCLUSIVE (vim visual mode semantics)
 func extractSingleLine(line string, startCol, endCol int) (string, error) {
 	runes := []rune(line)
 
@@ -126,6 +127,9 @@ func extractSingleLine(line string, startCol, endCol int) (string, error) {
 
 	if endCol == -1 {
 		endCol = len(runes)
+	} else {
+		// endCol is inclusive, so add 1 for Go slice (which is exclusive)
+		endCol = endCol + 1
 	}
 
 	if endCol < 0 || endCol > len(runes) {

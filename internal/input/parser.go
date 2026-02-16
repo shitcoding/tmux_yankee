@@ -24,10 +24,12 @@ func NewParser() *Parser {
 // Prefix handling:
 //   - "g" sets pending prefix, waits for second key
 //   - "gg" → MotionFirstLine
+//   - "z" sets pending prefix, waits for second key
+//   - "zt/zz/zb" → viewport positioning
 //   - Invalid sequences clear pending state
 func (p *Parser) Parse(b byte) Command {
-	// Handle pending 'g' prefix first
-	if p.pending.Prefix == 'g' {
+	// Handle pending 'g' or 'z' prefix first
+	if p.pending.Prefix == 'g' || p.pending.Prefix == 'z' {
 		cmd := p.parsePrefixedKey(b)
 		p.clearPending()
 		return cmd
@@ -63,31 +65,75 @@ func (p *Parser) Parse(b byte) Command {
 		return Command{Type: CommandNone}
 	}
 
+	// Handle 'z' prefix (wait for next key)
+	if b == 'z' {
+		p.pending.Prefix = 'z'
+		return Command{Type: CommandNone}
+	}
+
 	// All other keys complete the command
 	cmd := p.parseCommand(b)
 	p.clearPending()
 	return cmd
 }
 
-// parsePrefixedKey handles keys following a 'g' prefix.
+// parsePrefixedKey handles keys following a 'g' or 'z' prefix.
 func (p *Parser) parsePrefixedKey(b byte) Command {
-	switch b {
-	case 'g':
-		// gg → first line
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionFirstLine,
-			Count:  p.pending.Count,
+	if p.pending.Prefix == 'g' {
+		switch b {
+		case 'g':
+			// gg → first line
+			return Command{
+				Type:   CommandMotion,
+				Motion: motion.MotionFirstLine,
+				Count:  p.pending.Count,
+			}
+		default:
+			// Invalid sequence, clear pending
+			return Command{Type: CommandNone}
 		}
-	default:
-		// Invalid sequence, clear pending
-		return Command{Type: CommandNone}
 	}
+
+	if p.pending.Prefix == 'z' {
+		switch b {
+		case 't':
+			// zt → position cursor line at top of viewport
+			return Command{
+				Type:   CommandMotion,
+				Motion: motion.MotionViewportTop,
+				Count:  0,
+			}
+		case 'z':
+			// zz → position cursor line at center of viewport
+			return Command{
+				Type:   CommandMotion,
+				Motion: motion.MotionViewportCenter,
+				Count:  0,
+			}
+		case 'b':
+			// zb → position cursor line at bottom of viewport
+			return Command{
+				Type:   CommandMotion,
+				Motion: motion.MotionViewportBottom,
+				Count:  0,
+			}
+		default:
+			// Invalid sequence, clear pending
+			return Command{Type: CommandNone}
+		}
+	}
+
+	// No valid prefix
+	return Command{Type: CommandNone}
 }
 
 // parseCommand parses a complete command from a single key.
 func (p *Parser) parseCommand(b byte) Command {
+	// Default count to 1 if no count was entered
 	count := p.pending.Count
+	if !p.pending.HasCount {
+		count = 1
+	}
 
 	switch b {
 	// Motion commands
@@ -122,10 +168,11 @@ func (p *Parser) parseCommand(b byte) Command {
 			Count:  count,
 		}
 	case 'G':
+		// G needs raw count: 0 = last line, N = line N
 		return Command{
 			Type:   CommandMotion,
 			Motion: motion.MotionLastLine,
-			Count:  count,
+			Count:  p.pending.Count,
 		}
 	case 4: // Ctrl-D
 		return Command{
@@ -155,6 +202,24 @@ func (p *Parser) parseCommand(b byte) Command {
 		return Command{
 			Type:   CommandMotion,
 			Motion: motion.MotionWordEnd,
+			Count:  count,
+		}
+	case '^':
+		return Command{
+			Type:   CommandMotion,
+			Motion: motion.MotionFirstNonBlank,
+			Count:  count,
+		}
+	case 'E':
+		return Command{
+			Type:   CommandMotion,
+			Motion: motion.MotionWORDEnd,
+			Count:  count,
+		}
+	case 'B':
+		return Command{
+			Type:   CommandMotion,
+			Motion: motion.MotionWORDBackward,
 			Count:  count,
 		}
 
