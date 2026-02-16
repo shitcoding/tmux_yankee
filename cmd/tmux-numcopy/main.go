@@ -11,6 +11,14 @@ import (
 	"github.com/shitcoding/tmux_yankee/internal/ui"
 )
 
+// trimTrailingEmptyLines removes empty lines from the end of content
+func trimTrailingEmptyLines(lines []string) []string {
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
 func main() {
 	// CLI flags
 	paneID := flag.String("pane", "", "Target tmux pane ID")
@@ -42,11 +50,15 @@ func main() {
 	client := tmux.NewClient()
 
 	// Capture pane content with ANSI color codes preserved
-	content, err := client.CapturePane(*paneID, 0, -1, true)
+	// Use -2000 to capture last 2000 lines (recent history only, not entire scrollback)
+	content, err := client.CapturePane(*paneID, -2000, -1, true)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error capturing pane: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Trim trailing empty lines (common in scrollback buffers)
+	content = trimTrailingEmptyLines(content)
 
 	// Create TUI
 	tui := ui.NewTUI(*paneID, content, *mode)

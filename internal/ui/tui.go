@@ -6,8 +6,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/shitcoding/tmux_yankee/internal/input"
 	"github.com/shitcoding/tmux_yankee/internal/linenums"
@@ -17,6 +19,12 @@ import (
 	"github.com/shitcoding/tmux_yankee/internal/tmux"
 	"golang.org/x/term"
 )
+
+// inputEvent represents an async stdin read result
+type inputEvent struct {
+	data []byte
+	err  error
+}
 
 // tmuxClient is an interface for tmux operations (for testability)
 type tmuxClient interface {
@@ -58,6 +66,12 @@ func NewTUI(paneID string, content []string, mode string) *TUI {
 		maxLine = 1
 	}
 
+	// Start cursor at last line (current line in terminal)
+	initialCursorLine := maxLine - 1
+	if initialCursorLine < 0 {
+		initialCursorLine = 0
+	}
+
 	return &TUI{
 		paneID:        paneID,
 		doc:           doc,
@@ -67,7 +81,7 @@ func NewTUI(paneID string, content []string, mode string) *TUI {
 		client:        tmux.NewClient(),
 		parser:        input.NewParser(),
 		motionHandler: motion.NewVimHandler(),
-		cursorLine:    0,
+		cursorLine:    initialCursorLine,
 		cursorCol:     0,
 		viewportTop:   0,
 	}
@@ -81,13 +95,15 @@ func (t *TUI) Run() error {
 	}
 	defer t.restoreTerminal()
 
-	// Get terminal size
-	width, height, err := term.GetSize(int(os.Stdin.Fd()))
-	if err != nil {
+	// Track resize events from tmux pane/window changes (zoom/unzoom, client resize)
+	resizeCh := make(chan os.Signal, 1)
+	signal.Notify(resizeCh, syscall.SIGWINCH)
+	defer signal.Stop(resizeCh)
+
+	// Set initial terminal size
+	if err := t.updateSize(); err != nil {
 		return fmt.Errorf("get terminal size failed: %w", err)
 	}
-	t.width = width
-	t.height = height
 
 	// Clear screen and hide cursor
 	fmt.Print("\x1b[2J\x1b[?25l")
@@ -95,39 +111,64 @@ func (t *TUI) Run() error {
 	// Initial render
 	t.render()
 
-	// Event loop
+	// Read stdin in a goroutine so the main loop can select on both input and SIGWINCH
 	const maxKeySequenceBytes = 3 // Escape sequences like \x1b[A
-	buf := make([]byte, maxKeySequenceBytes)
+	inputCh := make(chan inputEvent)
+	go func() {
+		buf := make([]byte, maxKeySequenceBytes)
+		for {
+			n, err := os.Stdin.Read(buf)
+			if err != nil {
+				inputCh <- inputEvent{err: err}
+				return
+			}
+			if n == 0 {
+				continue
+			}
+
+			data := make([]byte, n)
+			copy(data, buf[:n])
+			inputCh <- inputEvent{data: data}
+		}
+	}()
+
 	for {
-		n, err := os.Stdin.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("read failed: %w", err)
-		}
-
-		// Process each byte individually to handle rapid key presses
-		needsRender := false
-		for i := 0; i < n; i++ {
-			key := buf[i : i+1]
-
-			// Handle input
-			quit := t.handleInput(key)
-			if quit {
-				return nil
+		select {
+		case event := <-inputCh:
+			if event.err != nil {
+				if event.err == io.EOF {
+					return nil
+				}
+				return fmt.Errorf("read failed: %w", event.err)
 			}
 
-			needsRender = true
-		}
+			// Process each byte individually to handle rapid key presses
+			needsRender := false
+			for i := 0; i < len(event.data); i++ {
+				key := event.data[i : i+1]
 
-		// Re-render once after processing all bytes to reduce flicker
-		if needsRender {
+				// Handle input
+				quit := t.handleInput(key)
+				if quit {
+					return nil
+				}
+
+				needsRender = true
+			}
+
+			// Re-render once after processing all bytes to reduce flicker
+			if needsRender {
+				t.render()
+			}
+
+		case <-resizeCh:
+			// Re-read terminal size on SIGWINCH and keep cursor/viewport in bounds
+			if err := t.updateSize(); err != nil {
+				return fmt.Errorf("get terminal size failed: %w", err)
+			}
 			t.render()
 		}
 	}
-
-	return nil
 }
 
 // initTerminal switches to raw mode
@@ -146,6 +187,79 @@ func (t *TUI) restoreTerminal() {
 		// Show cursor and clear screen
 		fmt.Print("\x1b[?25h\x1b[2J\x1b[H")
 		term.Restore(int(os.Stdin.Fd()), t.oldState)
+	}
+}
+
+// updateSize refreshes terminal dimensions and clamps viewport/cursor
+func (t *TUI) updateSize() error {
+	width, height, err := term.GetSize(int(os.Stdin.Fd()))
+	if err != nil {
+		return err
+	}
+
+	t.width = width
+	t.height = height
+	t.clampViewportAndCursor()
+	return nil
+}
+
+// clampViewportAndCursor keeps cursor/viewport valid after resize
+func (t *TUI) clampViewportAndCursor() {
+	lineCount := t.doc.LineCount()
+	if lineCount <= 0 {
+		t.cursorLine = 0
+		t.cursorCol = 0
+		t.viewportTop = 0
+		return
+	}
+
+	// Clamp cursor line to available content
+	if t.cursorLine < 0 {
+		t.cursorLine = 0
+	}
+	if t.cursorLine >= lineCount {
+		t.cursorLine = lineCount - 1
+	}
+
+	// Clamp cursor column to current line width
+	maxCol := t.doc.LineRuneCount(t.cursorLine)
+	if t.cursorCol < 0 {
+		t.cursorCol = 0
+	}
+	if t.cursorCol > maxCol {
+		t.cursorCol = maxCol
+	}
+
+	if t.height <= 0 {
+		t.height = 0
+		t.viewportTop = 0
+		return
+	}
+
+	// Keep viewport in valid range
+	maxTop := lineCount - t.height
+	if maxTop < 0 {
+		maxTop = 0
+	}
+	if t.viewportTop < 0 {
+		t.viewportTop = 0
+	}
+	if t.viewportTop > maxTop {
+		t.viewportTop = maxTop
+	}
+
+	// Keep cursor visible after resize
+	if t.cursorLine < t.viewportTop {
+		t.viewportTop = t.cursorLine
+	}
+	if t.cursorLine >= t.viewportTop+t.height {
+		t.viewportTop = t.cursorLine - t.height + 1
+	}
+	if t.viewportTop < 0 {
+		t.viewportTop = 0
+	}
+	if t.viewportTop > maxTop {
+		t.viewportTop = maxTop
 	}
 }
 

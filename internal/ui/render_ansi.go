@@ -251,5 +251,12 @@ func RenderLine(rawLine string, cursorCol, selStart, selEnd int, maxWidth int) s
 		b.WriteString(rendered)
 	}
 
+	// If cursor is at or past end of line, render a visible cursor block
+	if cursorCol >= len(cells) && cursorCol >= 0 {
+		emptyCell := Cell{Rune: ' ', Style: Style{}}
+		rendered := RenderCell(emptyCell, true, false)
+		b.WriteString(rendered)
+	}
+
 	return b.String()
 }
