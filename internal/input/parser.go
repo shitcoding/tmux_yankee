@@ -5,12 +5,18 @@ import "github.com/shitcoding/tmux_yankee/internal/motion"
 // Parser parses keyboard input into commands, handling multi-key sequences
 // and count prefixes.
 type Parser struct {
-	pending Pending
+	pending   Pending
+	toggleKey byte
 }
 
-// NewParser creates a new input parser.
+// NewParser creates a new input parser with the default toggle key ('L').
 func NewParser() *Parser {
-	return &Parser{}
+	return &Parser{toggleKey: 'L'}
+}
+
+// NewParserWithToggleKey creates a new input parser with a configurable toggle key.
+func NewParserWithToggleKey(toggleKey byte) *Parser {
+	return &Parser{toggleKey: toggleKey}
 }
 
 // Parse processes a single byte of input and returns a command if complete.
@@ -129,10 +135,14 @@ func (p *Parser) parsePrefixedKey(b byte) Command {
 
 // parseCommand parses a complete command from a single key.
 func (p *Parser) parseCommand(b byte) Command {
-	// Default count to 1 if no count was entered
+	// Pass count as-is: 0 means "no count typed", >0 means explicit count.
+	// Motion handlers are responsible for treating count=0 as 1 repetition
+	// (or as special meaning for G/gg where 0 = last/first line).
 	count := p.pending.Count
-	if !p.pending.HasCount {
-		count = 1
+
+	// Check configurable toggle key before entering the switch
+	if b == p.toggleKey {
+		return Command{Type: CommandToggleLineMode}
 	}
 
 	switch b {
@@ -236,8 +246,6 @@ func (p *Parser) parseCommand(b byte) Command {
 	// Mode control
 	case 27: // Escape
 		return Command{Type: CommandEscape}
-	case 'L':
-		return Command{Type: CommandToggleLineMode}
 
 	// Quit
 	case 'q', 3: // 'q' or Ctrl-C

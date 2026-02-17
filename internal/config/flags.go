@@ -8,7 +8,6 @@ func RegisterFlags(fs *flag.FlagSet, opts *CLIOptions) {
 	fs.StringVar(&opts.Mode, "mode", DefaultMode, "Line number mode (absolute, relative, hybrid)")
 	fs.IntVar(&opts.ScrollbackLines, "scrollback-lines", DefaultScrollbackLines, "Lines of scrollback to capture (100-200000)")
 	fs.StringVar(&opts.Theme, "theme", DefaultTheme, "Theme preset (default, dracula, gruvbox, nord, solarized)")
-	fs.StringVar(&opts.StatusIndicator, "status-indicator", DefaultStatusIndicator, "Show top-right status indicator (on, off)")
 	fs.StringVar(&opts.CursorFG, "cursor-fg", "", "Cursor foreground color (#RRGGBB)")
 	fs.StringVar(&opts.CursorBG, "cursor-bg", "", "Cursor background color (#RRGGBB)")
 	fs.StringVar(&opts.SelectionFG, "selection-fg", "", "Selection foreground color (#RRGGBB)")

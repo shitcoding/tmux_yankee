@@ -22,7 +22,6 @@ func Resolve(opts CLIOptions) (Settings, error) {
 	}
 
 	// Parse bool strings
-	statusIndicator := opts.StatusIndicator == "on"
 	exitOnYank := opts.ExitOnYank == "on"
 
 	// Parse ToggleModeKey to byte
@@ -55,7 +54,6 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		Mode:            LineNumberMode(opts.Mode),
 		ScrollbackLines: scrollback,
 		Palette:         palette,
-		StatusIndicator: statusIndicator,
 		ToggleModeKey:   toggleKey,
 		CopyTarget:      CopyTarget(opts.CopyTarget),
 		ExitOnYank:      exitOnYank,

@@ -249,6 +249,25 @@ func TestParser_OtherCommands(t *testing.T) {
 	}
 }
 
+func TestParser_CustomToggleKey(t *testing.T) {
+	// Parser with 'M' as toggle key: 'M' produces ToggleMode, 'L' does NOT
+	p := NewParserWithToggleKey('M')
+
+	t.Run("M produces ToggleMode", func(t *testing.T) {
+		cmd := p.Parse('M')
+		if cmd.Type != CommandToggleLineMode {
+			t.Errorf("Type = %v, want CommandToggleLineMode", cmd.Type)
+		}
+	})
+
+	t.Run("L does not produce ToggleMode", func(t *testing.T) {
+		cmd := p.Parse('L')
+		if cmd.Type == CommandToggleLineMode {
+			t.Errorf("Type = CommandToggleLineMode, want something else (L is not the toggle key)")
+		}
+	})
+}
+
 func TestParser_PendingState(t *testing.T) {
 	t.Run("count accumulation", func(t *testing.T) {
 		p := NewParser()

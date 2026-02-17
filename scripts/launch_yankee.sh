@@ -152,7 +152,6 @@ build_yankee_args() {
 
     _append_yankee_opt @yankee_scrollback_lines    --scrollback-lines
     _append_yankee_opt @yankee_theme               --theme
-    _append_yankee_opt @yankee_status_indicator    --status-indicator
     _append_yankee_opt @yankee_cursor_fg           --cursor-fg
     _append_yankee_opt @yankee_cursor_bg           --cursor-bg
     _append_yankee_opt @yankee_selection_fg        --selection-fg

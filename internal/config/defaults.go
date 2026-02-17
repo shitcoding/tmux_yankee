@@ -4,7 +4,6 @@ const (
 	DefaultMode            = "hybrid"
 	DefaultScrollbackLines = 2000
 	DefaultTheme           = "default"
-	DefaultStatusIndicator = "off"
 	DefaultToggleModeKey   = "L"
 	DefaultCopyTarget      = "both"
 	DefaultExitOnYank      = "on"

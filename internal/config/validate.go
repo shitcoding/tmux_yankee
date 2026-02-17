@@ -31,14 +31,6 @@ func Validate(opts CLIOptions) error {
 		return fmt.Errorf("invalid theme %q: must be one of default, dracula, gruvbox, nord, solarized", opts.Theme)
 	}
 
-	// StatusIndicator
-	switch opts.StatusIndicator {
-	case "on", "off":
-		// valid
-	default:
-		return fmt.Errorf("invalid status-indicator %q: must be on or off", opts.StatusIndicator)
-	}
-
 	// Color fields (ordered for deterministic error messages)
 	colorFields := []struct {
 		name string

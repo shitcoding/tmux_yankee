@@ -3,8 +3,10 @@ package ui
 import (
 	"testing"
 
+	"github.com/shitcoding/tmux_yankee/internal/config"
 	vmode "github.com/shitcoding/tmux_yankee/internal/mode"
 	"github.com/shitcoding/tmux_yankee/internal/selection"
+	"github.com/shitcoding/tmux_yankee/internal/theme"
 )
 
 // TestYankCharWiseSelection tests character-wise selection yank extraction
@@ -131,10 +133,12 @@ func TestYankNoSelection(t *testing.T) {
 type mockTmuxClient struct {
 	bufferContent string
 	setBufferErr  error
+	setBufferCalls int
 }
 
 func (m *mockTmuxClient) SetBuffer(text string) error {
 	m.bufferContent = text
+	m.setBufferCalls++
 	return m.setBufferErr
 }
 
@@ -152,4 +156,183 @@ func (m *mockTmuxClient) GetHistorySize(paneID string) (int, error) {
 
 func (m *mockTmuxClient) GetScrollPosition(paneID string) (int, error) {
 	return 0, nil
+}
+
+// newTestTUIWithSettings creates a TUI for testing with explicit config.Settings.
+func newTestTUIWithSettings(cfg config.Settings, content []string) *TUI {
+	return NewTUI(cfg, content)
+}
+
+// TestYank_CopyTargetTmuxOnly verifies that CopyTarget=tmux sets tmux buffer but not clipboard.
+func TestYank_CopyTargetTmuxOnly(t *testing.T) {
+	content := []string{"line 1", "line 2"}
+	cfg := config.Settings{
+		PaneID:      "test-pane",
+		Mode:        config.LineNumberModeAbsolute,
+		Palette:     theme.Presets[theme.ThemeDefault],
+		CopyTarget:  config.CopyTargetTmux,
+		ExitOnYank:  true,
+		StartPosition: config.StartPositionBottom,
+		ToggleModeKey: 'L',
+	}
+	tui := newTestTUIWithSettings(cfg, content)
+
+	// Activate line-wise selection on line 0
+	pos := selection.Pos{Line: 0, Col: 0}
+	tui.modeMachine.Handle(vmode.EventToggleVisualLine, pos)
+
+	// Mock clients
+	mockClient := &mockTmuxClient{}
+	tui.client = mockClient
+	clipboardCalled := false
+	tui.clipboardFunc = func(text string) error {
+		clipboardCalled = true
+		return nil
+	}
+
+	tui.yank()
+
+	if mockClient.setBufferCalls == 0 {
+		t.Error("Expected SetBuffer to be called for CopyTargetTmux, but it was not")
+	}
+	if clipboardCalled {
+		t.Error("Expected clipboard NOT to be called for CopyTargetTmux, but it was")
+	}
+}
+
+// TestYank_CopyTargetClipboardOnly verifies that CopyTarget=clipboard calls clipboard but not tmux buffer.
+func TestYank_CopyTargetClipboardOnly(t *testing.T) {
+	content := []string{"line 1", "line 2"}
+	cfg := config.Settings{
+		PaneID:      "test-pane",
+		Mode:        config.LineNumberModeAbsolute,
+		Palette:     theme.Presets[theme.ThemeDefault],
+		CopyTarget:  config.CopyTargetClipboard,
+		ExitOnYank:  true,
+		StartPosition: config.StartPositionBottom,
+		ToggleModeKey: 'L',
+	}
+	tui := newTestTUIWithSettings(cfg, content)
+
+	// Activate line-wise selection on line 0
+	pos := selection.Pos{Line: 0, Col: 0}
+	tui.modeMachine.Handle(vmode.EventToggleVisualLine, pos)
+
+	// Mock clients
+	mockClient := &mockTmuxClient{}
+	tui.client = mockClient
+	clipboardCalled := false
+	tui.clipboardFunc = func(text string) error {
+		clipboardCalled = true
+		return nil
+	}
+
+	tui.yank()
+
+	if mockClient.setBufferCalls != 0 {
+		t.Errorf("Expected SetBuffer NOT to be called for CopyTargetClipboard, but it was called %d times", mockClient.setBufferCalls)
+	}
+	if !clipboardCalled {
+		t.Error("Expected clipboard to be called for CopyTargetClipboard, but it was not")
+	}
+}
+
+// TestYank_ExitOnYankFalse verifies that ExitOnYank=false keeps TUI in normal mode after yank.
+func TestYank_ExitOnYankFalse(t *testing.T) {
+	content := []string{"line 1", "line 2"}
+	cfg := config.Settings{
+		PaneID:      "test-pane",
+		Mode:        config.LineNumberModeAbsolute,
+		Palette:     theme.Presets[theme.ThemeDefault],
+		CopyTarget:  config.CopyTargetTmux,
+		ExitOnYank:  false,
+		StartPosition: config.StartPositionBottom,
+		ToggleModeKey: 'L',
+	}
+	tui := newTestTUIWithSettings(cfg, content)
+
+	// Activate line-wise selection
+	pos := selection.Pos{Line: 0, Col: 0}
+	tui.modeMachine.Handle(vmode.EventToggleVisualLine, pos)
+
+	// Mock client
+	mockClient := &mockTmuxClient{}
+	tui.client = mockClient
+	tui.clipboardFunc = func(text string) error { return nil }
+
+	shouldQuit := tui.yank()
+
+	if shouldQuit {
+		t.Error("Expected yank to return false (stay in TUI) when ExitOnYank=false, got true")
+	}
+
+	// Mode should be Normal after yank
+	if tui.modeMachine.Mode() != vmode.Normal {
+		t.Errorf("Expected mode to be Normal after yank with ExitOnYank=false, got %v", tui.modeMachine.Mode())
+	}
+
+	// Region should be cleared
+	region := tui.modeMachine.Region()
+	if region.Kind != selection.KindNone {
+		t.Errorf("Expected region kind to be KindNone after yank, got %v", region.Kind)
+	}
+}
+
+// TestTUI_StartPositionTop verifies cursorLine=0 when StartPosition=top.
+func TestTUI_StartPositionTop(t *testing.T) {
+	content := []string{"line 1", "line 2", "line 3", "line 4", "line 5"}
+	cfg := config.Settings{
+		PaneID:        "test-pane",
+		Mode:          config.LineNumberModeAbsolute,
+		Palette:       theme.Presets[theme.ThemeDefault],
+		CopyTarget:    config.CopyTargetBoth,
+		ExitOnYank:    true,
+		StartPosition: config.StartPositionTop,
+		ToggleModeKey: 'L',
+	}
+	tui := newTestTUIWithSettings(cfg, content)
+
+	if tui.cursorLine != 0 {
+		t.Errorf("Expected cursorLine=0 for StartPositionTop, got %d", tui.cursorLine)
+	}
+}
+
+// TestTUI_StartPositionMiddle verifies cursorLine=len(content)/2 when StartPosition=middle.
+func TestTUI_StartPositionMiddle(t *testing.T) {
+	content := []string{"line 1", "line 2", "line 3", "line 4", "line 5"}
+	cfg := config.Settings{
+		PaneID:        "test-pane",
+		Mode:          config.LineNumberModeAbsolute,
+		Palette:       theme.Presets[theme.ThemeDefault],
+		CopyTarget:    config.CopyTargetBoth,
+		ExitOnYank:    true,
+		StartPosition: config.StartPositionMiddle,
+		ToggleModeKey: 'L',
+	}
+	tui := newTestTUIWithSettings(cfg, content)
+
+	expected := (len(content) - 1) / 2
+	if tui.cursorLine != expected {
+		t.Errorf("Expected cursorLine=%d for StartPositionMiddle, got %d", expected, tui.cursorLine)
+	}
+}
+
+// TestTUI_StartPositionBottom verifies cursorLine=last line when StartPosition=bottom (default).
+func TestTUI_StartPositionBottom(t *testing.T) {
+	content := []string{"line 1", "line 2", "line 3", "line 4", "line 5"}
+	cfg := config.Settings{
+		PaneID:        "test-pane",
+		Mode:          config.LineNumberModeAbsolute,
+		Palette:       theme.Presets[theme.ThemeDefault],
+		CopyTarget:    config.CopyTargetBoth,
+		ExitOnYank:    true,
+		StartPosition: config.StartPositionBottom,
+		ToggleModeKey: 'L',
+	}
+	tui := newTestTUIWithSettings(cfg, content)
+
+	expected := len(content) - 1
+	if tui.cursorLine != expected {
+		t.Errorf("Expected cursorLine=%d for StartPositionBottom, got %d", expected, tui.cursorLine)
+	}
 }

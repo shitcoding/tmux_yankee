@@ -35,6 +35,7 @@ type tmuxClient interface {
 
 // TUI represents the terminal UI
 type TUI struct {
+	cfg           config.Settings
 	paneID        string
 	doc           *Document // Document with color preservation
 	lineNumMode   string    // Line number mode (absolute/relative/hybrid)
@@ -42,6 +43,7 @@ type TUI struct {
 	palette       theme.Palette
 	modeMachine   *vmode.Machine
 	client        tmuxClient
+	clipboardFunc func(text string) error // injectable for testing; nil uses copyToClipboard
 	parser        *input.Parser
 	motionHandler motion.Handler
 	cursorLine    int
@@ -69,13 +71,28 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 		maxLine = 1
 	}
 
-	// Start cursor at last line (current line in terminal)
-	initialCursorLine := maxLine - 1
+	// Set initial cursor position based on StartPosition setting
+	var initialCursorLine int
+	switch cfg.StartPosition {
+	case config.StartPositionTop:
+		initialCursorLine = 0
+	case config.StartPositionMiddle:
+		initialCursorLine = (maxLine - 1) / 2
+	default: // StartPositionBottom or unset
+		initialCursorLine = maxLine - 1
+	}
 	if initialCursorLine < 0 {
 		initialCursorLine = 0
 	}
 
+	// Use configured toggle key; default to 'L' if zero
+	toggleKey := cfg.ToggleModeKey
+	if toggleKey == 0 {
+		toggleKey = 'L'
+	}
+
 	return &TUI{
+		cfg:           cfg,
 		paneID:        cfg.PaneID,
 		doc:           doc,
 		lineNumMode:   string(cfg.Mode),
@@ -83,7 +100,7 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 		palette:       cfg.Palette,
 		modeMachine:   vmode.NewMachine(),
 		client:        tmux.NewClient(),
-		parser:        input.NewParser(),
+		parser:        input.NewParserWithToggleKey(toggleKey),
 		motionHandler: motion.NewVimHandler(),
 		cursorLine:    initialCursorLine,
 		cursorCol:     0,
@@ -484,21 +501,45 @@ func (t *TUI) yank() bool {
 		return false
 	}
 
-	// ALWAYS set tmux buffer first (reliable fallback)
-	if err := t.client.SetBuffer(text); err != nil {
-		fmt.Fprintf(os.Stderr, "yank: SetBuffer failed: %v\n", err)
+	// clipboardCopy dispatches to injected clipboardFunc (for tests) or real impl
+	clipboardCopy := func(s string) error {
+		if t.clipboardFunc != nil {
+			return t.clipboardFunc(s)
+		}
+		return t.copyToClipboard(s)
 	}
 
-	// THEN try clipboard copy (optional, may fail gracefully)
-	if err := t.copyToClipboard(text); err != nil {
-		fmt.Fprintf(os.Stderr, "yank: copyToClipboard failed: %v\n", err)
+	// Route copy operations based on CopyTarget setting
+	switch t.cfg.CopyTarget {
+	case config.CopyTargetTmux:
+		// tmux buffer only, skip clipboard
+		if err := t.client.SetBuffer(text); err != nil {
+			fmt.Fprintf(os.Stderr, "yank: SetBuffer failed: %v\n", err)
+		}
+	case config.CopyTargetClipboard:
+		// clipboard only, skip tmux buffer
+		if err := clipboardCopy(text); err != nil {
+			fmt.Fprintf(os.Stderr, "yank: copyToClipboard failed: %v\n", err)
+		}
+	default: // CopyTargetBoth or unset
+		// Set tmux buffer first (reliable fallback), then clipboard
+		if err := t.client.SetBuffer(text); err != nil {
+			fmt.Fprintf(os.Stderr, "yank: SetBuffer failed: %v\n", err)
+		}
+		if err := clipboardCopy(text); err != nil {
+			fmt.Fprintf(os.Stderr, "yank: copyToClipboard failed: %v\n", err)
+		}
 	}
 
 	// Exit visual mode and return to Normal mode (vim behavior)
 	pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 	t.modeMachine.Handle(vmode.EventEscape, pos)
 
-	// Exit TUI after yank (yank-and-cancel behavior)
+	// ExitOnYank=true (default): exit TUI after yank
+	// ExitOnYank=false: stay in TUI in Normal mode (selection already cleared above)
+	if !t.cfg.ExitOnYank {
+		return false
+	}
 	return true
 }
 

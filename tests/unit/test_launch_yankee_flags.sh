@@ -63,7 +63,6 @@ tmux() {
             @yankee_mode)             printf '%s\n' "absolute" ;;
             @yankee_scrollback_lines) printf '%s\n' "5000" ;;
             @yankee_theme)            printf '%s\n' "dracula" ;;
-            @yankee_status_indicator) printf '%s\n' "on" ;;
             @yankee_cursor_bg)        printf '%s\n' "#ff5555" ;;
             @yankee_toggle_mode_key)  printf '%s\n' "M" ;;
             *)                        printf '%s\n' "" ;;
@@ -109,11 +108,6 @@ _test_theme() {
     assert_contains "$OUTPUT" "--theme dracula" "expected --theme dracula"
 }
 run_test "theme forwarded" _test_theme
-
-_test_status_indicator() {
-    assert_contains "$OUTPUT" "--status-indicator on" "expected --status-indicator on"
-}
-run_test "status-indicator forwarded" _test_status_indicator
 
 _test_cursor_bg() {
     assert_contains "$OUTPUT" "--cursor-bg #ff5555" "expected --cursor-bg #ff5555"

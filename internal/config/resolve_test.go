@@ -12,7 +12,6 @@ func defaultOpts() CLIOptions {
 		Mode:            DefaultMode,
 		ScrollbackLines: DefaultScrollbackLines,
 		Theme:           DefaultTheme,
-		StatusIndicator: DefaultStatusIndicator,
 		ToggleModeKey:   DefaultToggleModeKey,
 		CopyTarget:      DefaultCopyTarget,
 		ExitOnYank:      DefaultExitOnYank,
@@ -35,9 +34,6 @@ func TestResolve_Defaults(t *testing.T) {
 	}
 	if cfg.ScrollbackLines != DefaultScrollbackLines {
 		t.Errorf("ScrollbackLines: got %d, want %d", cfg.ScrollbackLines, DefaultScrollbackLines)
-	}
-	if cfg.StatusIndicator != false {
-		t.Errorf("StatusIndicator: got %v, want false", cfg.StatusIndicator)
 	}
 	if cfg.ToggleModeKey != 'L' {
 		t.Errorf("ToggleModeKey: got %q, want 'L'", cfg.ToggleModeKey)
@@ -121,18 +117,6 @@ func TestResolve_ScrollbackValid(t *testing.T) {
 	}
 	if cfg.ScrollbackLines != 5000 {
 		t.Errorf("ScrollbackLines: got %d, want 5000", cfg.ScrollbackLines)
-	}
-}
-
-func TestResolve_StatusIndicatorOn(t *testing.T) {
-	opts := defaultOpts()
-	opts.StatusIndicator = "on"
-	cfg, err := Resolve(opts)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !cfg.StatusIndicator {
-		t.Errorf("StatusIndicator: got false, want true")
 	}
 }
 

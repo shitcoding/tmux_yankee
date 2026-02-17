@@ -9,11 +9,16 @@ import (
 )
 
 // newTestTUI creates a TUI for testing using the default theme palette.
+// ExitOnYank defaults to true to preserve existing test expectations.
 func newTestTUI(paneID string, content []string, mode string) *TUI {
 	cfg := config.Settings{
-		PaneID:  paneID,
-		Mode:    config.LineNumberMode(mode),
-		Palette: theme.Presets[theme.ThemeDefault],
+		PaneID:        paneID,
+		Mode:          config.LineNumberMode(mode),
+		Palette:       theme.Presets[theme.ThemeDefault],
+		CopyTarget:    config.CopyTargetBoth,
+		ExitOnYank:    true,
+		StartPosition: config.StartPositionBottom,
+		ToggleModeKey: 'L',
 	}
 	return NewTUI(cfg, content)
 }

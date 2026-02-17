@@ -32,7 +32,6 @@ type CLIOptions struct {
 	Mode            string
 	ScrollbackLines int
 	Theme           string
-	StatusIndicator string
 
 	CursorFG          string
 	CursorBG          string
@@ -60,8 +59,7 @@ type Settings struct {
 	Mode            LineNumberMode
 	ScrollbackLines int
 
-	Palette         theme.Palette
-	StatusIndicator bool
+	Palette theme.Palette
 
 	ToggleModeKey byte
 	CopyTarget    CopyTarget
