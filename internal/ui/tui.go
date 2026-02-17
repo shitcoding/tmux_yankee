@@ -357,10 +357,60 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 	return false
 }
 
-// handleMouseScroll handles wheel-up/down events.
-// Wheel-up moves cursor up (like k). Wheel-down moves cursor down (like j),
-// but exits if already at the last line (overscroll to exit).
+// scrollStep is the number of viewport lines moved per mouse wheel event.
+const scrollStep = 3
+
+// handleMouseScroll handles wheel-up/down events using viewport-based scrolling.
+//
+// When content exceeds the terminal height the entire viewport shifts by scrollStep
+// lines so the content visibly scrolls (like tmux copy-mode / vim). The cursor is
+// pinned to stay inside the new viewport window.
+//
+// When content fits entirely on screen (or height is unset in tests) the function
+// falls back to single-line cursor movement to keep the existing test coverage valid.
+//
+// Overscroll-down at the bottom of content returns true (signals TUI exit).
 func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
+	lineCount := t.doc.LineCount()
+	if lineCount <= 0 {
+		return false
+	}
+	lastLine := lineCount - 1
+
+	// Viewport-scroll path: content is taller than the terminal window.
+	if t.height > 0 && lineCount > t.height {
+		maxViewportTop := lastLine - t.height + 1
+		switch dir {
+		case input.ScrollUp:
+			t.viewportTop -= scrollStep
+			if t.viewportTop < 0 {
+				t.viewportTop = 0
+			}
+			// Cursor must stay within the (now higher) viewport window.
+			if newBottom := t.viewportTop + t.height - 1; t.cursorLine > newBottom {
+				t.cursorLine = newBottom
+			}
+			t.clampViewportAndCursor()
+			return false
+
+		case input.ScrollDown:
+			if t.viewportTop >= maxViewportTop {
+				return true // viewport already at bottom of content: overscroll → exit
+			}
+			t.viewportTop += scrollStep
+			if t.viewportTop > maxViewportTop {
+				t.viewportTop = maxViewportTop
+			}
+			// Cursor must stay within the (now lower) viewport window.
+			if t.cursorLine < t.viewportTop {
+				t.cursorLine = t.viewportTop
+			}
+			t.clampViewportAndCursor()
+			return false
+		}
+	}
+
+	// Cursor-only fallback: content fits in viewport or height not yet set.
 	switch dir {
 	case input.ScrollUp:
 		if t.cursorLine > 0 {
@@ -369,9 +419,8 @@ func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
 		}
 		return false
 	case input.ScrollDown:
-		lastLine := t.doc.LineCount() - 1
 		if t.cursorLine >= lastLine {
-			return true // overscroll at bottom: exit
+			return true
 		}
 		t.cursorLine++
 		t.clampViewportAndCursor()
@@ -385,6 +434,18 @@ func (t *TUI) CursorLine() int { return t.cursorLine }
 
 // SetCursorLine sets the cursor line directly (exported for testing).
 func (t *TUI) SetCursorLine(line int) { t.cursorLine = line }
+
+// ViewportTop returns the current viewport top line index (exported for testing).
+func (t *TUI) ViewportTop() int { return t.viewportTop }
+
+// SetViewportTop sets the viewport top directly (exported for testing).
+func (t *TUI) SetViewportTop(top int) { t.viewportTop = top }
+
+// SetHeight sets the terminal height (exported for testing without a real terminal).
+func (t *TUI) SetHeight(h int) {
+	t.height = h
+	t.clampViewportAndCursor()
+}
 
 // HandleCommand processes a Command directly (exported for testing).
 func (t *TUI) HandleCommand(cmd input.Command) bool { return t.handleCommand(cmd) }
