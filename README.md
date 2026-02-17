@@ -249,6 +249,21 @@ All motion keys support count prefixes (like vim):
 - `10G` - Jump to line 10
 - `2$` - Jump to end of next line
 
+## Mouse Scroll
+
+When `set -g mouse on` is set in your tmux config, trackpad and mouse wheel scrolling integrates with tmux-yankee:
+
+| Action | Behaviour |
+|--------|-----------|
+| Scroll up in shell | Launches tmux-yankee (instead of tmux copy-mode) |
+| Scroll up inside yankee | Moves cursor up |
+| Scroll down inside yankee | Moves cursor down |
+| Scroll down past last line | Exits yankee |
+
+**Requirement:** `set -g mouse on` must be set in `~/.tmux.conf`.
+
+The scroll-up launch binding respects pass-through: panes running vim, less, or other mouse-aware applications are unaffected. Full-screen alternate-screen apps are also excluded.
+
 ## How It Works
 
 The plugin uses a **Go TUI** that renders line numbers and handles vim-style navigation:

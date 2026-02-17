@@ -298,13 +298,17 @@ func (t *TUI) handleInput(key []byte) bool {
 		return false
 	}
 
-	// Parse input byte into command
 	cmd := t.parser.Parse(key[0])
+	if cmd.Type == input.CommandNone {
+		return false
+	}
+	return t.handleCommand(cmd)
+}
 
-	// Handle command
+// handleCommand executes a parsed command. Returns true if the TUI should exit.
+func (t *TUI) handleCommand(cmd input.Command) bool {
 	switch cmd.Type {
 	case input.CommandNone:
-		// Incomplete sequence (e.g., accumulating count or waiting for second key)
 		return false
 
 	case input.CommandMotion:
@@ -345,10 +349,45 @@ func (t *TUI) handleInput(key []byte) bool {
 
 	case input.CommandQuit:
 		return true
+
+	case input.CommandMouseScroll:
+		return t.handleMouseScroll(cmd.ScrollDirection)
 	}
 
 	return false
 }
+
+// handleMouseScroll handles wheel-up/down events.
+// Wheel-up moves cursor up (like k). Wheel-down moves cursor down (like j),
+// but exits if already at the last line (overscroll to exit).
+func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
+	switch dir {
+	case input.ScrollUp:
+		if t.cursorLine > 0 {
+			t.cursorLine--
+			t.clampViewportAndCursor()
+		}
+		return false
+	case input.ScrollDown:
+		lastLine := t.doc.LineCount() - 1
+		if t.cursorLine >= lastLine {
+			return true // overscroll at bottom: exit
+		}
+		t.cursorLine++
+		t.clampViewportAndCursor()
+		return false
+	}
+	return false
+}
+
+// CursorLine returns the current cursor line (exported for testing).
+func (t *TUI) CursorLine() int { return t.cursorLine }
+
+// SetCursorLine sets the cursor line directly (exported for testing).
+func (t *TUI) SetCursorLine(line int) { t.cursorLine = line }
+
+// HandleCommand processes a Command directly (exported for testing).
+func (t *TUI) HandleCommand(cmd input.Command) bool { return t.handleCommand(cmd) }
 
 // toggleMode cycles through line number modes
 func (t *TUI) toggleMode() {

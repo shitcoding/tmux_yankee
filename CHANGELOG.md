@@ -11,6 +11,7 @@
 - `@yankee_exit_on_yank`: keep TUI open after yanking when set to `off`
 - `@yankee_start_position`: start cursor at `top`, `middle`, or `bottom` (default)
 - `@yankee_toggle_mode_key`: configurable line number mode toggle key (default `L`)
+- Mouse scroll integration: scroll-up launches yankee, wheel scrolls content, overscroll-down exits (requires `set -g mouse on`)
 
 ## 0.1.0 - 2026-02-14
 
