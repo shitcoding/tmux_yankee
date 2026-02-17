@@ -213,13 +213,15 @@ launch_overlay() {
     if ! yankee_lock_acquire; then return 0; fi
     trap 'yankee_lock_release; cleanup_overlay' EXIT INT TERM HUP
 
-    local orig_pane_id orig_pane_path orig_zoom_state
+    local orig_pane_id orig_pane_path orig_zoom_state orig_pane_width orig_pane_height
     local helper_window_id helper_pane_id wait_signal helper_cmd
 
     # Capture original state
     orig_pane_id="$PANE_ID"
     orig_pane_path="$(tmux display-message -p -t "$orig_pane_id" '#{pane_current_path}')"
     orig_zoom_state="$(tmux display-message -p -t "$orig_pane_id" '#{window_zoomed_flag}')"
+    orig_pane_width="$(tmux display-message -p -t "$orig_pane_id" '#{pane_width}')"
+    orig_pane_height="$(tmux display-message -p -t "$orig_pane_id" '#{pane_height}')"
 
     # Initialize global overlay state.
     YANKEE_OVERLAY_ACTIVE=1
@@ -254,8 +256,11 @@ launch_overlay() {
         "${BIN_DIR}/tmux-yankee" "$yankee_args_quoted" "$orig_pane_id" "$wait_signal"
 
     # Create a detached temporary session to host the helper pane.
+    # Match original pane dimensions to prevent SIGWINCH when the shell pane is
+    # swapped into the helper session — SIGWINCH causes zsh to redraw its prompt,
+    # leaving a duplicate prompt line visible after swap-back.
     # The session is hidden from the user's window list and killed on cleanup.
-    if ! helper_window_id="$(tmux new-session -d -s "$helper_session_name" -P -F '#{window_id}' -c "$orig_pane_path" "$helper_cmd")"; then
+    if ! helper_window_id="$(tmux new-session -d -s "$helper_session_name" -x "$orig_pane_width" -y "$orig_pane_height" -P -F '#{window_id}' -c "$orig_pane_path" "$helper_cmd")"; then
         tmux display-message "Error: tmux-yankee failed to create helper session"
         return 1
     fi
@@ -275,6 +280,12 @@ launch_overlay() {
     fi
 
     YANKEE_OVERLAY_HELPER_PANE_ID="$helper_pane_id"
+
+    # Force the helper window to exactly match the original pane dimensions.
+    # tmux may ignore -x/-y in new-session (e.g. in tmux 3.5a it uses default-size
+    # instead), so we resize explicitly here — before the swap — to prevent SIGWINCH
+    # on the original pane when it is moved into the helper session.
+    tmux resize-window -t "$helper_window_id" -x "$orig_pane_width" -y "$orig_pane_height" 2>/dev/null || true
 
     # Swap helper into original pane position (overlay visible to user)
     if ! tmux swap-pane -d -s "$orig_pane_id" -t "$helper_pane_id" -Z; then
