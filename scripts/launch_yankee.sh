@@ -30,6 +30,7 @@ YANKEE_OVERLAY_ACTIVE=0
 YANKEE_OVERLAY_SWAPBACK_CONFIRMED=0
 YANKEE_OVERLAY_ORIG_PANE_ID=""
 YANKEE_OVERLAY_ORIG_ZOOM_STATE=""
+YANKEE_OVERLAY_HELPER_SESSION_NAME=""
 YANKEE_OVERLAY_HELPER_WINDOW_ID=""
 YANKEE_OVERLAY_HELPER_PANE_ID=""
 YANKEE_OVERLAY_WAIT_SIGNAL=""
@@ -44,6 +45,11 @@ tmux_window_exists() {
     [ -n "$window_id" ] && tmux list-windows -a -F '#{window_id}' 2>/dev/null | grep -Fxq -- "$window_id"
 }
 
+tmux_session_exists() {
+    local session_name="${1:-}"
+    [ -n "$session_name" ] && tmux has-session -t "$session_name" 2>/dev/null
+}
+
 cleanup_overlay() {
     if [ "${YANKEE_OVERLAY_ACTIVE:-0}" -ne 1 ]; then
         return 0
@@ -51,6 +57,7 @@ cleanup_overlay() {
 
     local orig_pane_id="${YANKEE_OVERLAY_ORIG_PANE_ID:-}"
     local orig_zoom_state="${YANKEE_OVERLAY_ORIG_ZOOM_STATE:-0}"
+    local helper_session_name="${YANKEE_OVERLAY_HELPER_SESSION_NAME:-}"
     local helper_window_id="${YANKEE_OVERLAY_HELPER_WINDOW_ID:-}"
     local helper_pane_id="${YANKEE_OVERLAY_HELPER_PANE_ID:-}"
     local swapback_confirmed="${YANKEE_OVERLAY_SWAPBACK_CONFIRMED:-0}"
@@ -63,8 +70,11 @@ cleanup_overlay() {
         tmux swap-pane -d -s "$helper_pane_id" -t "$orig_pane_id" -Z 2>/dev/null || true
     fi
 
-    # Always kill helper window to avoid dead panes when remain-on-exit is enabled.
-    if tmux_window_exists "$helper_window_id"; then
+    # Kill the temporary helper session (takes the window and pane with it).
+    # Fall back to killing just the window if session tracking is unavailable.
+    if tmux_session_exists "$helper_session_name"; then
+        tmux kill-session -t "$helper_session_name" 2>/dev/null || true
+    elif tmux_window_exists "$helper_window_id"; then
         tmux kill-window -t "$helper_window_id" 2>/dev/null || true
     fi
 
@@ -79,6 +89,7 @@ cleanup_overlay() {
     YANKEE_OVERLAY_SWAPBACK_CONFIRMED=0
     YANKEE_OVERLAY_ORIG_PANE_ID=""
     YANKEE_OVERLAY_ORIG_ZOOM_STATE=""
+    YANKEE_OVERLAY_HELPER_SESSION_NAME=""
     YANKEE_OVERLAY_HELPER_WINDOW_ID=""
     YANKEE_OVERLAY_HELPER_PANE_ID=""
     YANKEE_OVERLAY_WAIT_SIGNAL=""
@@ -136,11 +147,15 @@ launch_overlay() {
     YANKEE_OVERLAY_SWAPBACK_CONFIRMED=0
     YANKEE_OVERLAY_ORIG_PANE_ID="$orig_pane_id"
     YANKEE_OVERLAY_ORIG_ZOOM_STATE="$orig_zoom_state"
+    YANKEE_OVERLAY_HELPER_SESSION_NAME=""
     YANKEE_OVERLAY_HELPER_WINDOW_ID=""
     YANKEE_OVERLAY_HELPER_PANE_ID=""
 
-    wait_signal="numcopy-finished-${$}-$(date +%s)-${RANDOM}"
+    wait_signal="yankee-finished-${$}-$(date +%s)-${RANDOM}"
     YANKEE_OVERLAY_WAIT_SIGNAL="$wait_signal"
+
+    # Helper session name: unique per launcher PID so concurrent invocations don't collide.
+    local helper_session_name="tmux-yankee-tmp-$$"
 
     # Helper command:
     # 1) run Go TUI
@@ -151,16 +166,18 @@ launch_overlay() {
     printf -v helper_cmd '%q --pane %q --mode %q; tmux swap-pane -d -s "$TMUX_PANE" -t %q -Z 2>/dev/null || true; tmux wait-for -S %q' \
         "${BIN_DIR}/tmux-yankee" "$orig_pane_id" "$MODE" "$orig_pane_id" "$wait_signal"
 
-    # Create detached helper window in original CWD
-    if ! helper_window_id="$(tmux new-window -d -P -F '#{window_id}' -c "$orig_pane_path" "$helper_cmd")"; then
-        tmux display-message "Error: tmux-yankee failed to create helper window"
+    # Create a detached temporary session to host the helper pane.
+    # The session is hidden from the user's window list and killed on cleanup.
+    if ! helper_window_id="$(tmux new-session -d -s "$helper_session_name" -P -F '#{window_id}' -c "$orig_pane_path" "$helper_cmd")"; then
+        tmux display-message "Error: tmux-yankee failed to create helper session"
         return 1
     fi
     if [ -z "$helper_window_id" ]; then
-        tmux display-message "Error: tmux-yankee failed to create helper window"
+        tmux display-message "Error: tmux-yankee failed to create helper session"
         return 1
     fi
 
+    YANKEE_OVERLAY_HELPER_SESSION_NAME="$helper_session_name"
     YANKEE_OVERLAY_HELPER_WINDOW_ID="$helper_window_id"
 
     # Resolve helper pane
