@@ -11,10 +11,7 @@ BIN_DIR="${SCRIPT_DIR}/../bin"
 # Get current pane ID
 PANE_ID=$(tmux display-message -p '#{pane_id}')
 
-# Get user configuration (or use defaults)
-MODE=$(tmux show-option -gqv @yankee_mode)
-MODE="${MODE:-hybrid}"
-
+# Shell-routing decisions (not forwarded to binary)
 DISPLAY_MODE=$(tmux show-option -gqv @yankee_display_mode)
 DISPLAY_MODE="${DISPLAY_MODE:-overlay}"
 
@@ -34,6 +31,9 @@ YANKEE_OVERLAY_HELPER_SESSION_NAME=""
 YANKEE_OVERLAY_HELPER_WINDOW_ID=""
 YANKEE_OVERLAY_HELPER_PANE_ID=""
 YANKEE_OVERLAY_WAIT_SIGNAL=""
+
+# Global args array populated by build_yankee_args (reset on each call).
+_YANKEE_ARGS=()
 
 tmux_pane_exists() {
     local pane_id="${1:-}"
@@ -131,6 +131,49 @@ popup_supported() {
     tmux display-popup -E -B -w 1 -h 1 "true" >/dev/null 2>&1
 }
 
+# Append a flag+value pair to _YANKEE_ARGS if the tmux option is non-empty.
+_append_yankee_opt() {
+    local tmux_opt="$1" flag="$2" val
+    val=$(tmux show-option -gqv "$tmux_opt")
+    if [ -n "$val" ]; then
+        _YANKEE_ARGS+=("$flag" "$val")
+    fi
+}
+
+# Build the CLI argument array to pass to the tmux-yankee binary.
+# Populates the global _YANKEE_ARGS array and also emits it as null-delimited output.
+# Reads all @yankee_* tmux options and forwards non-empty values as flags.
+build_yankee_args() {
+    local mode
+    mode=$(tmux show-option -gqv @yankee_mode)
+    mode="${mode:-hybrid}"
+
+    _YANKEE_ARGS=("--pane" "$PANE_ID" "--mode" "$mode")
+
+    _append_yankee_opt @yankee_scrollback_lines    --scrollback-lines
+    _append_yankee_opt @yankee_theme               --theme
+    _append_yankee_opt @yankee_status_indicator    --status-indicator
+    _append_yankee_opt @yankee_cursor_fg           --cursor-fg
+    _append_yankee_opt @yankee_cursor_bg           --cursor-bg
+    _append_yankee_opt @yankee_selection_fg        --selection-fg
+    _append_yankee_opt @yankee_selection_bg        --selection-bg
+    _append_yankee_opt @yankee_gutter_fg           --gutter-fg
+    _append_yankee_opt @yankee_gutter_bg           --gutter-bg
+    _append_yankee_opt @yankee_gutter_separator_fg --gutter-separator-fg
+    _append_yankee_opt @yankee_linenum_absolute_fg --linenum-absolute-fg
+    _append_yankee_opt @yankee_linenum_relative_fg --linenum-relative-fg
+    _append_yankee_opt @yankee_linenum_cursor_fg   --linenum-cursor-fg
+    _append_yankee_opt @yankee_linenum_cursor_bold --linenum-cursor-bold
+    _append_yankee_opt @yankee_status_fg           --status-fg
+    _append_yankee_opt @yankee_status_bg           --status-bg
+    _append_yankee_opt @yankee_toggle_mode_key     --toggle-mode-key
+    _append_yankee_opt @yankee_copy_target         --copy-target
+    _append_yankee_opt @yankee_exit_on_yank        --exit-on-yank
+    _append_yankee_opt @yankee_start_position      --start-position
+
+    printf '%s\0' "${_YANKEE_ARGS[@]}"
+}
+
 # Launch in overlay mode: helper command performs inline swap-back + wait-for signal.
 launch_overlay() {
     local orig_pane_id orig_pane_path orig_zoom_state
@@ -157,14 +200,22 @@ launch_overlay() {
     # Helper session name: unique per launcher PID so concurrent invocations don't collide.
     local helper_session_name="tmux-yankee-tmp-$$"
 
+    # Build yankee args as a null-delimited byte stream, decode to array (bash 3.2 compatible)
+    local yankee_args=()
+    while IFS= read -r -d '' arg; do yankee_args+=("$arg"); done < <(build_yankee_args)
+
+    # Encode as shell-safe string for embedding in helper_cmd
+    local yankee_args_quoted
+    yankee_args_quoted=$(printf '%q ' "${yankee_args[@]}")
+
     # Helper command:
     # 1) run Go TUI
     # 2) swap back from helper pane to original pane position
     # 3) signal launcher that swap-back is complete
     #
     # Use "$TMUX_PANE" inside helper shell so source pane is always the helper pane.
-    printf -v helper_cmd '%q --pane %q --mode %q; tmux swap-pane -d -s "$TMUX_PANE" -t %q -Z 2>/dev/null || true; tmux wait-for -S %q' \
-        "${BIN_DIR}/tmux-yankee" "$orig_pane_id" "$MODE" "$orig_pane_id" "$wait_signal"
+    printf -v helper_cmd '%q %s; tmux swap-pane -d -s "$TMUX_PANE" -t %q -Z 2>/dev/null || true; tmux wait-for -S %q' \
+        "${BIN_DIR}/tmux-yankee" "$yankee_args_quoted" "$orig_pane_id" "$wait_signal"
 
     # Create a detached temporary session to host the helper pane.
     # The session is hidden from the user's window list and killed on cleanup.
@@ -209,14 +260,18 @@ launch_overlay() {
 
 # Launch in centered popup mode (90% width/height)
 launch_popup() {
+    local yankee_args=()
+    while IFS= read -r -d '' arg; do yankee_args+=("$arg"); done < <(build_yankee_args)
     tmux display-popup -E -w 90% -h 90% \
-        "${BIN_DIR}/tmux-yankee" --pane "$PANE_ID" --mode "$MODE"
+        "${BIN_DIR}/tmux-yankee" "${yankee_args[@]}"
 }
 
 # Launch in split window mode (horizontal split)
 launch_split() {
+    local yankee_args=()
+    while IFS= read -r -d '' arg; do yankee_args+=("$arg"); done < <(build_yankee_args)
     tmux split-window -h \
-        "${BIN_DIR}/tmux-yankee" --pane "$PANE_ID" --mode "$MODE"
+        "${BIN_DIR}/tmux-yankee" "${yankee_args[@]}"
 }
 
 # Dispatch to appropriate display mode

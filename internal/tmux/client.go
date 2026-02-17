@@ -15,11 +15,9 @@ func NewClient() *Client {
 	return &Client{}
 }
 
-// CapturePane captures the content of a tmux pane
-// start: starting line (0-based), use 0 for beginning
-// end: ending line, use -1 for end of history
-// preserveColors: if true, includes ANSI escape sequences via -e flag
-func (c *Client) CapturePane(paneID string, start, end int, preserveColors bool) ([]string, error) {
+// capturePaneArgs builds the argument slice for a tmux capture-pane command.
+// Extracted for unit testing without requiring a live tmux session.
+func capturePaneArgs(paneID string, start, end int, preserveColors bool) []string {
 	args := []string{"capture-pane", "-p", "-t", paneID}
 
 	// Add -e flag to preserve ANSI escape sequences
@@ -27,16 +25,29 @@ func (c *Client) CapturePane(paneID string, start, end int, preserveColors bool)
 		args = append(args, "-e")
 	}
 
-	if start > 0 {
+	if start != 0 {
+		// Negative start means relative to current position (e.g. -2000 = 2000 lines back)
+		// Positive start means absolute line offset
 		args = append(args, "-S", strconv.Itoa(start))
 	} else {
-		// Capture full history
+		// start == 0: capture full history
 		args = append(args, "-S", "-")
 	}
 
 	if end >= 0 {
 		args = append(args, "-E", strconv.Itoa(end))
 	}
+
+	return args
+}
+
+// CapturePane captures the content of a tmux pane
+// start: starting line; negative value limits scrollback (e.g. -2000 = last 2000 lines),
+// 0 captures full history, positive is an absolute line offset.
+// end: ending line, use -1 for end of history
+// preserveColors: if true, includes ANSI escape sequences via -e flag
+func (c *Client) CapturePane(paneID string, start, end int, preserveColors bool) ([]string, error) {
+	args := capturePaneArgs(paneID, start, end, preserveColors)
 
 	cmd := exec.Command("tmux", args...)
 	output, err := cmd.Output()

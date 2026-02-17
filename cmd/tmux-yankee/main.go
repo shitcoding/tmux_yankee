@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/shitcoding/tmux_yankee/internal/config"
 	"github.com/shitcoding/tmux_yankee/internal/tmux"
 	"github.com/shitcoding/tmux_yankee/internal/ui"
 )
@@ -20,25 +21,13 @@ func trimTrailingEmptyLines(lines []string) []string {
 }
 
 func main() {
-	// CLI flags
-	paneID := flag.String("pane", "", "Target tmux pane ID")
-	mode := flag.String("mode", "hybrid", "Line number mode (absolute, relative, hybrid)")
-
+	var opts config.CLIOptions
+	config.RegisterFlags(flag.CommandLine, &opts)
 	flag.Parse()
 
-	// Validate required flags
-	if *paneID == "" {
-		fmt.Fprintln(os.Stderr, "Error: --pane is required")
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	// Validate mode
-	switch *mode {
-	case "absolute", "relative", "hybrid":
-		// Valid modes
-	default:
-		fmt.Fprintf(os.Stderr, "Error: invalid mode %q (must be absolute, relative, or hybrid)\n", *mode)
+	cfg, err := config.Resolve(opts)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
 
@@ -49,9 +38,9 @@ func main() {
 	// Create tmux client
 	client := tmux.NewClient()
 
-	// Capture pane content with ANSI color codes preserved
-	// Use -2000 to capture last 2000 lines (recent history only, not entire scrollback)
-	content, err := client.CapturePane(*paneID, -2000, -1, true)
+	// Capture pane content with ANSI color codes preserved.
+	// Capture scrollback: negative value is the -S flag passed to tmux capture-pane
+	content, err := client.CapturePane(cfg.PaneID, -cfg.ScrollbackLines, -1, true)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error capturing pane: %v\n", err)
 		os.Exit(1)
@@ -61,7 +50,7 @@ func main() {
 	content = trimTrailingEmptyLines(content)
 
 	// Create TUI
-	tui := ui.NewTUI(*paneID, content, *mode)
+	tui := ui.NewTUI(cfg.PaneID, content, string(cfg.Mode))
 
 	// Run TUI in goroutine
 	errChan := make(chan error, 1)
