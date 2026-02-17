@@ -14,13 +14,24 @@ const (
 	CommandEscape
 	CommandQuit
 	CommandToggleLineMode
+	CommandMouseScroll // set when a mouse wheel event is received
+)
+
+// ScrollDirection indicates mouse wheel direction for CommandMouseScroll.
+type ScrollDirection int
+
+const (
+	ScrollNone ScrollDirection = iota
+	ScrollUp
+	ScrollDown
 )
 
 // Command represents a parsed input command.
 type Command struct {
-	Type   CommandType
-	Motion motion.Motion // Only valid if Type == CommandMotion
-	Count  int           // Repeat count (0 if not specified)
+	Type            CommandType
+	Motion          motion.Motion   // Only valid if Type == CommandMotion
+	Count           int             // Repeat count (0 if not specified)
+	ScrollDirection ScrollDirection // set when Type == CommandMouseScroll
 }
 
 // Pending represents the parser's pending state for multi-key sequences.

@@ -129,11 +129,14 @@ func (t *TUI) Run() error {
 	// Clear screen and hide cursor
 	fmt.Print("\x1b[2J\x1b[?25l")
 
+	// Enable SGR mouse wheel reporting
+	fmt.Print("\x1b[?1000h\x1b[?1006h")
+
 	// Initial render
 	t.render()
 
 	// Read stdin in a goroutine so the main loop can select on both input and SIGWINCH
-	const maxKeySequenceBytes = 3 // Escape sequences like \x1b[A
+	const maxKeySequenceBytes = 64 // SGR mouse sequences can be up to ~20 bytes
 	inputCh := make(chan inputEvent)
 	go func() {
 		buf := make([]byte, maxKeySequenceBytes)
@@ -205,6 +208,8 @@ func (t *TUI) initTerminal() error {
 // restoreTerminal restores terminal state
 func (t *TUI) restoreTerminal() {
 	if t.oldState != nil {
+		// Disable mouse reporting
+		fmt.Print("\x1b[?1006l\x1b[?1000l")
 		// Show cursor and clear screen
 		fmt.Print("\x1b[?25h\x1b[2J\x1b[H")
 		term.Restore(int(os.Stdin.Fd()), t.oldState)
@@ -287,7 +292,8 @@ func (t *TUI) clampViewportAndCursor() {
 // handleInput processes keyboard input
 // Returns true if should quit
 func (t *TUI) handleInput(key []byte) bool {
-	// Only handle single-byte input for now (no escape sequences)
+	// Feed one byte at a time into the stateful parser, which accumulates
+	// multi-byte sequences (SGR mouse, escape sequences) internally.
 	if len(key) != 1 {
 		return false
 	}

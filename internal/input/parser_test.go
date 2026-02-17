@@ -231,7 +231,6 @@ func TestParser_OtherCommands(t *testing.T) {
 		{"V visual line", 'V', CommandVisualLine},
 		{"y yank", 'y', CommandYank},
 		{"Enter yank", 13, CommandYank},
-		{"Escape", 27, CommandEscape},
 		{"L toggle mode", 'L', CommandToggleLineMode},
 		{"q quit", 'q', CommandQuit},
 		{"Ctrl-C quit", 3, CommandQuit},
@@ -247,6 +246,31 @@ func TestParser_OtherCommands(t *testing.T) {
 			}
 		})
 	}
+
+	// Escape is deferred: ESC is held until the next byte confirms it is not a
+	// mouse prefix. Feed ESC followed by a non-'[' byte; the first non-None
+	// result must be CommandEscape.
+	t.Run("Escape resolves on next non-bracket byte", func(t *testing.T) {
+		p := NewParser()
+		// First call: ESC is buffered — returns CommandNone (waiting for '[').
+		cmd := p.Parse(27)
+		if cmd.Type != CommandNone {
+			t.Errorf("ESC alone: Type = %v, want CommandNone (deferred)", cmd.Type)
+		}
+		// Second call: 'q' — not '[', so the deferred ESC fires first.
+		cmd = p.Parse('q')
+		if cmd.Type != CommandEscape {
+			t.Errorf("ESC+q first result: Type = %v, want CommandEscape", cmd.Type)
+		}
+		// Third call: deferred 'q' command is emitted.
+		cmd = p.Parse('j') // trigger any remaining deferred
+		if cmd.Type != CommandQuit {
+			// 'q' was deferred; check it resolves now
+			// (the 'j' call may emit 'q' deferred or 'j' motion depending on order)
+			// Actually 'q' should have been stored as deferred and emitted on this call.
+			t.Errorf("deferred 'q' result: Type = %v, want CommandQuit", cmd.Type)
+		}
+	})
 }
 
 func TestParser_CustomToggleKey(t *testing.T) {
