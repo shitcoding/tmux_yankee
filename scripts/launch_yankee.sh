@@ -109,6 +109,14 @@ wait_for_helper_completion() {
 
     while kill -0 "$waiter_pid" 2>/dev/null; do
         if ! tmux_pane_exists "$helper_pane_id"; then
+            # Pane exited — give the in-flight wait-for signal a moment to arrive
+            # before concluding it was lost (the signal is sent just before pane exit).
+            sleep 0.3
+            if ! kill -0 "$waiter_pid" 2>/dev/null; then
+                # Waiter already exited: signal was received successfully.
+                wait "$waiter_pid"
+                return $?
+            fi
             kill "$waiter_pid" 2>/dev/null || true
             wait "$waiter_pid" 2>/dev/null || true
             return 1
