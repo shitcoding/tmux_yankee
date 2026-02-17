@@ -93,14 +93,17 @@ set_scroll_bindings() {
     # Pass through if pane is already in a mode (copy-mode, etc.) or if the
     # pane has mouse_any_flag set (e.g., vim, less, or our own yankee TUI).
     # Also skip if the pane is showing an alternate screen (full-screen apps).
+    #
+    # Note: tmux's #{||:A,B,C} with 3 operands is broken (always truthy); use
+    # nested #{||:A,#{||:B,C}} instead.
     tmux bind-key -n WheelUpPane \
-        if-shell -F '#{||:#{pane_in_mode},#{mouse_any_flag},#{alternate_on}}' \
+        if-shell -F '#{||:#{pane_in_mode},#{||:#{mouse_any_flag},#{alternate_on}}}' \
             'send-keys -M' \
             'run-shell -b "'"$SCRIPTS_DIR"'/launch_yankee.sh"'
 
     # WheelDownPane: pass through when in mode/mouse-aware; no-op otherwise.
     tmux bind-key -n WheelDownPane \
-        if-shell -F '#{||:#{pane_in_mode},#{mouse_any_flag},#{alternate_on}}' \
+        if-shell -F '#{||:#{pane_in_mode},#{||:#{mouse_any_flag},#{alternate_on}}}' \
             'send-keys -M' \
             ''
 }
