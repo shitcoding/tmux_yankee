@@ -118,6 +118,26 @@ func TestParser_ggPrefix(t *testing.T) {
 	}
 }
 
+func TestParser_yyPrefix(t *testing.T) {
+	t.Run("yy produces CommandYankLine", func(t *testing.T) {
+		p := NewParser()
+		if cmd := p.Parse('y'); cmd.Type != CommandNone {
+			t.Errorf("first y: want CommandNone, got %v", cmd.Type)
+		}
+		if cmd := p.Parse('y'); cmd.Type != CommandYankLine {
+			t.Errorf("second y: want CommandYankLine, got %v", cmd.Type)
+		}
+	})
+
+	t.Run("y followed by non-y clears pending", func(t *testing.T) {
+		p := NewParser()
+		p.Parse('y')
+		if cmd := p.Parse('j'); cmd.Type != CommandNone {
+			t.Errorf("y+j: want CommandNone (cleared), got %v", cmd.Type)
+		}
+	})
+}
+
 func TestParser_ZeroHandling(t *testing.T) {
 	t.Run("0 as motion when no count", func(t *testing.T) {
 		p := NewParser()
@@ -229,7 +249,6 @@ func TestParser_OtherCommands(t *testing.T) {
 	}{
 		{"v visual char", 'v', CommandVisual},
 		{"V visual line", 'V', CommandVisualLine},
-		{"y yank", 'y', CommandYank},
 		{"Enter yank", 13, CommandYank},
 		{"L toggle mode", 'L', CommandToggleLineMode},
 		{"q quit", 'q', CommandQuit},

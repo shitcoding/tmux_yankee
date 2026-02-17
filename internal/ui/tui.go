@@ -344,6 +344,9 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 	case input.CommandYank:
 		return t.yank()
 
+	case input.CommandYankLine:
+		return t.yankLine()
+
 	case input.CommandToggleLineMode:
 		t.toggleMode()
 
@@ -649,6 +652,45 @@ func (t *TUI) yank() bool {
 	return true
 }
 
+
+// yankLine yanks the full content of the current cursor line (yy binding).
+// Unlike yank(), it does not require an active visual selection.
+func (t *TUI) yankLine() bool {
+	if t.doc.LineCount() == 0 {
+		return false
+	}
+	text := t.doc.Line(t.cursorLine)
+
+	clipboardCopy := func(s string) error {
+		if t.clipboardFunc != nil {
+			return t.clipboardFunc(s)
+		}
+		return t.copyToClipboard(s)
+	}
+
+	switch t.cfg.CopyTarget {
+	case config.CopyTargetTmux:
+		if err := t.client.SetBuffer(text); err != nil {
+			fmt.Fprintf(os.Stderr, "yankLine: SetBuffer failed: %v\n", err)
+		}
+	case config.CopyTargetClipboard:
+		if err := clipboardCopy(text); err != nil {
+			fmt.Fprintf(os.Stderr, "yankLine: copyToClipboard failed: %v\n", err)
+		}
+	default: // CopyTargetBoth or unset
+		if err := t.client.SetBuffer(text); err != nil {
+			fmt.Fprintf(os.Stderr, "yankLine: SetBuffer failed: %v\n", err)
+		}
+		if err := clipboardCopy(text); err != nil {
+			fmt.Fprintf(os.Stderr, "yankLine: copyToClipboard failed: %v\n", err)
+		}
+	}
+
+	if !t.cfg.ExitOnYank {
+		return false
+	}
+	return true
+}
 
 // copyToClipboard copies text to system clipboard via copy_stdin.sh
 func (t *TUI) copyToClipboard(text string) error {

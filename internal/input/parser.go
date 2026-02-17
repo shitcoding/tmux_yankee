@@ -118,8 +118,8 @@ func (p *Parser) parseInner(b byte) Command {
 		return Command{Type: CommandEscape}
 	}
 
-	// Handle pending 'g' or 'z' prefix first
-	if p.pending.Prefix == 'g' || p.pending.Prefix == 'z' {
+	// Handle pending 'g', 'z', or 'y' prefix first
+	if p.pending.Prefix == 'g' || p.pending.Prefix == 'z' || p.pending.Prefix == 'y' {
 		cmd := p.parsePrefixedKey(b)
 		p.clearPending()
 		return cmd
@@ -158,6 +158,12 @@ func (p *Parser) parseInner(b byte) Command {
 	// Handle 'z' prefix (wait for next key)
 	if b == 'z' {
 		p.pending.Prefix = 'z'
+		return Command{Type: CommandNone}
+	}
+
+	// Handle 'y' prefix: 'yy' = yank current line (wait for second key)
+	if b == 'y' {
+		p.pending.Prefix = 'y'
 		return Command{Type: CommandNone}
 	}
 
@@ -207,6 +213,17 @@ func (p *Parser) parsePrefixedKey(b byte) Command {
 				Motion: motion.MotionViewportBottom,
 				Count:  0,
 			}
+		default:
+			// Invalid sequence, clear pending
+			return Command{Type: CommandNone}
+		}
+	}
+
+	if p.pending.Prefix == 'y' {
+		switch b {
+		case 'y':
+			// yy → yank current line
+			return Command{Type: CommandYankLine}
 		default:
 			// Invalid sequence, clear pending
 			return Command{Type: CommandNone}
@@ -323,8 +340,8 @@ func (p *Parser) parseCommand(b byte) Command {
 	case 'V':
 		return Command{Type: CommandVisualLine}
 
-	// Yank command
-	case 'y', 13: // 'y' or Enter
+	// Yank command (Enter confirms selection yank; 'y' is handled as a prefix above)
+	case 13: // Enter
 		return Command{Type: CommandYank}
 
 	// Mode control
@@ -353,8 +370,8 @@ func (p *Parser) PendingState() Pending {
 // parseNormalByte processes a single byte through the normal (non-mouse) parse path.
 // This is used to handle a byte that follows an abandoned mouse prefix.
 func (p *Parser) parseNormalByte(b byte) Command {
-	// Handle pending 'g' or 'z' prefix first
-	if p.pending.Prefix == 'g' || p.pending.Prefix == 'z' {
+	// Handle pending 'g', 'z', or 'y' prefix first
+	if p.pending.Prefix == 'g' || p.pending.Prefix == 'z' || p.pending.Prefix == 'y' {
 		cmd := p.parsePrefixedKey(b)
 		p.clearPending()
 		return cmd
@@ -387,6 +404,12 @@ func (p *Parser) parseNormalByte(b byte) Command {
 	// Handle 'z' prefix (wait for next key)
 	if b == 'z' {
 		p.pending.Prefix = 'z'
+		return Command{Type: CommandNone}
+	}
+
+	// Handle 'y' prefix: 'yy' = yank current line (wait for second key)
+	if b == 'y' {
+		p.pending.Prefix = 'y'
 		return Command{Type: CommandNone}
 	}
 

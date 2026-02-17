@@ -15,6 +15,7 @@ const (
 	CommandQuit
 	CommandToggleLineMode
 	CommandMouseScroll // set when a mouse wheel event is received
+	CommandYankLine    // yy: yank current line without requiring a visual selection
 )
 
 // ScrollDirection indicates mouse wheel direction for CommandMouseScroll.
