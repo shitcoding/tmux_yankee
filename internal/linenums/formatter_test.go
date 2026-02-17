@@ -3,6 +3,8 @@ package linenums
 import (
 	"strings"
 	"testing"
+
+	"github.com/shitcoding/tmux_yankee/internal/theme"
 )
 
 // TestFormatterRenderGutterAbsoluteMode tests absolute line number rendering
@@ -165,40 +167,45 @@ func TestFormatterRenderGutterRelativeMode(t *testing.T) {
 
 // TestFormatterRenderGutterHybridMode tests hybrid line number rendering
 func TestFormatterRenderGutterHybridMode(t *testing.T) {
+	// Use default theme palette colors:
+	//   CursorFG   = "#b8bb26" → rgb(184,187,38)  → 38;2;184;187;38
+	//   RelativeFG = "#fabd2f" → rgb(250,189,47)  → 38;2;250;189;47
+	defaultPal := theme.Presets[theme.ThemeDefault].LineNum
+
 	tests := []struct {
 		name              string
 		lineNum           int
 		cursorLine        int
 		gutterWidth       int
 		wantNumber        string
-		wantColor         string // "green", "yellow", or "none"
+		wantColorContains string // expected ANSI fragment
 		shouldContainANSI bool
 	}{
 		{
-			name:              "cursor line - green absolute",
+			name:              "cursor line - palette cursor color absolute",
 			lineNum:           10,
 			cursorLine:        10,
 			gutterWidth:       3,
 			wantNumber:        " 10 │ ",
-			wantColor:         "green",
+			wantColorContains: "38;2;184;187;38",
 			shouldContainANSI: true,
 		},
 		{
-			name:              "line above - yellow relative",
+			name:              "line above - palette relative color",
 			lineNum:           8,
 			cursorLine:        10,
 			gutterWidth:       3,
 			wantNumber:        "  2 │ ", // distance is 2
-			wantColor:         "yellow",
+			wantColorContains: "38;2;250;189;47",
 			shouldContainANSI: true,
 		},
 		{
-			name:              "line below - yellow relative",
+			name:              "line below - palette relative color",
 			lineNum:           15,
 			cursorLine:        10,
 			gutterWidth:       3,
 			wantNumber:        "  5 │ ", // distance is 5
-			wantColor:         "yellow",
+			wantColorContains: "38;2;250;189;47",
 			shouldContainANSI: true,
 		},
 		{
@@ -207,17 +214,15 @@ func TestFormatterRenderGutterHybridMode(t *testing.T) {
 			cursorLine:        123,
 			gutterWidth:       4,
 			wantNumber:        " 123 │ ",
-			wantColor:         "green",
+			wantColorContains: "38;2;184;187;38",
 			shouldContainANSI: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := &Formatter{
-				mode:        ModeHybrid,
-				gutterWidth: tt.gutterWidth,
-			}
+			f := NewFormatterWithPalette(ModeHybrid, 999, defaultPal)
+			f.gutterWidth = tt.gutterWidth
 
 			got := f.RenderGutter(tt.lineNum, tt.cursorLine)
 
@@ -226,15 +231,17 @@ func TestFormatterRenderGutterHybridMode(t *testing.T) {
 				t.Errorf("RenderGutter() hybrid mode should contain ANSI codes, got %q", got)
 			}
 
-			// Check for correct color code
-			if tt.wantColor == "green" {
-				if !strings.Contains(got, "\x1b[32;1m") {
-					t.Errorf("RenderGutter() should use green (32;1m) for cursor line, got %q", got)
-				}
-			} else if tt.wantColor == "yellow" {
-				if !strings.Contains(got, "\x1b[33m") {
-					t.Errorf("RenderGutter() should use yellow (33m) for non-cursor lines, got %q", got)
-				}
+			// Check for correct color fragment
+			if tt.wantColorContains != "" && !strings.Contains(got, tt.wantColorContains) {
+				t.Errorf("RenderGutter() should contain color %q, got %q", tt.wantColorContains, got)
+			}
+
+			// Must NOT contain old hardcoded green/yellow
+			if strings.Contains(got, "\x1b[32;1m") {
+				t.Errorf("RenderGutter() must not use hardcoded green (32;1m), got %q", got)
+			}
+			if strings.Contains(got, "\x1b[33m") {
+				t.Errorf("RenderGutter() must not use hardcoded yellow (33m), got %q", got)
 			}
 
 			// Check that reset code is present

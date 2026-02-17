@@ -16,16 +16,18 @@ func TestYankCharWiseSelection(t *testing.T) {
 		"line 3",
 	}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 
 	// Activate character-wise visual mode at line 0, col 0
 	pos := selection.Pos{Line: 0, Col: 0}
 	tui.modeMachine.Handle(vmode.EventToggleVisualChar, pos)
 
-	// Move cursor to line 1, col 4 (select "line 1\nline")
+	// Move cursor to line 1, col 3 (select "line 1\nline").
+	// Col 3 is the 'e' in "line 2"; the endCol is inclusive, so
+	// extracting from col 0 to col 3 yields "line" (4 characters).
 	tui.cursorLine = 1
-	tui.cursorCol = 4
-	endPos := selection.Pos{Line: 1, Col: 4}
+	tui.cursorCol = 3
+	endPos := selection.Pos{Line: 1, Col: 3}
 	tui.modeMachine.OnCursorMoved(endPos)
 
 	// Mock tmux client to capture buffer content
@@ -51,7 +53,7 @@ func TestYankCharWiseSelection(t *testing.T) {
 		t.Errorf("Expected region kind to be KindNone after yank, got %v", region.Kind)
 	}
 
-	// Assert: extracted text should be "line 1\nline" (char-wise from 0,0 to 1,4)
+	// Assert: extracted text should be "line 1\nline" (char-wise from 0,0 to 1,3)
 	expectedText := "line 1\nline"
 	if mockClient.bufferContent != expectedText {
 		t.Errorf("Expected buffer content %q, got %q", expectedText, mockClient.bufferContent)
@@ -67,7 +69,7 @@ func TestYankLineWiseSelection(t *testing.T) {
 		"line 3",
 	}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 
 	// Activate line-wise visual mode at line 0
 	pos := selection.Pos{Line: 0, Col: 0}
@@ -105,7 +107,7 @@ func TestYankLineWiseSelection(t *testing.T) {
 // TestYankNoSelection tests that yank without selection returns false
 func TestYankNoSelection(t *testing.T) {
 	content := []string{"line 1"}
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 
 	// Mock tmux client
 	mockClient := &mockTmuxClient{}

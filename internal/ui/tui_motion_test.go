@@ -12,7 +12,7 @@ func TestMotion_CountedDown(t *testing.T) {
 		content[i] = "line content"
 	}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 	tui.cursorLine = 0 // explicitly start at top for navigation test
 
@@ -34,7 +34,7 @@ func TestMotion_CountedUp(t *testing.T) {
 		content[i] = "line content"
 	}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 	tui.cursorLine = 7 // Start at line 7
 
@@ -56,7 +56,7 @@ func TestMotion_gg(t *testing.T) {
 		content[i] = "line content"
 	}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 	tui.cursorLine = 5 // Start at line 5
 
@@ -78,7 +78,7 @@ func TestMotion_CountedGG(t *testing.T) {
 		content[i] = "line content"
 	}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 
 	// Execute "5gg" (go to line 5, 1-indexed)
@@ -100,7 +100,7 @@ func TestMotion_G(t *testing.T) {
 		content[i] = "line content"
 	}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 
 	// Execute "G"
@@ -120,7 +120,7 @@ func TestMotion_CountedG(t *testing.T) {
 		content[i] = "line content"
 	}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 
 	// Execute "3G" (go to line 3, 1-indexed)
@@ -138,7 +138,7 @@ func TestMotion_ZeroLineStart(t *testing.T) {
 	// Setup: TUI with wide content
 	content := []string{"this is a long line of text"}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 	tui.cursorCol = 10 // Start at column 10
 
@@ -162,7 +162,7 @@ func TestMotion_CountWith10(t *testing.T) {
 		content[i] = "line content"
 	}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 	tui.cursorLine = 0 // explicitly start at top for navigation test
 
@@ -185,7 +185,7 @@ func TestMotion_ViewportScroll(t *testing.T) {
 		content[i] = "line content"
 	}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 	tui.cursorLine = 0 // explicitly start at top for navigation test
 	tui.viewportTop = 0
@@ -216,15 +216,17 @@ func TestMotion_DollarLineEnd(t *testing.T) {
 	// Setup: TUI with content
 	content := []string{"hello world"}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 	tui.cursorCol = 0 // Start at beginning
 
 	// Execute "$"
 	tui.handleInput([]byte{'$'})
 
-	// Assert: cursor should be at end of line (11 runes)
-	expectedCol := len([]rune("hello world"))
+	// Assert: cursor should be on the last character (index 10 for "hello world").
+	// $ in vim places the cursor ON the last character, not past it, so the
+	// expected column is len-1 (0-based index of the last rune).
+	expectedCol := len([]rune("hello world")) - 1
 	if tui.cursorCol != expectedCol {
 		t.Errorf("After $, expected cursor col at %d, got %d", expectedCol, tui.cursorCol)
 	}
@@ -235,7 +237,7 @@ func TestMotion_HorizontalMovement(t *testing.T) {
 	// Setup: TUI with content
 	content := []string{"hello world"}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 	tui.cursorCol = 5 // Start at middle
 
@@ -264,7 +266,7 @@ func TestMotion_CountedMotionWithVisualMode(t *testing.T) {
 		content[i] = "line content"
 	}
 
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.height = 5
 	tui.cursorLine = 0 // explicitly start at top for navigation test
 

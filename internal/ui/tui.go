@@ -11,11 +11,13 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/shitcoding/tmux_yankee/internal/config"
 	"github.com/shitcoding/tmux_yankee/internal/input"
 	"github.com/shitcoding/tmux_yankee/internal/linenums"
 	vmode "github.com/shitcoding/tmux_yankee/internal/mode"
 	"github.com/shitcoding/tmux_yankee/internal/motion"
 	"github.com/shitcoding/tmux_yankee/internal/selection"
+	"github.com/shitcoding/tmux_yankee/internal/theme"
 	"github.com/shitcoding/tmux_yankee/internal/tmux"
 	"golang.org/x/term"
 )
@@ -37,6 +39,7 @@ type TUI struct {
 	doc           *Document // Document with color preservation
 	lineNumMode   string    // Line number mode (absolute/relative/hybrid)
 	formatter     *linenums.Formatter
+	palette       theme.Palette
 	modeMachine   *vmode.Machine
 	client        tmuxClient
 	parser        *input.Parser
@@ -49,10 +52,10 @@ type TUI struct {
 	oldState      *term.State
 }
 
-// NewTUI creates a new TUI instance
-func NewTUI(paneID string, content []string, mode string) *TUI {
+// NewTUI creates a new TUI instance from resolved settings.
+func NewTUI(cfg config.Settings, content []string) *TUI {
 	// Parse mode string
-	lineNumMode, err := linenums.ModeFromString(mode)
+	lineNumMode, err := linenums.ModeFromString(string(cfg.Mode))
 	if err != nil {
 		lineNumMode = linenums.ModeHybrid
 	}
@@ -73,10 +76,11 @@ func NewTUI(paneID string, content []string, mode string) *TUI {
 	}
 
 	return &TUI{
-		paneID:        paneID,
+		paneID:        cfg.PaneID,
 		doc:           doc,
-		lineNumMode:   mode,
-		formatter:     linenums.NewFormatter(lineNumMode, maxLine),
+		lineNumMode:   string(cfg.Mode),
+		formatter:     linenums.NewFormatterWithPalette(lineNumMode, maxLine, cfg.Palette.LineNum),
+		palette:       cfg.Palette,
 		modeMachine:   vmode.NewMachine(),
 		client:        tmux.NewClient(),
 		parser:        input.NewParser(),
@@ -412,7 +416,7 @@ func (t *TUI) render() {
 		availableWidth := t.width - gutterWidth
 
 		// Render line with ANSI color preservation and cursor/selection overlay
-		renderedLine := RenderLine(rawLine, cursorCol, selStart, selEnd, availableWidth)
+		renderedLine := RenderLineWithPalette(rawLine, cursorCol, selStart, selEnd, availableWidth, t.palette)
 		b.WriteString(renderedLine)
 
 		// Clear to end of line

@@ -3,7 +3,20 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	"github.com/shitcoding/tmux_yankee/internal/config"
+	"github.com/shitcoding/tmux_yankee/internal/theme"
 )
+
+// newTestTUI creates a TUI for testing using the default theme palette.
+func newTestTUI(paneID string, content []string, mode string) *TUI {
+	cfg := config.Settings{
+		PaneID:  paneID,
+		Mode:    config.LineNumberMode(mode),
+		Palette: theme.Presets[theme.ThemeDefault],
+	}
+	return NewTUI(cfg, content)
+}
 
 // TestTUILineNumberRendering tests that line numbers are rendered in the UI
 func TestTUILineNumberRendering(t *testing.T) {
@@ -43,7 +56,7 @@ func TestTUILineNumberRendering(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tui := NewTUI("test-pane", tt.content, tt.mode)
+			tui := newTestTUI("test-pane", tt.content, tt.mode)
 			tui.cursorLine = tt.cursorLine
 			tui.width = 80
 			tui.height = 10
@@ -80,7 +93,7 @@ func TestTUILineNumberRendering(t *testing.T) {
 
 // TestTUIModeToggle tests cycling through line number modes with 'L' key
 func TestTUIModeToggle(t *testing.T) {
-	tui := NewTUI("test-pane", []string{"line 1", "line 2", "line 3"}, "hybrid")
+	tui := newTestTUI("test-pane", []string{"line 1", "line 2", "line 3"}, "hybrid")
 	tui.width = 80
 	tui.height = 10
 
@@ -118,7 +131,7 @@ func TestTUILineNumbersUpdateOnNavigation(t *testing.T) {
 		"line 5",
 	}
 
-	tui := NewTUI("test-pane", content, "relative")
+	tui := newTestTUI("test-pane", content, "relative")
 	tui.width = 80
 	tui.height = 10
 	tui.cursorLine = 2 // Start at line 3 (0-indexed)
@@ -144,24 +157,27 @@ func TestTUILineNumbersUpdateOnNavigation(t *testing.T) {
 	}
 }
 
-// TestTUIHybridModeColors tests that hybrid mode uses correct colors
+// TestTUIHybridModeColors tests that hybrid mode uses palette-derived colors
 func TestTUIHybridModeColors(t *testing.T) {
 	content := []string{"line 1", "line 2", "line 3", "line 4", "line 5"}
-	tui := NewTUI("test-pane", content, "hybrid")
+	// newTestTUI uses theme.ThemeDefault:
+	//   LineNum.CursorFG  = "#b8bb26" → rgb(184,187,38)
+	//   LineNum.RelativeFG = "#fabd2f" → rgb(250,189,47)
+	tui := newTestTUI("test-pane", content, "hybrid")
 	tui.width = 80
 	tui.height = 10
 	tui.cursorLine = 2
 
 	output := captureRender(tui)
 
-	// Should contain green ANSI code for cursor line (32;1m)
-	if !strings.Contains(output, "\x1b[32;1m") {
-		t.Error("hybrid mode should use green color (32;1m) for cursor line")
+	// Should contain default-palette cursor color for cursor line
+	if !strings.Contains(output, "38;2;184;187;38") {
+		t.Error("hybrid mode should use palette cursor color (38;2;184;187;38) for cursor line")
 	}
 
-	// Should contain yellow ANSI code for other lines (33m)
-	if !strings.Contains(output, "\x1b[33m") {
-		t.Error("hybrid mode should use yellow color (33m) for non-cursor lines")
+	// Should contain default-palette relative color for non-cursor lines
+	if !strings.Contains(output, "38;2;250;189;47") {
+		t.Error("hybrid mode should use palette relative color (38;2;250;189;47) for non-cursor lines")
 	}
 
 	// Should contain reset codes
@@ -173,7 +189,7 @@ func TestTUIHybridModeColors(t *testing.T) {
 // TestTUIAbsoluteModePersistence tests absolute line numbers don't change on cursor move
 func TestTUIAbsoluteModePersistence(t *testing.T) {
 	content := []string{"line 1", "line 2", "line 3", "line 4", "line 5"}
-	tui := NewTUI("test-pane", content, "absolute")
+	tui := newTestTUI("test-pane", content, "absolute")
 	tui.width = 80
 	tui.height = 10
 	tui.cursorLine = 1
@@ -231,7 +247,7 @@ func TestTUIGutterWidthCalculation(t *testing.T) {
 				content[i] = "test line"
 			}
 
-			tui := NewTUI("test-pane", content, "absolute")
+			tui := newTestTUI("test-pane", content, "absolute")
 			tui.width = 80
 			tui.height = 10
 
@@ -331,7 +347,7 @@ func extractFirstLineNumber(output string) string {
 // TestTUIUTF8Truncation tests that UTF-8 characters are safely truncated
 func TestTUIUTF8Truncation(t *testing.T) {
 	content := []string{"Hello 世界 🌍 こんにちは"}
-	tui := NewTUI("test", content, "absolute")
+	tui := newTestTUI("test", content, "absolute")
 	tui.width = 20
 	tui.height = 5
 

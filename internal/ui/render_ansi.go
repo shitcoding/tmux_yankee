@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/shitcoding/tmux_yankee/internal/theme"
 )
 
 // Cell represents a single character cell with styling.
@@ -154,24 +156,91 @@ func applySGR(style Style, codes string) Style {
 	return style
 }
 
-// RenderCell renders a cell with its style applied, optionally with cursor/selection overlay.
-func RenderCell(cell Cell, applyCursor, applySelection bool) string {
+// hexToBGAnsi converts a "#rrggbb" hex color to an ANSI 24-bit background sequence fragment.
+// Returns empty string for empty input (transparent/terminal default).
+func hexToBGAnsi(hex theme.HexColor) string {
+	if hex == "" {
+		return ""
+	}
+	r, g, b, ok := parseHexColor(string(hex))
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("48;2;%d;%d;%d", r, g, b)
+}
+
+// hexToFGAnsi converts a "#rrggbb" hex color to an ANSI 24-bit foreground sequence fragment.
+// Returns empty string for empty input (transparent/terminal default).
+func hexToFGAnsi(hex theme.HexColor) string {
+	if hex == "" {
+		return ""
+	}
+	r, g, b, ok := parseHexColor(string(hex))
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("38;2;%d;%d;%d", r, g, b)
+}
+
+// parseHexColor parses a "#rrggbb" string into r, g, b int components.
+func parseHexColor(hex string) (r, g, b int, ok bool) {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		return 0, 0, 0, false
+	}
+	rv, err := strconv.ParseUint(hex[0:2], 16, 8)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	gv, err := strconv.ParseUint(hex[2:4], 16, 8)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	bv, err := strconv.ParseUint(hex[4:6], 16, 8)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	return int(rv), int(gv), int(bv), true
+}
+
+// RenderCellWithPalette renders a cell with its style applied, optionally with
+// cursor/selection overlay using palette-derived colors.
+// For cursor/selection, palette.Cursor or palette.Selection colors are used.
+// Empty HexColor values mean "use terminal default" (no escape emitted).
+func RenderCellWithPalette(cell Cell, applyCursor, applySelection bool, pal theme.Palette) string {
 	var b strings.Builder
 
-	// Build style sequence
 	var codes []string
 
-	// Apply selection/cursor highlight with fixed colors
-	if applyCursor || applySelection {
-		// Orange highlight (#FE8018 = rgb(254, 128, 24)) with black text
-		codes = append(codes, "30")              // Black foreground
-		codes = append(codes, "48;2;254;128;24") // Orange background (RGB)
+	if applyCursor {
+		bgCode := hexToBGAnsi(pal.Cursor.BG)
+		fgCode := hexToFGAnsi(pal.Cursor.FG)
+		if bgCode != "" {
+			codes = append(codes, bgCode)
+		}
+		if fgCode != "" {
+			codes = append(codes, fgCode)
+		}
+		if pal.Cursor.Bold {
+			codes = append(codes, "1")
+		}
+	} else if applySelection {
+		bgCode := hexToBGAnsi(pal.Selection.BG)
+		fgCode := hexToFGAnsi(pal.Selection.FG)
+		if bgCode != "" {
+			codes = append(codes, bgCode)
+		}
+		if fgCode != "" {
+			codes = append(codes, fgCode)
+		}
+		if pal.Selection.Bold {
+			codes = append(codes, "1")
+		}
 	} else if cell.Style.Reverse {
-		// Use original reverse video
 		codes = append(codes, "7")
 	}
 
-	// Apply original style attributes (only if not in selection mode)
+	// Apply original style attributes (only if not in cursor/selection mode)
 	if !(applyCursor || applySelection) {
 		if cell.Style.Bold {
 			codes = append(codes, "1")
@@ -186,10 +255,8 @@ func RenderCell(cell Cell, applyCursor, applySelection bool) string {
 			codes = append(codes, "4")
 		}
 
-		// Apply original colors
 		if cell.Style.FgColor > 0 {
 			if cell.Style.FgColor >= 256 {
-				// 256-color mode
 				n := cell.Style.FgColor - 256
 				codes = append(codes, fmt.Sprintf("38;5;%d", n))
 			} else {
@@ -199,7 +266,6 @@ func RenderCell(cell Cell, applyCursor, applySelection bool) string {
 
 		if cell.Style.BgColor > 0 {
 			if cell.Style.BgColor >= 256 {
-				// 256-color mode
 				n := cell.Style.BgColor - 256
 				codes = append(codes, fmt.Sprintf("48;5;%d", n))
 			} else {
@@ -208,17 +274,14 @@ func RenderCell(cell Cell, applyCursor, applySelection bool) string {
 		}
 	}
 
-	// Emit SGR sequence if we have codes
 	if len(codes) > 0 {
 		b.WriteString("\x1b[")
 		b.WriteString(strings.Join(codes, ";"))
 		b.WriteString("m")
 	}
 
-	// Emit the character
 	b.WriteRune(cell.Rune)
 
-	// Reset after character (to avoid bleeding into gutter or next line)
 	if len(codes) > 0 {
 		b.WriteString("\x1b[0m")
 	}
@@ -226,14 +289,18 @@ func RenderCell(cell Cell, applyCursor, applySelection bool) string {
 	return b.String()
 }
 
-// RenderLine renders a line with ANSI colors preserved and cursor/selection overlay.
+// RenderCell renders a cell with its style applied, optionally with cursor/selection overlay.
+// Uses the default palette (empty colors = terminal default, no highlight color).
+func RenderCell(cell Cell, applyCursor, applySelection bool) string {
+	return RenderCellWithPalette(cell, applyCursor, applySelection, theme.Palette{})
+}
+
+// RenderLineWithPalette renders a line with ANSI colors preserved and cursor/selection overlay.
 // maxWidth truncates the line if needed (accounts for visible characters, not escape codes).
 // selStart and selEnd define the character-level selection range (-1 means no selection).
-func RenderLine(rawLine string, cursorCol, selStart, selEnd int, maxWidth int) string {
-	// Parse the raw ANSI line into cells
+func RenderLineWithPalette(rawLine string, cursorCol, selStart, selEnd int, maxWidth int, pal theme.Palette) string {
 	cells := ParseANSILine(rawLine)
 
-	// Truncate to maxWidth if needed
 	if len(cells) > maxWidth {
 		cells = cells[:maxWidth]
 	}
@@ -241,22 +308,29 @@ func RenderLine(rawLine string, cursorCol, selStart, selEnd int, maxWidth int) s
 	var b strings.Builder
 
 	for i, cell := range cells {
-		// Check if this column is in selection range
 		inSelection := selStart >= 0 && i >= selStart && i <= selEnd
 
 		applyCursor := (i == cursorCol) && !inSelection
 		applySelection := inSelection
 
-		rendered := RenderCell(cell, applyCursor, applySelection)
+		rendered := RenderCellWithPalette(cell, applyCursor, applySelection, pal)
 		b.WriteString(rendered)
 	}
 
 	// If cursor is at or past end of line, render a visible cursor block
 	if cursorCol >= len(cells) && cursorCol >= 0 {
 		emptyCell := Cell{Rune: ' ', Style: Style{}}
-		rendered := RenderCell(emptyCell, true, false)
+		rendered := RenderCellWithPalette(emptyCell, true, false, pal)
 		b.WriteString(rendered)
 	}
 
 	return b.String()
+}
+
+// RenderLine renders a line with ANSI colors preserved and cursor/selection overlay.
+// Uses the default palette (no color highlight).
+// maxWidth truncates the line if needed (accounts for visible characters, not escape codes).
+// selStart and selEnd define the character-level selection range (-1 means no selection).
+func RenderLine(rawLine string, cursorCol, selStart, selEnd int, maxWidth int) string {
+	return RenderLineWithPalette(rawLine, cursorCol, selStart, selEnd, maxWidth, theme.Palette{})
 }

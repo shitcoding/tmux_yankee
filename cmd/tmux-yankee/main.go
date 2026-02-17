@@ -50,7 +50,7 @@ func main() {
 	content = trimTrailingEmptyLines(content)
 
 	// Create TUI
-	tui := ui.NewTUI(cfg.PaneID, content, string(cfg.Mode))
+	tui := ui.NewTUI(cfg, content)
 
 	// Run TUI in goroutine
 	errChan := make(chan error, 1)
