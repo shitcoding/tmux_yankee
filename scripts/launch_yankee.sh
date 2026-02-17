@@ -34,14 +34,28 @@ YANKEE_OVERLAY_WAIT_SIGNAL=""
 
 # Launch lock: prevent concurrent launches (rapid inertial scroll firing multiple instances).
 # mkdir is atomic on all POSIX filesystems — the OS kernel guarantees only one caller succeeds.
+# A PID file inside the lock dir enables stale-lock recovery after SIGKILL.
 _YANKEE_LOCK_DIR="/tmp/tmux-yankee-launch-${UID}.lock"
+_YANKEE_LOCK_PID_FILE="${_YANKEE_LOCK_DIR}/pid"
 
 yankee_lock_acquire() {
-    # Returns 0 (success) if lock acquired, non-zero if already locked.
-    mkdir "$_YANKEE_LOCK_DIR" 2>/dev/null
+    if mkdir "$_YANKEE_LOCK_DIR" 2>/dev/null; then
+        echo $$ > "$_YANKEE_LOCK_PID_FILE"
+        return 0
+    fi
+    # Lock dir exists — check if the holder is still alive.
+    local lock_pid
+    lock_pid=$(cat "$_YANKEE_LOCK_PID_FILE" 2>/dev/null || true)
+    if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+        return 1  # Holder is alive: genuinely locked, skip this launch.
+    fi
+    # Holder is dead (SIGKILL): steal the lock.
+    echo $$ > "$_YANKEE_LOCK_PID_FILE"
+    return 0
 }
 
 yankee_lock_release() {
+    rm -f "$_YANKEE_LOCK_PID_FILE" 2>/dev/null || true
     rmdir "$_YANKEE_LOCK_DIR" 2>/dev/null || true
 }
 
