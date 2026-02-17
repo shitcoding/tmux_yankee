@@ -88,6 +88,23 @@ set_yankee_binding() {
     tmux bind-key "$yankee_key" run-shell -b "$SCRIPTS_DIR/launch_yankee.sh"
 }
 
+set_scroll_bindings() {
+    # Override WheelUpPane to launch yankee instead of copy-mode.
+    # Pass through if pane is already in a mode (copy-mode, etc.) or if the
+    # pane has mouse_any_flag set (e.g., vim, less, or our own yankee TUI).
+    # Also skip if the pane is showing an alternate screen (full-screen apps).
+    tmux bind-key -n WheelUpPane \
+        if-shell -F '#{||:#{pane_in_mode},#{mouse_any_flag},#{alternate_on}}' \
+            'send-keys -M' \
+            'run-shell -b "'"$SCRIPTS_DIR"'/launch_yankee.sh"'
+
+    # WheelDownPane: pass through when in mode/mouse-aware; no-op otherwise.
+    tmux bind-key -n WheelDownPane \
+        if-shell -F '#{||:#{pane_in_mode},#{mouse_any_flag},#{alternate_on}}' \
+            'send-keys -M' \
+            ''
+}
+
 main() {
     local copy_command
     copy_command="$(clipboard_copy_command)"
@@ -95,5 +112,6 @@ main() {
     set_copy_mode_bindings "$copy_command"
     set_normal_bindings
     set_yankee_binding
+    set_scroll_bindings
 }
 main

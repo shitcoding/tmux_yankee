@@ -32,6 +32,19 @@ YANKEE_OVERLAY_HELPER_WINDOW_ID=""
 YANKEE_OVERLAY_HELPER_PANE_ID=""
 YANKEE_OVERLAY_WAIT_SIGNAL=""
 
+# Launch lock: prevent concurrent launches (rapid inertial scroll firing multiple instances).
+# mkdir is atomic on all POSIX filesystems — the OS kernel guarantees only one caller succeeds.
+_YANKEE_LOCK_DIR="/tmp/tmux-yankee-launch-${UID}.lock"
+
+yankee_lock_acquire() {
+    # Returns 0 (success) if lock acquired, non-zero if already locked.
+    mkdir "$_YANKEE_LOCK_DIR" 2>/dev/null
+}
+
+yankee_lock_release() {
+    rmdir "$_YANKEE_LOCK_DIR" 2>/dev/null || true
+}
+
 # Global args array populated by build_yankee_args (reset on each call).
 _YANKEE_ARGS=()
 
@@ -183,6 +196,9 @@ build_yankee_args() {
 
 # Launch in overlay mode: helper command performs inline swap-back + wait-for signal.
 launch_overlay() {
+    if ! yankee_lock_acquire; then return 0; fi
+    trap 'yankee_lock_release; cleanup_overlay' EXIT INT TERM HUP
+
     local orig_pane_id orig_pane_path orig_zoom_state
     local helper_window_id helper_pane_id wait_signal helper_cmd
 
@@ -191,8 +207,7 @@ launch_overlay() {
     orig_pane_path="$(tmux display-message -p -t "$orig_pane_id" '#{pane_current_path}')"
     orig_zoom_state="$(tmux display-message -p -t "$orig_pane_id" '#{window_zoomed_flag}')"
 
-    # Arm trap and initialize global overlay state.
-    trap cleanup_overlay EXIT INT TERM HUP
+    # Initialize global overlay state.
     YANKEE_OVERLAY_ACTIVE=1
     YANKEE_OVERLAY_SWAPBACK_CONFIRMED=0
     YANKEE_OVERLAY_ORIG_PANE_ID="$orig_pane_id"
@@ -267,18 +282,26 @@ launch_overlay() {
 
 # Launch in centered popup mode (90% width/height)
 launch_popup() {
+    if ! yankee_lock_acquire; then return 0; fi
+    trap 'yankee_lock_release' EXIT INT TERM HUP
     local yankee_args=()
     while IFS= read -r -d '' arg; do yankee_args+=("$arg"); done < <(build_yankee_args)
     tmux display-popup -E -w 90% -h 90% \
         "${BIN_DIR}/tmux-yankee" "${yankee_args[@]}"
+    trap - EXIT INT TERM HUP
+    yankee_lock_release
 }
 
 # Launch in split window mode (horizontal split)
 launch_split() {
+    if ! yankee_lock_acquire; then return 0; fi
+    trap 'yankee_lock_release' EXIT INT TERM HUP
     local yankee_args=()
     while IFS= read -r -d '' arg; do yankee_args+=("$arg"); done < <(build_yankee_args)
     tmux split-window -h \
         "${BIN_DIR}/tmux-yankee" "${yankee_args[@]}"
+    trap - EXIT INT TERM HUP
+    yankee_lock_release
 }
 
 # Dispatch to appropriate display mode
