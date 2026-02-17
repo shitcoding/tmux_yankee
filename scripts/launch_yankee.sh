@@ -26,13 +26,13 @@ fi
 
 # Overlay lifecycle state shared with traps.
 # Keep these global so they are still defined when EXIT trap runs under `set -u`.
-NUMCOPY_OVERLAY_ACTIVE=0
-NUMCOPY_OVERLAY_SWAPBACK_CONFIRMED=0
-NUMCOPY_OVERLAY_ORIG_PANE_ID=""
-NUMCOPY_OVERLAY_ORIG_ZOOM_STATE=""
-NUMCOPY_OVERLAY_HELPER_WINDOW_ID=""
-NUMCOPY_OVERLAY_HELPER_PANE_ID=""
-NUMCOPY_OVERLAY_WAIT_SIGNAL=""
+YANKEE_OVERLAY_ACTIVE=0
+YANKEE_OVERLAY_SWAPBACK_CONFIRMED=0
+YANKEE_OVERLAY_ORIG_PANE_ID=""
+YANKEE_OVERLAY_ORIG_ZOOM_STATE=""
+YANKEE_OVERLAY_HELPER_WINDOW_ID=""
+YANKEE_OVERLAY_HELPER_PANE_ID=""
+YANKEE_OVERLAY_WAIT_SIGNAL=""
 
 tmux_pane_exists() {
     local pane_id="${1:-}"
@@ -45,18 +45,18 @@ tmux_window_exists() {
 }
 
 cleanup_overlay() {
-    if [ "${NUMCOPY_OVERLAY_ACTIVE:-0}" -ne 1 ]; then
+    if [ "${YANKEE_OVERLAY_ACTIVE:-0}" -ne 1 ]; then
         return 0
     fi
 
-    local orig_pane_id="${NUMCOPY_OVERLAY_ORIG_PANE_ID:-}"
-    local orig_zoom_state="${NUMCOPY_OVERLAY_ORIG_ZOOM_STATE:-0}"
-    local helper_window_id="${NUMCOPY_OVERLAY_HELPER_WINDOW_ID:-}"
-    local helper_pane_id="${NUMCOPY_OVERLAY_HELPER_PANE_ID:-}"
-    local swapback_confirmed="${NUMCOPY_OVERLAY_SWAPBACK_CONFIRMED:-0}"
+    local orig_pane_id="${YANKEE_OVERLAY_ORIG_PANE_ID:-}"
+    local orig_zoom_state="${YANKEE_OVERLAY_ORIG_ZOOM_STATE:-0}"
+    local helper_window_id="${YANKEE_OVERLAY_HELPER_WINDOW_ID:-}"
+    local helper_pane_id="${YANKEE_OVERLAY_HELPER_PANE_ID:-}"
+    local swapback_confirmed="${YANKEE_OVERLAY_SWAPBACK_CONFIRMED:-0}"
     local current_zoom_state=""
 
-    NUMCOPY_OVERLAY_ACTIVE=0
+    YANKEE_OVERLAY_ACTIVE=0
 
     # Fallback swap-back only if helper did not confirm completion.
     if [ "$swapback_confirmed" -ne 1 ] && tmux_pane_exists "$helper_pane_id" && tmux_pane_exists "$orig_pane_id"; then
@@ -76,12 +76,12 @@ cleanup_overlay() {
         fi
     fi
 
-    NUMCOPY_OVERLAY_SWAPBACK_CONFIRMED=0
-    NUMCOPY_OVERLAY_ORIG_PANE_ID=""
-    NUMCOPY_OVERLAY_ORIG_ZOOM_STATE=""
-    NUMCOPY_OVERLAY_HELPER_WINDOW_ID=""
-    NUMCOPY_OVERLAY_HELPER_PANE_ID=""
-    NUMCOPY_OVERLAY_WAIT_SIGNAL=""
+    YANKEE_OVERLAY_SWAPBACK_CONFIRMED=0
+    YANKEE_OVERLAY_ORIG_PANE_ID=""
+    YANKEE_OVERLAY_ORIG_ZOOM_STATE=""
+    YANKEE_OVERLAY_HELPER_WINDOW_ID=""
+    YANKEE_OVERLAY_HELPER_PANE_ID=""
+    YANKEE_OVERLAY_WAIT_SIGNAL=""
 }
 
 wait_for_helper_completion() {
@@ -132,15 +132,15 @@ launch_overlay() {
 
     # Arm trap and initialize global overlay state.
     trap cleanup_overlay EXIT INT TERM HUP
-    NUMCOPY_OVERLAY_ACTIVE=1
-    NUMCOPY_OVERLAY_SWAPBACK_CONFIRMED=0
-    NUMCOPY_OVERLAY_ORIG_PANE_ID="$orig_pane_id"
-    NUMCOPY_OVERLAY_ORIG_ZOOM_STATE="$orig_zoom_state"
-    NUMCOPY_OVERLAY_HELPER_WINDOW_ID=""
-    NUMCOPY_OVERLAY_HELPER_PANE_ID=""
+    YANKEE_OVERLAY_ACTIVE=1
+    YANKEE_OVERLAY_SWAPBACK_CONFIRMED=0
+    YANKEE_OVERLAY_ORIG_PANE_ID="$orig_pane_id"
+    YANKEE_OVERLAY_ORIG_ZOOM_STATE="$orig_zoom_state"
+    YANKEE_OVERLAY_HELPER_WINDOW_ID=""
+    YANKEE_OVERLAY_HELPER_PANE_ID=""
 
     wait_signal="numcopy-finished-${$}-$(date +%s)-${RANDOM}"
-    NUMCOPY_OVERLAY_WAIT_SIGNAL="$wait_signal"
+    YANKEE_OVERLAY_WAIT_SIGNAL="$wait_signal"
 
     # Helper command:
     # 1) run Go TUI
@@ -161,7 +161,7 @@ launch_overlay() {
         return 1
     fi
 
-    NUMCOPY_OVERLAY_HELPER_WINDOW_ID="$helper_window_id"
+    YANKEE_OVERLAY_HELPER_WINDOW_ID="$helper_window_id"
 
     # Resolve helper pane
     helper_pane_id="$(tmux list-panes -t "$helper_window_id" -F '#{pane_id}' | head -1)"
@@ -170,7 +170,7 @@ launch_overlay() {
         return 1
     fi
 
-    NUMCOPY_OVERLAY_HELPER_PANE_ID="$helper_pane_id"
+    YANKEE_OVERLAY_HELPER_PANE_ID="$helper_pane_id"
 
     # Swap helper into original pane position (overlay visible to user)
     if ! tmux swap-pane -d -s "$orig_pane_id" -t "$helper_pane_id" -Z; then
@@ -181,7 +181,7 @@ launch_overlay() {
     # Wait for helper's "swap-back done" signal.
     # If this fails, trap cleanup performs fallback swap-back + window cleanup.
     if wait_for_helper_completion "$wait_signal" "$helper_pane_id"; then
-        NUMCOPY_OVERLAY_SWAPBACK_CONFIRMED=1
+        YANKEE_OVERLAY_SWAPBACK_CONFIRMED=1
     else
         tmux display-message "tmux-yankee: helper completion signal missing; forcing fallback cleanup"
     fi

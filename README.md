@@ -4,19 +4,23 @@ Line numbers for tmux copy-mode. Displays absolute, relative, or hybrid line num
 
 ## Features
 
-- **Three display modes:** absolute, relative, hybrid (like Vim)
-- **Mode cycling:** press `L` (configurable) to toggle between modes while viewing
-- **Customizable styles:** configure colors for absolute, relative, and cursor line numbers
-- **Copy filtering:** line number gutter is automatically stripped when you yank text
-- **Opt-in keybinding:** does not override native `[` -- uses a separate key (`prefix + N` by default)
-- **Zoom-safe:** works correctly in zoomed panes
-- **Clean lifecycle:** trap-based cleanup ensures no orphaned state
+- **Three line number modes:** absolute, relative, hybrid (like Vim)
+- **Three display modes:** overlay (default), popup, or split window
+- **Overlay mode:** Full-pane coverage like tmux copy-mode (requires tmux 3.2+)
+- **Vim motions:** Full vim-style navigation (hjkl, w/b/e, gg/G, ^/$, Ctrl-u/d, zt/zz/zb)
+- **Visual selection:** Character-wise (v) and line-wise (V) visual modes
+- **Mode cycling:** Press `L` to toggle line number modes while viewing
+- **Color preservation:** Original terminal colors are maintained
+- **Copy filtering:** Line number gutter is automatically stripped when you yank text
+- **Clean keybinding:** Uses separate key (`prefix + N` by default)
+- **Zoom-safe:** Works correctly in zoomed panes
 
 ## Requirements
 
-- tmux 3.1+ (copy-mode snapshot support)
-- copy-mode-vi enabled (`set -g mode-keys vi`)
+- tmux 3.2+ (recommended for overlay/popup modes)
+- tmux 3.1+ (minimum, split mode only)
 - Bash 4+
+- Go 1.19+ (for building the binary)
 
 ## Installation
 
@@ -44,48 +48,63 @@ run-shell ~/.tmux/plugins/tmux-copymode-linenumbers/plugin.tmux
 
 ## Configuration
 
-All options use the `@linenumbers-` prefix. Add these to `~/.tmux.conf` **before** the plugin is loaded.
+All options use the `@yankee_` prefix. Add these to `~/.tmux.conf` **before** the plugin is loaded.
 
-### Enable the keybinding (required)
+### Display Mode
 
-By default, the plugin does not bind any keys. You must opt in:
+Control how tmux-yankee appears:
 
 ```tmux
-set -g @linenumbers-enable-binding "on"
+set -g @yankee_display_mode "overlay"  # overlay (default), popup, or split
 ```
 
-### Options
+**Display modes:**
+- **overlay** (default): Covers only the active pane (like tmux-fingers/tmux-thumbs). Uses swap-pane to preserve shell history and pane contents. Works on tmux 3.1+
+- **popup**: Centered popup window (90% width/height). Requires tmux 3.2+
+- **split**: Horizontal split window. Works on tmux 3.1+ (automatic fallback for older versions)
+
+### Line Number Mode
+
+```tmux
+set -g @yankee_mode "hybrid"  # absolute, relative, or hybrid
+```
+
+### Custom Keybinding
+
+```tmux
+set -g @yankee_key "N"  # Key to trigger (with prefix)
+```
+
+### Options Reference
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `@linenumbers-enable-binding` | `off` | Set to `on` to enable the custom keybinding |
-| `@linenumbers-custom-key` | `N` | Key to trigger line numbers view (with prefix) |
-| `@linenumbers-mode` | `hybrid` | Display mode: `absolute`, `relative`, or `hybrid` |
-| `@linenumbers-toggle-key` | `L` | Key to cycle modes while in line numbers view |
-| `@linenumbers-style-absolute` | `fg=white` | tmux style string for absolute line numbers |
-| `@linenumbers-style-relative` | `fg=yellow` | tmux style string for relative line numbers |
-| `@linenumbers-style-cursor` | `fg=green,bold` | tmux style string for the cursor line |
+| `@yankee_display_mode` | `overlay` | How to display: `overlay`, `popup`, or `split` |
+| `@yankee_mode` | `hybrid` | Line number mode: `absolute`, `relative`, or `hybrid` |
+| `@yankee_key` | `N` | Key to trigger line numbers view (with prefix) |
 
 ### Example configuration
 
 ```tmux
-# Enable the plugin keybinding
-set -g @linenumbers-enable-binding "on"
+# Display mode (overlay covers pane like tmux copy-mode)
+set -g @yankee_display_mode "overlay"
+
+# Line number mode (hybrid shows relative numbers with absolute on cursor line)
+set -g @yankee_mode "hybrid"
 
 # Use prefix + n instead of prefix + N
-set -g @linenumbers-custom-key "n"
-
-# Start in absolute mode
-set -g @linenumbers-mode "absolute"
-
-# Customize colors
-set -g @linenumbers-style-absolute "fg=cyan"
-set -g @linenumbers-style-relative "fg=magenta"
-set -g @linenumbers-style-cursor "fg=green,bold"
-
-# Cycle modes with M instead of L
-set -g @linenumbers-toggle-key "M"
+set -g @yankee_key "n"
 ```
+
+### Version Requirements
+
+| Display Mode | Minimum tmux Version | Notes |
+|--------------|---------------------|-------|
+| `overlay` | 3.1+ | Uses swap-pane strategy, preserves shell history |
+| `popup` | 3.2+ | Uses centered popup window |
+| `split` | 3.1+ | Uses split window (always works) |
+
+If you request `overlay` or `popup` on tmux 3.1, the plugin will automatically fall back to `split` mode with an informative message.
 
 ## Usage
 
@@ -108,12 +127,18 @@ set -g @linenumbers-toggle-key "M"
 | `w` | Word forward | Jump to start of next word |
 | `b` | Word backward | Jump to start of previous word |
 | `e` | Word end | Jump to end of current/next word |
+| `E` | WORD end | Jump to end of whitespace-separated WORD |
+| `B` | WORD backward | Jump to start of previous whitespace-separated WORD |
 | `0` | Line start | Jump to beginning of line |
+| `^` | First non-blank | Jump to first non-whitespace character |
 | `$` | Line end | Jump to end of line |
 | `gg` | First line | Jump to first line of document |
 | `G` | Last line | Jump to last line of document |
 | `Ctrl-u` | Half page up | Scroll up half a page |
 | `Ctrl-d` | Half page down | Scroll down half a page |
+| `zt` | Viewport top | Position current line at top of viewport |
+| `zz` | Viewport center | Position current line at center of viewport |
+| `zb` | Viewport bottom | Position current line at bottom of viewport |
 
 #### Visual Mode & Yanking
 
@@ -142,37 +167,46 @@ All motion keys support count prefixes (like vim):
 
 ## How It Works
 
-The plugin uses a **capture-and-replace** pattern (same technique used by tmux-fingers, tmux-thumbs):
+The plugin uses a **Go TUI** that renders line numbers and handles vim-style navigation:
 
-1. Captures the current viewport content and scroll position
-2. Renders line numbers into the captured text
-3. Replaces the pane content using `respawn-pane` (keeps the same pane ID)
-4. Enters copy-mode for navigation
-5. On exit, restores the original shell via `respawn-pane`
+1. Launcher script (`scripts/launch_yankee.sh`) gathers pane context
+2. Depending on `@yankee_display_mode`:
+   - **overlay**: Creates helper window with TUI, uses `swap-pane` to place it in active pane position. Swaps back on exit to preserve shell state (like tmux-fingers/tmux-thumbs)
+   - **popup**: Launches centered popup (90% width/height)
+   - **split**: Creates horizontal split window
+3. Go binary (`bin/tmux-yankee`) captures pane content and renders realtime TUI
+4. User navigates with vim motions, selects text with visual mode
+5. On yank, text is copied to clipboard and tmux buffer (line numbers stripped)
+6. TUI exits, original pane restored with shell history and contents intact (overlay mode)
 
-This is a **snapshot view** -- it shows the content as it was when you triggered the command. It does not scroll in real-time.
+The TUI shows a **snapshot** of pane content at launch time. Colors and formatting are preserved via ANSI code parsing.
 
 ## Architecture
 
 ```
-plugin.tmux              TPM entry point, option defaults, keybinding setup
+yank.tmux                   TPM entry point, keybinding setup
 scripts/
-  config.sh              Read @linenumbers-* tmux options
-  utils.sh               Shared helpers (pane queries, logging)
-  renderer.sh            Pure line number renderer (no tmux calls)
-  line_numbers.sh        Core orchestrator (capture -> render -> respawn -> wait)
-  state_cleanup.sh       Trap-based cleanup and keybinding restoration
-  toggle_and_rerender.sh Mode cycling (L key handler)
-  copy_filter.sh         Strip gutter from yanked text
-  init.sh                Keybinding setup helper
+  launch_yankee.sh         Display mode dispatcher and launcher
+  helpers.sh                Vendored tmux-yank clipboard helpers
+  copy_stdin.sh             Clipboard copy wrapper
+  copy_line.sh              Vendored tmux-yank line copy
+  copy_pane_pwd.sh          Vendored tmux-yank pwd copy
+cmd/tmux-yankee/
+  main.go                   Go binary entry point
+internal/
+  ui/                       TUI rendering and event loop
+  input/                    Vim-style input parser
+  motion/                   Vim motion handlers
+  selection/                Visual mode selection logic
+  linenums/                 Line number formatting (absolute/relative/hybrid)
+  tmux/                     Tmux client wrapper
 ```
 
 ## Known Limitations
 
-- **Snapshot view:** Content is static; you cannot scroll to see new content while line numbers are active
-- **CWD:** After exiting, the shell restarts in `$HOME` (the working directory from before is not preserved). Use `cd -` or set up shell initialization to mitigate this
-- **Shell history:** In-memory command history from the current session is lost when line numbers view is exited (inherent trade-off of the respawn-pane approach)
-- **Minimum width:** Pane must be at least 15 columns wide
+- **Snapshot view:** Content is captured at launch time; live scrolling is not supported
+- **Overlay mode:** Uses swap-pane to cover active pane; shell process and history are preserved
+- **Popup mode:** Requires tmux 3.2+ (auto-falls back to split on tmux 3.1)
 
 ## License
 

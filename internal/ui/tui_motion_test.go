@@ -14,11 +14,7 @@ func TestMotion_CountedDown(t *testing.T) {
 
 	tui := NewTUI("test-pane", content, "absolute")
 	tui.height = 5
-
-	// Start at line 0
-	if tui.cursorLine != 0 {
-		t.Fatalf("Expected initial cursor at line 0, got %d", tui.cursorLine)
-	}
+	tui.cursorLine = 0 // explicitly start at top for navigation test
 
 	// Execute "5j" (down 5 lines)
 	tui.handleInput([]byte{'5'})
@@ -168,6 +164,7 @@ func TestMotion_CountWith10(t *testing.T) {
 
 	tui := NewTUI("test-pane", content, "absolute")
 	tui.height = 5
+	tui.cursorLine = 0 // explicitly start at top for navigation test
 
 	// Execute "10j" (down 10 lines)
 	tui.handleInput([]byte{'1'})
@@ -190,6 +187,7 @@ func TestMotion_ViewportScroll(t *testing.T) {
 
 	tui := NewTUI("test-pane", content, "absolute")
 	tui.height = 5
+	tui.cursorLine = 0 // explicitly start at top for navigation test
 	tui.viewportTop = 0
 
 	// Execute "10j" to move cursor past viewport
@@ -268,6 +266,7 @@ func TestMotion_CountedMotionWithVisualMode(t *testing.T) {
 
 	tui := NewTUI("test-pane", content, "absolute")
 	tui.height = 5
+	tui.cursorLine = 0 // explicitly start at top for navigation test
 
 	// Activate visual mode at line 0
 	tui.handleInput([]byte{'v'})

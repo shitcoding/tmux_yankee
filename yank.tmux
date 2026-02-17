@@ -82,7 +82,7 @@ set_normal_bindings() {
     tmux bind-key "$(yank_pane_pwd_key)" run-shell -b "$SCRIPTS_DIR/copy_pane_pwd.sh"
 }
 
-set_numcopy_binding() {
+set_yankee_binding() {
     local yankee_key
     yankee_key=$(get_tmux_option "@yankee_key" "N")
     tmux bind-key "$yankee_key" run-shell -b "$SCRIPTS_DIR/launch_yankee.sh"
@@ -94,6 +94,6 @@ main() {
     error_handling_if_command_not_present "$copy_command"
     set_copy_mode_bindings "$copy_command"
     set_normal_bindings
-    set_numcopy_binding
+    set_yankee_binding
 }
 main
