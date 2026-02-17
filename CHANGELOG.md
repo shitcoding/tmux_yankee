@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Full settings system via `@yankee_*` tmux options
+- 5 built-in themes: `default`, `dracula`, `gruvbox`, `nord`, `solarized`
+- Per-element color overrides (cursor, selection, gutter, line numbers)
+- `@yankee_scrollback_lines`: configurable history capture (100-200000, default 2000)
+- `@yankee_copy_target`: copy to `both` (default), `tmux`, or `clipboard` only
+- `@yankee_exit_on_yank`: keep TUI open after yanking when set to `off`
+- `@yankee_start_position`: start cursor at `top`, `middle`, or `bottom` (default)
+- `@yankee_toggle_mode_key`: configurable line number mode toggle key (default `L`)
+
 ## 0.1.0 - 2026-02-14
 
 Initial release. Phase 2 implementation: capture-and-replace line numbers for tmux copy-mode.
