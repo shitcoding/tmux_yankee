@@ -49,6 +49,7 @@ type TUI struct {
 	cursorLine    int
 	cursorCol     int
 	viewportTop   int
+	hOffset       int // horizontal scroll offset (0-based column index of leftmost visible char)
 	width         int
 	height        int
 	oldState      *term.State
@@ -300,6 +301,24 @@ func (t *TUI) clampViewportAndCursor() {
 	}
 }
 
+// ensureCursorVisibleH adjusts hOffset so the cursor column is within the
+// visible horizontal viewport. Called after every cursor movement.
+func (t *TUI) ensureCursorVisibleH(contentWidth int) {
+	if contentWidth <= 0 {
+		t.hOffset = 0
+		return
+	}
+	if t.cursorCol < t.hOffset {
+		t.hOffset = t.cursorCol
+	}
+	if t.cursorCol >= t.hOffset+contentWidth {
+		t.hOffset = t.cursorCol - contentWidth + 1
+	}
+	if t.hOffset < 0 {
+		t.hOffset = 0
+	}
+}
+
 // handleInput processes keyboard input
 // Returns true if should quit
 func (t *TUI) handleInput(key []byte) bool {
@@ -535,6 +554,18 @@ func (t *TUI) render() {
 	// Get selection region from mode machine
 	region := t.modeMachine.Region()
 
+	// Compute gutter width once (same for all lines in a frame).
+	// Use a sample gutter to measure; the width depends on maxLine digits, not content.
+	sampleGutter := t.formatter.RenderGutter(1, 1)
+	gutterWidth := len(stripANSI(sampleGutter))
+	contentWidth := t.width - gutterWidth
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
+
+	// Ensure cursor is horizontally visible before rendering.
+	t.ensureCursorVisibleH(contentWidth)
+
 	// Render visible lines
 	for i := t.viewportTop; i < endLine; i++ {
 		// Render line number gutter (1-indexed for display)
@@ -586,12 +617,8 @@ func (t *TUI) render() {
 			}
 		}
 
-		// Calculate available width (account for gutter)
-		gutterWidth := len(stripANSI(gutter))
-		availableWidth := t.width - gutterWidth
-
 		// Render line using pre-parsed cells (no per-frame ANSI reparse)
-		renderedLine := RenderCellsWithPalette(t.doc.Cells(i), cursorCol, selStart, selEnd, availableWidth, t.palette)
+		renderedLine := RenderCellsWithPalette(t.doc.Cells(i), cursorCol, selStart, selEnd, t.hOffset, contentWidth, t.palette)
 		b.WriteString(renderedLine)
 
 		// Clear to end of line

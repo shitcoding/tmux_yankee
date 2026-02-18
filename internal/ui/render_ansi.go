@@ -370,23 +370,40 @@ func RenderLine(rawLine string, cursorCol, selStart, selEnd int, maxWidth int) s
 // RenderCellsWithPalette renders pre-parsed cells with cursor/selection overlay.
 // This is the performance-critical path: cells are pre-parsed at document load,
 // so this function does no ANSI parsing.
-func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, maxWidth int, pal theme.Palette) string {
-	if len(cells) > maxWidth {
-		cells = cells[:maxWidth]
+// startCol is the horizontal viewport offset — cells before startCol are not rendered.
+// cursorCol, selStart, selEnd are absolute (0-based from line start); the renderer
+// maps them to viewport-relative positions internally.
+func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, startCol, maxWidth int, pal theme.Palette) string {
+	// Clamp startCol to valid range
+	if startCol < 0 {
+		startCol = 0
+	}
+	if startCol > len(cells) {
+		startCol = len(cells)
+	}
+
+	// Slice visible window
+	visible := cells[startCol:]
+	if len(visible) > maxWidth {
+		visible = visible[:maxWidth]
 	}
 
 	var b strings.Builder
 
-	for i, cell := range cells {
-		inSelection := selStart >= 0 && i >= selStart && i <= selEnd
-		applyCursor := (i == cursorCol) && !inSelection
+	for vi, cell := range visible {
+		absIdx := startCol + vi // map back to absolute index
+		inSelection := selStart >= 0 && absIdx >= selStart && absIdx <= selEnd
+		applyCursor := (absIdx == cursorCol) && !inSelection
 		applySelection := inSelection
 		b.WriteString(RenderCellWithPalette(cell, applyCursor, applySelection, pal))
 	}
 
-	if cursorCol >= len(cells) && cursorCol >= 0 {
-		emptyCell := Cell{Rune: ' ', Style: Style{}}
-		b.WriteString(RenderCellWithPalette(emptyCell, true, false, pal))
+	// If cursor is at or past end of visible content, render cursor block
+	if cursorCol >= startCol && cursorCol < startCol+maxWidth {
+		if cursorCol >= len(cells) {
+			emptyCell := Cell{Rune: ' ', Style: Style{}}
+			b.WriteString(RenderCellWithPalette(emptyCell, true, false, pal))
+		}
 	}
 
 	return b.String()
