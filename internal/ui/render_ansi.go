@@ -18,6 +18,8 @@ type Cell struct {
 type Style struct {
 	FgColor   int  // Foreground color code (0 = default)
 	BgColor   int  // Background color code (0 = default)
+	FgR, FgG, FgB int  // 24-bit foreground (valid when FgColor == -1)
+	BgR, BgG, BgB int  // 24-bit background (valid when BgColor == -1)
 	Bold      bool // Bold text
 	Dim       bool // Dim text
 	Italic    bool // Italic text
@@ -125,11 +127,23 @@ func applySGR(style Style, codes string) Style {
 		case 30, 31, 32, 33, 34, 35, 36, 37: // Foreground colors
 			style.FgColor = code
 		case 38: // Extended foreground color
-			// Handle 256-color mode: 38;5;<n>
 			if i+2 < len(parts) && parts[i+1] == "5" {
+				// 256-color mode: 38;5;<n>
 				if n, err := strconv.Atoi(parts[i+2]); err == nil {
 					style.FgColor = 256 + n // Offset to distinguish from basic colors
 					i += 2
+				}
+			} else if i+4 < len(parts) && parts[i+1] == "2" {
+				// 24-bit truecolor mode: 38;2;<r>;<g>;<b>
+				r, errR := strconv.Atoi(parts[i+2])
+				g, errG := strconv.Atoi(parts[i+3])
+				b, errB := strconv.Atoi(parts[i+4])
+				if errR == nil && errG == nil && errB == nil {
+					style.FgColor = -1 // Sentinel: use FgR/FgG/FgB
+					style.FgR = r
+					style.FgG = g
+					style.FgB = b
+					i += 4
 				}
 			}
 		case 39: // Default foreground color
@@ -137,11 +151,23 @@ func applySGR(style Style, codes string) Style {
 		case 40, 41, 42, 43, 44, 45, 46, 47: // Background colors
 			style.BgColor = code
 		case 48: // Extended background color
-			// Handle 256-color mode: 48;5;<n>
 			if i+2 < len(parts) && parts[i+1] == "5" {
+				// 256-color mode: 48;5;<n>
 				if n, err := strconv.Atoi(parts[i+2]); err == nil {
 					style.BgColor = 256 + n // Offset to distinguish from basic colors
 					i += 2
+				}
+			} else if i+4 < len(parts) && parts[i+1] == "2" {
+				// 24-bit truecolor mode: 48;2;<r>;<g>;<b>
+				r, errR := strconv.Atoi(parts[i+2])
+				g, errG := strconv.Atoi(parts[i+3])
+				b, errB := strconv.Atoi(parts[i+4])
+				if errR == nil && errG == nil && errB == nil {
+					style.BgColor = -1 // Sentinel: use BgR/BgG/BgB
+					style.BgR = r
+					style.BgG = g
+					style.BgB = b
+					i += 4
 				}
 			}
 		case 49: // Default background color
@@ -255,7 +281,10 @@ func RenderCellWithPalette(cell Cell, applyCursor, applySelection bool, pal them
 			codes = append(codes, "4")
 		}
 
-		if cell.Style.FgColor > 0 {
+		if cell.Style.FgColor == -1 {
+			// 24-bit truecolor foreground
+			codes = append(codes, fmt.Sprintf("38;2;%d;%d;%d", cell.Style.FgR, cell.Style.FgG, cell.Style.FgB))
+		} else if cell.Style.FgColor > 0 {
 			if cell.Style.FgColor >= 256 {
 				n := cell.Style.FgColor - 256
 				codes = append(codes, fmt.Sprintf("38;5;%d", n))
@@ -264,7 +293,10 @@ func RenderCellWithPalette(cell Cell, applyCursor, applySelection bool, pal them
 			}
 		}
 
-		if cell.Style.BgColor > 0 {
+		if cell.Style.BgColor == -1 {
+			// 24-bit truecolor background
+			codes = append(codes, fmt.Sprintf("48;2;%d;%d;%d", cell.Style.BgR, cell.Style.BgG, cell.Style.BgB))
+		} else if cell.Style.BgColor > 0 {
 			if cell.Style.BgColor >= 256 {
 				n := cell.Style.BgColor - 256
 				codes = append(codes, fmt.Sprintf("48;5;%d", n))
