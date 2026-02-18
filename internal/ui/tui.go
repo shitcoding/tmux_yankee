@@ -300,6 +300,12 @@ func (t *TUI) handleInput(key []byte) bool {
 
 	cmd := t.parser.Parse(key[0])
 	if cmd.Type == input.CommandNone {
+		// In visual mode, 'y' should yank the selection immediately
+		// rather than waiting for a second key (like 'yy' for yank-line).
+		if t.parser.HasPendingYPrefix() && t.modeMachine.Mode() != vmode.Normal {
+			t.parser.ClearPending()
+			return t.yank()
+		}
 		return false
 	}
 	return t.handleCommand(cmd)

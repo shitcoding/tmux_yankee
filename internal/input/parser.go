@@ -367,6 +367,18 @@ func (p *Parser) PendingState() Pending {
 	return p.pending
 }
 
+// HasPendingYPrefix returns true if 'y' prefix is pending (waiting for second key).
+// The TUI uses this to short-circuit to yank-selection when a visual selection is active.
+func (p *Parser) HasPendingYPrefix() bool {
+	return p.pending.Prefix == 'y'
+}
+
+// ClearPending resets the pending state. Used by the TUI to cancel a pending
+// prefix when it handles the command directly (e.g. 'y' in visual mode).
+func (p *Parser) ClearPending() {
+	p.clearPending()
+}
+
 // parseNormalByte processes a single byte through the normal (non-mouse) parse path.
 // This is used to handle a byte that follows an abandoned mouse prefix.
 func (p *Parser) parseNormalByte(b byte) Command {
