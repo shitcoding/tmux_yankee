@@ -361,9 +361,44 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 
 	case input.CommandMouseScroll:
 		return t.handleMouseScroll(cmd.ScrollDirection)
+
+	case input.CommandCharSearch:
+		if cs, ok := t.motionHandler.(motion.CharSearcher); ok {
+			cursor := motion.Cursor{Line: t.cursorLine, Col: t.cursorCol}
+			var newCursor motion.Cursor
+			switch cmd.SearchKind {
+			case input.SearchRepeat:
+				newCursor = cs.RepeatCharSearch(t, cursor, cmd.Count)
+			case input.SearchRepeatReverse:
+				newCursor = cs.RepeatCharSearchReverse(t, cursor, cmd.Count)
+			default:
+				dir := searchKindToDirection(cmd.SearchKind)
+				newCursor = cs.ApplyCharSearch(t, cursor, dir, cmd.SearchChar, cmd.Count)
+			}
+			t.cursorLine = newCursor.Line
+			t.cursorCol = newCursor.Col
+			pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
+			t.modeMachine.OnCursorMoved(pos)
+		}
 	}
 
 	return false
+}
+
+// searchKindToDirection converts input.SearchKind to motion.CharSearchDirection.
+func searchKindToDirection(sk input.SearchKind) motion.CharSearchDirection {
+	switch sk {
+	case input.SearchFindForward:
+		return motion.CharSearchFindForward
+	case input.SearchTillForward:
+		return motion.CharSearchTillForward
+	case input.SearchFindBackward:
+		return motion.CharSearchFindBackward
+	case input.SearchTillBackward:
+		return motion.CharSearchTillBackward
+	default:
+		return motion.CharSearchFindForward
+	}
 }
 
 // scrollStep is the number of viewport lines moved per mouse wheel event.

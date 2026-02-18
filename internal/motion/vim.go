@@ -2,8 +2,9 @@ package motion
 
 // VimHandler implements vim-like motion semantics.
 type VimHandler struct {
-	goalCol int  // Remember desired column for vertical movements
-	hasGoal bool // Track if goal column is set
+	goalCol    int            // Remember desired column for vertical movements
+	hasGoal    bool           // Track if goal column is set
+	lastSearch lastCharSearch // State for ; and , repeat
 }
 
 // NewVimHandler creates a new vim motion handler.

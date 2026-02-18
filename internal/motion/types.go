@@ -73,3 +73,30 @@ type Handler interface {
 	//   - MotionLastLine with count=N: go to line N (NG)
 	Apply(doc Document, cursor Cursor, viewport Viewport, motion Motion, count int) Result
 }
+
+// CharSearchDirection represents the kind of character search motion.
+type CharSearchDirection int
+
+const (
+	CharSearchFindForward   CharSearchDirection = iota // f
+	CharSearchTillForward                              // t
+	CharSearchFindBackward                             // F
+	CharSearchTillBackward                             // T
+)
+
+// CharSearcher extends Handler with character search motions (f/t/F/T/;/,).
+type CharSearcher interface {
+	Handler
+	// ApplyCharSearch moves cursor to the count-th occurrence of char on the current line.
+	// Returns the original cursor if char is not found or count exceeds matches.
+	// Updates internal last-search state for repeat operations.
+	ApplyCharSearch(doc Document, cursor Cursor, dir CharSearchDirection, char byte, count int) Cursor
+
+	// RepeatCharSearch repeats the last character search in the same direction.
+	// Returns the original cursor if no prior search exists.
+	RepeatCharSearch(doc Document, cursor Cursor, count int) Cursor
+
+	// RepeatCharSearchReverse repeats the last character search in the opposite direction.
+	// Returns the original cursor if no prior search exists.
+	RepeatCharSearchReverse(doc Document, cursor Cursor, count int) Cursor
+}

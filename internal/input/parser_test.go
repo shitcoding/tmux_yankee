@@ -376,3 +376,124 @@ func TestParser_CountWithMultipleDigits(t *testing.T) {
 		})
 	}
 }
+
+func TestParser_CharSearch_FindForward(t *testing.T) {
+	p := NewParser()
+	cmd := p.Parse('f')
+	if cmd.Type != CommandNone {
+		t.Fatalf("'f' should return CommandNone, got %d", cmd.Type)
+	}
+	cmd = p.Parse('a')
+	if cmd.Type != CommandCharSearch {
+		t.Fatalf("'fa' should return CommandCharSearch, got %d", cmd.Type)
+	}
+	if cmd.SearchKind != SearchFindForward {
+		t.Errorf("SearchKind = %d, want SearchFindForward", cmd.SearchKind)
+	}
+	if cmd.SearchChar != 'a' {
+		t.Errorf("SearchChar = %c, want 'a'", cmd.SearchChar)
+	}
+}
+
+func TestParser_CharSearch_TillForward(t *testing.T) {
+	p := NewParser()
+	p.Parse('t')
+	cmd := p.Parse('x')
+	if cmd.Type != CommandCharSearch {
+		t.Fatalf("'tx' should return CommandCharSearch, got %d", cmd.Type)
+	}
+	if cmd.SearchKind != SearchTillForward {
+		t.Errorf("SearchKind = %d, want SearchTillForward", cmd.SearchKind)
+	}
+	if cmd.SearchChar != 'x' {
+		t.Errorf("SearchChar = %c, want 'x'", cmd.SearchChar)
+	}
+}
+
+func TestParser_CharSearch_FindBackward(t *testing.T) {
+	p := NewParser()
+	p.Parse('F')
+	cmd := p.Parse('b')
+	if cmd.Type != CommandCharSearch {
+		t.Fatalf("'Fb' should return CommandCharSearch, got %d", cmd.Type)
+	}
+	if cmd.SearchKind != SearchFindBackward {
+		t.Errorf("SearchKind = %d, want SearchFindBackward", cmd.SearchKind)
+	}
+}
+
+func TestParser_CharSearch_TillBackward(t *testing.T) {
+	p := NewParser()
+	p.Parse('T')
+	cmd := p.Parse('c')
+	if cmd.Type != CommandCharSearch {
+		t.Fatalf("'Tc' should return CommandCharSearch, got %d", cmd.Type)
+	}
+	if cmd.SearchKind != SearchTillBackward {
+		t.Errorf("SearchKind = %d, want SearchTillBackward", cmd.SearchKind)
+	}
+}
+
+func TestParser_CharSearch_WithCount(t *testing.T) {
+	p := NewParser()
+	p.Parse('3')
+	p.Parse('f')
+	cmd := p.Parse('a')
+	if cmd.Type != CommandCharSearch {
+		t.Fatalf("'3fa' should return CommandCharSearch, got %d", cmd.Type)
+	}
+	if cmd.Count != 3 {
+		t.Errorf("Count = %d, want 3", cmd.Count)
+	}
+	if cmd.SearchChar != 'a' {
+		t.Errorf("SearchChar = %c, want 'a'", cmd.SearchChar)
+	}
+}
+
+func TestParser_CharSearch_Repeat(t *testing.T) {
+	p := NewParser()
+	cmd := p.Parse(';')
+	if cmd.Type != CommandCharSearch {
+		t.Fatalf("';' should return CommandCharSearch, got %d", cmd.Type)
+	}
+	if cmd.SearchKind != SearchRepeat {
+		t.Errorf("SearchKind = %d, want SearchRepeat", cmd.SearchKind)
+	}
+}
+
+func TestParser_CharSearch_RepeatReverse(t *testing.T) {
+	p := NewParser()
+	cmd := p.Parse(',')
+	if cmd.Type != CommandCharSearch {
+		t.Fatalf("',' should return CommandCharSearch, got %d", cmd.Type)
+	}
+	if cmd.SearchKind != SearchRepeatReverse {
+		t.Errorf("SearchKind = %d, want SearchRepeatReverse", cmd.SearchKind)
+	}
+}
+
+func TestParser_CharSearch_CountWithRepeat(t *testing.T) {
+	p := NewParser()
+	p.Parse('2')
+	cmd := p.Parse(';')
+	if cmd.Type != CommandCharSearch {
+		t.Fatalf("'2;' should return CommandCharSearch, got %d", cmd.Type)
+	}
+	if cmd.Count != 2 {
+		t.Errorf("Count = %d, want 2", cmd.Count)
+	}
+	if cmd.SearchKind != SearchRepeat {
+		t.Errorf("SearchKind = %d, want SearchRepeat", cmd.SearchKind)
+	}
+}
+
+func TestParser_CharSearch_EscapeCancelsPrefix(t *testing.T) {
+	p := NewParser()
+	p.Parse('f')
+	// ESC byte triggers mouse detection, but eventually resolves
+	// After 'f' prefix, any non-target should cancel
+	cmd := p.Parse(27) // ESC
+	if cmd.Type == CommandCharSearch {
+		t.Error("ESC after 'f' should not produce CommandCharSearch")
+	}
+}

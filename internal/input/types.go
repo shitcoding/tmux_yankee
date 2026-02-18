@@ -16,6 +16,7 @@ const (
 	CommandToggleLineMode
 	CommandMouseScroll // set when a mouse wheel event is received
 	CommandYankLine    // yy: yank current line without requiring a visual selection
+	CommandCharSearch  // f/t/F/T/;/,: character search on current line
 )
 
 // ScrollDirection indicates mouse wheel direction for CommandMouseScroll.
@@ -27,12 +28,26 @@ const (
 	ScrollDown
 )
 
+// SearchKind indicates the type of character search for CommandCharSearch.
+type SearchKind int
+
+const (
+	SearchFindForward   SearchKind = iota // f — cursor ON char
+	SearchTillForward                     // t — cursor BEFORE char
+	SearchFindBackward                    // F — cursor ON char (backward)
+	SearchTillBackward                    // T — cursor AFTER char (backward)
+	SearchRepeat                          // ; — repeat last
+	SearchRepeatReverse                   // , — repeat last, reversed
+)
+
 // Command represents a parsed input command.
 type Command struct {
 	Type            CommandType
 	Motion          motion.Motion   // Only valid if Type == CommandMotion
 	Count           int             // Repeat count (0 if not specified)
-	ScrollDirection ScrollDirection // set when Type == CommandMouseScroll
+	ScrollDirection ScrollDirection  // set when Type == CommandMouseScroll
+	SearchKind      SearchKind      // valid when Type == CommandCharSearch
+	SearchChar      byte            // target character (0 for ;/,)
 }
 
 // Pending represents the parser's pending state for multi-key sequences.

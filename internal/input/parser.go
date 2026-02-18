@@ -118,8 +118,9 @@ func (p *Parser) parseInner(b byte) Command {
 		return Command{Type: CommandEscape}
 	}
 
-	// Handle pending 'g', 'z', or 'y' prefix first
-	if p.pending.Prefix == 'g' || p.pending.Prefix == 'z' || p.pending.Prefix == 'y' {
+	// Handle pending 'g', 'z', 'y', or char-search (f/t/F/T) prefix first
+	if p.pending.Prefix == 'g' || p.pending.Prefix == 'z' || p.pending.Prefix == 'y' ||
+		p.pending.Prefix == 'f' || p.pending.Prefix == 't' || p.pending.Prefix == 'F' || p.pending.Prefix == 'T' {
 		cmd := p.parsePrefixedKey(b)
 		p.clearPending()
 		return cmd
@@ -164,6 +165,12 @@ func (p *Parser) parseInner(b byte) Command {
 	// Handle 'y' prefix: 'yy' = yank current line (wait for second key)
 	if b == 'y' {
 		p.pending.Prefix = 'y'
+		return Command{Type: CommandNone}
+	}
+
+	// Handle f/t/F/T prefix: character search (wait for target char)
+	if b == 'f' || b == 'F' || b == 't' || b == 'T' {
+		p.pending.Prefix = b
 		return Command{Type: CommandNone}
 	}
 
@@ -227,6 +234,26 @@ func (p *Parser) parsePrefixedKey(b byte) Command {
 		default:
 			// Invalid sequence, clear pending
 			return Command{Type: CommandNone}
+		}
+	}
+
+	if p.pending.Prefix == 'f' || p.pending.Prefix == 't' || p.pending.Prefix == 'F' || p.pending.Prefix == 'T' {
+		var kind SearchKind
+		switch p.pending.Prefix {
+		case 'f':
+			kind = SearchFindForward
+		case 't':
+			kind = SearchTillForward
+		case 'F':
+			kind = SearchFindBackward
+		case 'T':
+			kind = SearchTillBackward
+		}
+		return Command{
+			Type:       CommandCharSearch,
+			SearchKind: kind,
+			SearchChar: b,
+			Count:      p.pending.Count,
 		}
 	}
 
@@ -348,6 +375,20 @@ func (p *Parser) parseCommand(b byte) Command {
 	case 27: // Escape
 		return Command{Type: CommandEscape}
 
+	// Character search repeat
+	case ';':
+		return Command{
+			Type:       CommandCharSearch,
+			SearchKind: SearchRepeat,
+			Count:      count,
+		}
+	case ',':
+		return Command{
+			Type:       CommandCharSearch,
+			SearchKind: SearchRepeatReverse,
+			Count:      count,
+		}
+
 	// Quit
 	case 'q', 3: // 'q' or Ctrl-C
 		return Command{Type: CommandQuit}
@@ -382,8 +423,9 @@ func (p *Parser) ClearPending() {
 // parseNormalByte processes a single byte through the normal (non-mouse) parse path.
 // This is used to handle a byte that follows an abandoned mouse prefix.
 func (p *Parser) parseNormalByte(b byte) Command {
-	// Handle pending 'g', 'z', or 'y' prefix first
-	if p.pending.Prefix == 'g' || p.pending.Prefix == 'z' || p.pending.Prefix == 'y' {
+	// Handle pending 'g', 'z', 'y', or char-search (f/t/F/T) prefix first
+	if p.pending.Prefix == 'g' || p.pending.Prefix == 'z' || p.pending.Prefix == 'y' ||
+		p.pending.Prefix == 'f' || p.pending.Prefix == 't' || p.pending.Prefix == 'F' || p.pending.Prefix == 'T' {
 		cmd := p.parsePrefixedKey(b)
 		p.clearPending()
 		return cmd
@@ -422,6 +464,12 @@ func (p *Parser) parseNormalByte(b byte) Command {
 	// Handle 'y' prefix: 'yy' = yank current line (wait for second key)
 	if b == 'y' {
 		p.pending.Prefix = 'y'
+		return Command{Type: CommandNone}
+	}
+
+	// Handle f/t/F/T prefix: character search (wait for target char)
+	if b == 'f' || b == 'F' || b == 't' || b == 'T' {
+		p.pending.Prefix = b
 		return Command{Type: CommandNone}
 	}
 
