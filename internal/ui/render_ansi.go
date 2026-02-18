@@ -334,3 +334,28 @@ func RenderLineWithPalette(rawLine string, cursorCol, selStart, selEnd int, maxW
 func RenderLine(rawLine string, cursorCol, selStart, selEnd int, maxWidth int) string {
 	return RenderLineWithPalette(rawLine, cursorCol, selStart, selEnd, maxWidth, theme.Palette{})
 }
+
+// RenderCellsWithPalette renders pre-parsed cells with cursor/selection overlay.
+// This is the performance-critical path: cells are pre-parsed at document load,
+// so this function does no ANSI parsing.
+func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, maxWidth int, pal theme.Palette) string {
+	if len(cells) > maxWidth {
+		cells = cells[:maxWidth]
+	}
+
+	var b strings.Builder
+
+	for i, cell := range cells {
+		inSelection := selStart >= 0 && i >= selStart && i <= selEnd
+		applyCursor := (i == cursorCol) && !inSelection
+		applySelection := inSelection
+		b.WriteString(RenderCellWithPalette(cell, applyCursor, applySelection, pal))
+	}
+
+	if cursorCol >= len(cells) && cursorCol >= 0 {
+		emptyCell := Cell{Rune: ' ', Style: Style{}}
+		b.WriteString(RenderCellWithPalette(emptyCell, true, false, pal))
+	}
+
+	return b.String()
+}

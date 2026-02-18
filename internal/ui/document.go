@@ -6,6 +6,7 @@ import "strings"
 type Line struct {
 	RawANSI string // Original line with ANSI escape codes
 	Plain   string // Line with ANSI codes stripped (for motion calculations)
+	Cells   []Cell // Pre-parsed ANSI cells (cached at load time to avoid per-frame reparse)
 }
 
 // Document holds pane content with color preservation.
@@ -20,6 +21,7 @@ func NewDocument(rawLines []string) *Document {
 		lines[i] = Line{
 			RawANSI: raw,
 			Plain:   stripANSI(raw),
+			Cells:   ParseANSILine(raw),
 		}
 	}
 	return &Document{lines: lines}
@@ -44,6 +46,15 @@ func (d *Document) RawLine(index int) string {
 		return ""
 	}
 	return d.lines[index].RawANSI
+}
+
+// Cells returns the pre-parsed ANSI cells for the line at the given index.
+// Returns nil for out-of-bounds indices.
+func (d *Document) Cells(index int) []Cell {
+	if index < 0 || index >= len(d.lines) {
+		return nil
+	}
+	return d.lines[index].Cells
 }
 
 // LineRuneCount returns the number of runes in the plain text line.

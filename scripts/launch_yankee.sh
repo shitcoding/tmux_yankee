@@ -166,44 +166,67 @@ popup_supported() {
     tmux display-popup -E -B -w 1 -h 1 "true" >/dev/null 2>&1
 }
 
-# Append a flag+value pair to _YANKEE_ARGS if the tmux option is non-empty.
-_append_yankee_opt() {
-    local tmux_opt="$1" flag="$2" val
-    val=$(tmux show-option -gqv "$tmux_opt")
-    if [ -n "$val" ]; then
-        _YANKEE_ARGS+=("$flag" "$val")
+# _get_yankee_opt_from_dump extracts a @yankee_* option value from a pre-fetched
+# tmux show-options -g dump. Prints the value, or empty string if the option is unset.
+# Args: $1 = option name (e.g. @yankee_mode), $2 = raw dump string
+_get_yankee_opt_from_dump() {
+    local opt="$1" dump="$2" line
+    # show-options -g format: "@opt_name value" one per line (value is unquoted for user options)
+    # grep returns 1 when no match; use || true to avoid tripping set -e / pipefail.
+    line=$(printf '%s\n' "$dump" | grep -m1 "^${opt} " || true)
+    if [[ -n "$line" ]]; then
+        printf '%s' "${line#"${opt} "}"
     fi
 }
 
 # Build the CLI argument array to pass to the tmux-yankee binary.
 # Populates the global _YANKEE_ARGS array and also emits it as null-delimited output.
-# Reads all @yankee_* tmux options and forwards non-empty values as flags.
+# Reads all @yankee_* tmux options in a single show-options call.
 build_yankee_args() {
+    # Fetch all global options in one subprocess call instead of one per option.
+    local opts_dump
+    opts_dump=$(tmux show-options -g 2>/dev/null || true)
+
     local mode
-    mode=$(tmux show-option -gqv @yankee_mode)
+    mode=$(_get_yankee_opt_from_dump @yankee_mode "$opts_dump")
     mode="${mode:-hybrid}"
 
     _YANKEE_ARGS=("--pane" "$PANE_ID" "--mode" "$mode")
 
-    _append_yankee_opt @yankee_scrollback_lines    --scrollback-lines
-    _append_yankee_opt @yankee_theme               --theme
-    _append_yankee_opt @yankee_cursor_fg           --cursor-fg
-    _append_yankee_opt @yankee_cursor_bg           --cursor-bg
-    _append_yankee_opt @yankee_selection_fg        --selection-fg
-    _append_yankee_opt @yankee_selection_bg        --selection-bg
-    _append_yankee_opt @yankee_gutter_fg           --gutter-fg
-    _append_yankee_opt @yankee_gutter_bg           --gutter-bg
-    _append_yankee_opt @yankee_gutter_separator_fg --gutter-separator-fg
-    _append_yankee_opt @yankee_linenum_absolute_fg --linenum-absolute-fg
-    _append_yankee_opt @yankee_linenum_relative_fg --linenum-relative-fg
-    _append_yankee_opt @yankee_linenum_cursor_fg   --linenum-cursor-fg
-    _append_yankee_opt @yankee_linenum_cursor_bold --linenum-cursor-bold
-    _append_yankee_opt @yankee_status_fg           --status-fg
-    _append_yankee_opt @yankee_status_bg           --status-bg
-    _append_yankee_opt @yankee_toggle_mode_key     --toggle-mode-key
-    _append_yankee_opt @yankee_copy_target         --copy-target
-    _append_yankee_opt @yankee_exit_on_yank        --exit-on-yank
-    _append_yankee_opt @yankee_start_position      --start-position
+    # Pairs: tmux option name, CLI flag
+    local opt_map
+    opt_map=(
+        "@yankee_scrollback_lines"    "--scrollback-lines"
+        "@yankee_theme"               "--theme"
+        "@yankee_cursor_fg"           "--cursor-fg"
+        "@yankee_cursor_bg"           "--cursor-bg"
+        "@yankee_selection_fg"        "--selection-fg"
+        "@yankee_selection_bg"        "--selection-bg"
+        "@yankee_gutter_fg"           "--gutter-fg"
+        "@yankee_gutter_bg"           "--gutter-bg"
+        "@yankee_gutter_separator_fg" "--gutter-separator-fg"
+        "@yankee_linenum_absolute_fg" "--linenum-absolute-fg"
+        "@yankee_linenum_relative_fg" "--linenum-relative-fg"
+        "@yankee_linenum_cursor_fg"   "--linenum-cursor-fg"
+        "@yankee_linenum_cursor_bold" "--linenum-cursor-bold"
+        "@yankee_status_fg"           "--status-fg"
+        "@yankee_status_bg"           "--status-bg"
+        "@yankee_toggle_mode_key"     "--toggle-mode-key"
+        "@yankee_copy_target"         "--copy-target"
+        "@yankee_exit_on_yank"        "--exit-on-yank"
+        "@yankee_start_position"      "--start-position"
+    )
+
+    local i
+    for (( i=0; i<${#opt_map[@]}; i+=2 )); do
+        local tmux_opt="${opt_map[i]}"
+        local flag="${opt_map[i+1]}"
+        local val
+        val=$(_get_yankee_opt_from_dump "$tmux_opt" "$opts_dump")
+        if [ -n "$val" ]; then
+            _YANKEE_ARGS+=("$flag" "$val")
+        fi
+    done
 
     printf '%s\0' "${_YANKEE_ARGS[@]}"
 }

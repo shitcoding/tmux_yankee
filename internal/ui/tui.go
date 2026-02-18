@@ -489,9 +489,6 @@ func (t *TUI) render() {
 		gutter := t.formatter.RenderGutter(i+1, t.cursorLine+1)
 		b.WriteString(gutter)
 
-		// Get raw ANSI line
-		rawLine := t.doc.RawLine(i)
-
 		// Calculate cursor and selection for this line
 		cursorCol := -1
 		selStart := -1
@@ -541,8 +538,8 @@ func (t *TUI) render() {
 		gutterWidth := len(stripANSI(gutter))
 		availableWidth := t.width - gutterWidth
 
-		// Render line with ANSI color preservation and cursor/selection overlay
-		renderedLine := RenderLineWithPalette(rawLine, cursorCol, selStart, selEnd, availableWidth, t.palette)
+		// Render line using pre-parsed cells (no per-frame ANSI reparse)
+		renderedLine := RenderCellsWithPalette(t.doc.Cells(i), cursorCol, selStart, selEnd, availableWidth, t.palette)
 		b.WriteString(renderedLine)
 
 		// Clear to end of line
