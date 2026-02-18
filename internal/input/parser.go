@@ -420,6 +420,20 @@ func (p *Parser) ClearPending() {
 	p.clearPending()
 }
 
+// Flush resolves any buffered ESC that is waiting for mouse sequence
+// disambiguation. Call this after processing all bytes from a single read
+// to avoid requiring a second keypress for standalone ESC.
+// Returns CommandEscape if a pending ESC was flushed, CommandNone otherwise.
+func (p *Parser) Flush() Command {
+	if !p.inMouse && len(p.mouseBuf) > 0 {
+		// Pending ESC (or ESC [) that didn't complete a mouse sequence.
+		// Treat it as a standalone ESC.
+		p.mouseBuf = nil
+		return Command{Type: CommandEscape}
+	}
+	return Command{Type: CommandNone}
+}
+
 // parseNormalByte processes a single byte through the normal (non-mouse) parse path.
 // This is used to handle a byte that follows an abandoned mouse prefix.
 func (p *Parser) parseNormalByte(b byte) Command {

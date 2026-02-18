@@ -497,3 +497,39 @@ func TestParser_CharSearch_EscapeCancelsPrefix(t *testing.T) {
 		t.Error("ESC after 'f' should not produce CommandCharSearch")
 	}
 }
+
+func TestParser_Flush_PendingESC(t *testing.T) {
+	p := NewParser()
+	// ESC gets buffered for mouse disambiguation
+	cmd := p.Parse(0x1b)
+	if cmd.Type != CommandNone {
+		t.Fatalf("ESC should buffer: got type %d", cmd.Type)
+	}
+	// Flush resolves it as standalone ESC
+	cmd = p.Flush()
+	if cmd.Type != CommandEscape {
+		t.Errorf("Flush after ESC: got type %d, want CommandEscape", cmd.Type)
+	}
+}
+
+func TestParser_Flush_NoOp(t *testing.T) {
+	p := NewParser()
+	// Nothing pending — flush is no-op
+	cmd := p.Flush()
+	if cmd.Type != CommandNone {
+		t.Errorf("Flush with nothing pending: got type %d, want CommandNone", cmd.Type)
+	}
+}
+
+func TestParser_Flush_MouseSequenceNotFlushed(t *testing.T) {
+	p := NewParser()
+	// Start a real mouse sequence: ESC [ <
+	p.Parse(0x1b)
+	p.Parse('[')
+	p.Parse('<')
+	// Now in mouse mode — Flush should NOT emit ESC
+	cmd := p.Flush()
+	if cmd.Type != CommandNone {
+		t.Errorf("Flush during mouse sequence: got type %d, want CommandNone", cmd.Type)
+	}
+}

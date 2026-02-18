@@ -180,6 +180,17 @@ func (t *TUI) Run() error {
 				needsRender = true
 			}
 
+			// Flush any pending ESC that wasn't followed by '[' in this read.
+			// Standalone ESC arrives as a single byte; mouse sequences (ESC [ <)
+			// arrive as a burst. Flushing here makes ESC responsive without
+			// needing a second keypress.
+			if flushCmd := t.parser.Flush(); flushCmd.Type != input.CommandNone {
+				if t.handleCommand(flushCmd) {
+					return nil
+				}
+				needsRender = true
+			}
+
 			// Re-render once after processing all bytes to reduce flicker
 			if needsRender {
 				t.render()
