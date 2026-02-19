@@ -83,9 +83,17 @@ set_normal_bindings() {
 }
 
 set_yankee_binding() {
-    local yankee_key
+    local yankee_key yankee_table
     yankee_key=$(get_tmux_option "@yankee_key" "N")
-    tmux bind-key "$yankee_key" run-shell -b "$SCRIPTS_DIR/launch_yankee.sh"
+    yankee_table=$(get_tmux_option "@yankee_key_table" "prefix")
+    if [[ -z "$yankee_key" ]]; then
+        return
+    fi
+    if [[ "$yankee_table" == "root" ]]; then
+        tmux bind-key -n "$yankee_key" run-shell -b "$SCRIPTS_DIR/launch_yankee.sh"
+    else
+        tmux bind-key "$yankee_key" run-shell -b "$SCRIPTS_DIR/launch_yankee.sh"
+    fi
 }
 
 set_scroll_bindings() {
