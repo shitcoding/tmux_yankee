@@ -249,6 +249,7 @@ build_yankee_args() {
         "@yankee_copy_target"         "--copy-target"
         "@yankee_exit_on_yank"        "--exit-on-yank"
         "@yankee_start_position"      "--start-position"
+        "@yankee_wrap_mode"           "--wrap-mode"
     )
 
     local i

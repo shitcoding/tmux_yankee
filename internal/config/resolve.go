@@ -49,6 +49,11 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		return Settings{}, fmt.Errorf("theme: %w", err)
 	}
 
+	wrapMode := WrapMode(opts.WrapMode)
+	if wrapMode != WrapModeScroll && wrapMode != WrapModeWrap {
+		wrapMode = WrapModeScroll
+	}
+
 	return Settings{
 		PaneID:          opts.PaneID,
 		Mode:            LineNumberMode(opts.Mode),
@@ -58,5 +63,6 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		CopyTarget:      CopyTarget(opts.CopyTarget),
 		ExitOnYank:      exitOnYank,
 		StartPosition:   StartPosition(opts.StartPosition),
+		WrapMode:        wrapMode,
 	}, nil
 }

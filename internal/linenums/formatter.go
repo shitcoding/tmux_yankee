@@ -89,6 +89,12 @@ func (f *Formatter) RenderGutter(lineNum, cursorLine int) string {
 	return ""
 }
 
+// RenderBlankGutter returns a blank gutter of the same visual width as a
+// normal line-number gutter. Used for wrap-continuation rows.
+func (f *Formatter) RenderBlankGutter() string {
+	return strings.Repeat(" ", f.gutterWidth) + " │ "
+}
+
 // hexFGWrap wraps text in a 24-bit foreground color escape + reset.
 // hex must be a "#rrggbb" string.
 func hexFGWrap(hex, text string) string {

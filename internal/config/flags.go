@@ -25,4 +25,5 @@ func RegisterFlags(fs *flag.FlagSet, opts *CLIOptions) {
 	fs.StringVar(&opts.CopyTarget, "copy-target", DefaultCopyTarget, "Copy destination (both, tmux, clipboard)")
 	fs.StringVar(&opts.ExitOnYank, "exit-on-yank", DefaultExitOnYank, "Exit TUI after yanking (on, off)")
 	fs.StringVar(&opts.StartPosition, "start-position", DefaultStartPosition, "Initial cursor position (top, middle, bottom)")
+	fs.StringVar(&opts.WrapMode, "wrap-mode", DefaultWrapMode, "Long line handling (scroll, wrap)")
 }

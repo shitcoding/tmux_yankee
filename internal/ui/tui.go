@@ -127,6 +127,20 @@ func (t *TUI) Run() error {
 		return fmt.Errorf("get terminal size failed: %w", err)
 	}
 
+	// Center cursor in viewport on startup (like vim's zz).
+	// clampViewportAndCursor only ensures the cursor is barely visible
+	// (at the edge); we want the initial view centered on the cursor.
+	if t.height > 0 && t.doc.LineCount() > 0 {
+		if t.cfg.WrapMode == config.WrapModeWrap {
+			t.centerViewportWrap(t.wrapContentWidth())
+		} else {
+			t.viewportTop = t.cursorLine - t.height/2
+			if t.viewportTop < 0 {
+				t.viewportTop = 0
+			}
+		}
+	}
+
 	// Clear screen and hide cursor
 	fmt.Print("\x1b[2J\x1b[?25l")
 
@@ -274,6 +288,19 @@ func (t *TUI) clampViewportAndCursor() {
 		return
 	}
 
+	if t.cfg.WrapMode == config.WrapModeWrap {
+		// Skip maxTop clamping (assumes 1 line = 1 display row).
+		// ensureCursorVisibleWrap handles wrap-aware viewport during render.
+		// Only enforce basic bounds here.
+		if t.viewportTop < 0 {
+			t.viewportTop = 0
+		}
+		if t.cursorLine < t.viewportTop {
+			t.viewportTop = t.cursorLine
+		}
+		return
+	}
+
 	// Keep viewport in valid range
 	maxTop := lineCount - t.height
 	if maxTop < 0 {
@@ -319,6 +346,83 @@ func (t *TUI) ensureCursorVisibleH(contentWidth int) {
 	}
 }
 
+// wrapContentWidth returns the number of content columns available after the
+// line-number gutter. Used by wrap-mode viewport helpers.
+func (t *TUI) wrapContentWidth() int {
+	sampleGutter := t.formatter.RenderGutter(1, 1)
+	gutterWidth := len(stripANSI(sampleGutter))
+	cw := t.width - gutterWidth
+	if cw < 1 {
+		cw = 1
+	}
+	return cw
+}
+
+// centerViewportWrap sets viewportTop so the cursor line starts approximately
+// at the vertical middle of the screen, accounting for wrapped display rows.
+// Used once on startup to give a centered initial view.
+func (t *TUI) centerViewportWrap(contentWidth int) {
+	if t.height <= 0 || contentWidth <= 0 {
+		return
+	}
+	targetRowsAbove := t.height / 2
+	rowsAbove := 0
+	vt := t.cursorLine
+	for vt > 0 {
+		chunks := wordWrapChunks(t.doc.Cells(vt-1), contentWidth)
+		if rowsAbove+len(chunks) > targetRowsAbove {
+			break
+		}
+		rowsAbove += len(chunks)
+		vt--
+	}
+	t.viewportTop = vt
+}
+
+// ensureCursorVisibleWrap adjusts viewportTop so the cursor line is visible
+// when lines may occupy more than one display row due to word wrapping.
+// Called at the start of renderWrap, after clampViewportAndCursor has done
+// rough (1-line = 1-row) clamping.
+func (t *TUI) ensureCursorVisibleWrap(contentWidth int) {
+	if t.height <= 0 || contentWidth <= 0 {
+		return
+	}
+
+	// If cursor is above viewport, snap viewport to cursor.
+	if t.cursorLine < t.viewportTop {
+		t.viewportTop = t.cursorLine
+	}
+
+	// Count display rows from viewportTop to the cursor line's first row.
+	// If that exceeds t.height, advance viewportTop one content line at a time.
+	for {
+		rows := 0
+		cursorFirstRow := 0
+		lineCount := t.doc.LineCount()
+		for i := t.viewportTop; i < lineCount; i++ {
+			chunks := wordWrapChunks(t.doc.Cells(i), contentWidth)
+			if i == t.cursorLine {
+				cursorFirstRow = rows
+			}
+			rows += len(chunks)
+			// Early exit: we've counted past the cursor and past the screen.
+			if i > t.cursorLine && rows >= t.height {
+				break
+			}
+		}
+
+		if cursorFirstRow < t.height {
+			break // cursor is visible
+		}
+		// Advance viewportTop by one line and retry.
+		t.viewportTop++
+		if t.viewportTop > t.cursorLine {
+			t.viewportTop = t.cursorLine
+			break
+		}
+	}
+}
+
 // handleInput processes keyboard input
 // Returns true if should quit
 func (t *TUI) handleInput(key []byte) bool {
@@ -356,7 +460,22 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		// Update cursor and viewport
 		t.cursorLine = result.Cursor.Line
 		t.cursorCol = result.Cursor.Col
-		t.viewportTop = result.Viewport.Top
+		if t.cfg.WrapMode == config.WrapModeWrap {
+			// In wrap mode, only accept viewport from motions that intentionally
+			// reposition it. For cursor-only motions, keep the current viewport
+			// and let ensureCursorVisibleWrap handle it during render (the motion
+			// handler's adjustViewport assumes 1 line = 1 display row).
+			switch cmd.Motion {
+			case motion.MotionViewportCenter:
+				// zz: wrap-aware centering (the motion handler assumes 1 line = 1 row)
+				t.centerViewportWrap(t.wrapContentWidth())
+			case motion.MotionHalfPageUp, motion.MotionHalfPageDown,
+				motion.MotionViewportTop, motion.MotionViewportBottom:
+				t.viewportTop = result.Viewport.Top
+			}
+		} else {
+			t.viewportTop = result.Viewport.Top
+		}
 
 		// Notify mode machine of cursor movement
 		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
@@ -538,24 +657,85 @@ func (t *TUI) toggleMode() {
 	}
 }
 
+// lineSelection computes cursor column and selection range for a given line
+// relative to the current mode machine region.
+func (t *TUI) lineSelection(lineIdx int, region selection.Region) (cursorCol, selStart, selEnd int) {
+	cursorCol = -1
+	selStart = -1
+	selEnd = -1
+
+	if lineIdx == t.cursorLine {
+		cursorCol = t.cursorCol
+	}
+
+	if region.Kind == selection.KindNone {
+		return
+	}
+
+	start, end := region.Start, region.End
+	if start.Line > end.Line || (start.Line == end.Line && start.Col > end.Col) {
+		start, end = end, start
+	}
+
+	if region.Kind == selection.KindChar {
+		if lineIdx == start.Line && lineIdx == end.Line {
+			selStart = start.Col
+			selEnd = end.Col
+		} else if lineIdx == start.Line {
+			selStart = start.Col
+			selEnd = 9999
+		} else if lineIdx == end.Line {
+			selStart = 0
+			selEnd = end.Col
+		} else if lineIdx > start.Line && lineIdx < end.Line {
+			selStart = 0
+			selEnd = 9999
+		}
+	} else if region.Kind == selection.KindLine {
+		if lineIdx >= start.Line && lineIdx <= end.Line {
+			selStart = 0
+			selEnd = 9999
+		}
+	}
+	return
+}
+
+// bgEscape returns the ANSI escape sequence to set the background color from
+// a cell's Style. Returns empty string if the style has default background.
+func bgEscape(s Style) string {
+	if s.BgColor == -1 {
+		return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", s.BgR, s.BgG, s.BgB)
+	}
+	if s.BgColor >= 256 {
+		return fmt.Sprintf("\x1b[48;5;%dm", s.BgColor-256)
+	}
+	if s.BgColor > 0 {
+		return fmt.Sprintf("\x1b[%dm", s.BgColor)
+	}
+	return ""
+}
+
 // render draws the TUI
 func (t *TUI) render() {
-	var b strings.Builder
+	if t.cfg.WrapMode == config.WrapModeWrap {
+		t.renderWrap()
+	} else {
+		t.renderScroll()
+	}
+}
 
-	// Move cursor to top-left
+// renderScroll renders with horizontal scrolling (default mode).
+func (t *TUI) renderScroll() {
+	var b strings.Builder
 	b.WriteString("\x1b[H")
 
-	// Calculate visible range
 	endLine := t.viewportTop + t.height
 	if endLine > t.doc.LineCount() {
 		endLine = t.doc.LineCount()
 	}
 
-	// Get selection region from mode machine
 	region := t.modeMachine.Region()
 
-	// Compute gutter width once (same for all lines in a frame).
-	// Use a sample gutter to measure; the width depends on maxLine digits, not content.
 	sampleGutter := t.formatter.RenderGutter(1, 1)
 	gutterWidth := len(stripANSI(sampleGutter))
 	contentWidth := t.width - gutterWidth
@@ -563,79 +743,172 @@ func (t *TUI) render() {
 		contentWidth = 0
 	}
 
-	// Ensure cursor is horizontally visible before rendering.
 	t.ensureCursorVisibleH(contentWidth)
 
-	// Render visible lines
 	for i := t.viewportTop; i < endLine; i++ {
-		// Render line number gutter (1-indexed for display)
 		gutter := t.formatter.RenderGutter(i+1, t.cursorLine+1)
 		b.WriteString(gutter)
 
-		// Calculate cursor and selection for this line
-		cursorCol := -1
-		selStart := -1
-		selEnd := -1
+		cursorCol, selStart, selEnd := t.lineSelection(i, region)
 
-		if i == t.cursorLine {
-			cursorCol = t.cursorCol
-		}
-
-		// Determine selection range for this line based on region kind
-		if region.Kind != selection.KindNone {
-			// Normalize region (swap if backwards)
-			start, end := region.Start, region.End
-			if start.Line > end.Line || (start.Line == end.Line && start.Col > end.Col) {
-				start, end = end, start
-			}
-
-			if region.Kind == selection.KindChar {
-				// Character-wise selection - column precision
-				if i == start.Line && i == end.Line {
-					// Single line selection
-					selStart = start.Col
-					selEnd = end.Col
-				} else if i == start.Line {
-					// First line of multi-line selection
-					selStart = start.Col
-					selEnd = 9999 // To end of line
-				} else if i == end.Line {
-					// Last line of multi-line selection
-					selStart = 0
-					selEnd = end.Col
-				} else if i > start.Line && i < end.Line {
-					// Middle line - select entire line
-					selStart = 0
-					selEnd = 9999
-				}
-			} else if region.Kind == selection.KindLine {
-				// Line-wise selection - entire lines
-				if i >= start.Line && i <= end.Line {
-					selStart = 0
-					selEnd = 9999
-				}
-			}
-		}
-
-		// Render line using pre-parsed cells (no per-frame ANSI reparse)
 		renderedLine := RenderCellsWithPalette(t.doc.Cells(i), cursorCol, selStart, selEnd, t.hOffset, contentWidth, t.palette)
 		b.WriteString(renderedLine)
-
-		// Clear to end of line
 		b.WriteString("\x1b[K")
 
-		// Newline if not last line
 		if i < endLine-1 {
 			b.WriteString("\r\n")
 		}
 	}
 
-	// Clear remaining lines
 	for i := endLine - t.viewportTop; i < t.height; i++ {
 		b.WriteString("\r\n\x1b[K")
 	}
 
-	// Write to stdout
+	fmt.Print(b.String())
+}
+
+// wrapChunk represents a contiguous slice of cells within a single display row.
+// Indices are cell positions [start, end) within the parent line's cell array.
+type wrapChunk struct {
+	start, end int
+}
+
+// trimTrailingSpaceCells returns the effective length of cells after stripping
+// trailing ASCII spaces. Used only in wrap layout: lines captured from tmux
+// are padded with spaces to the original pane width, which causes unnecessary
+// wrapping when the gutter reduces available content columns.
+func trimTrailingSpaceCells(cells []Cell) int {
+	n := len(cells)
+	for n > 0 && cells[n-1].Rune == ' ' {
+		n--
+	}
+	return n
+}
+
+// wordWrapChunks splits a line's cells into display-row chunks that break at
+// word boundaries (spaces). If no space is found within a chunk, it hard-wraps
+// at contentWidth as a fallback for long unbroken words.
+// Trailing spaces are trimmed before chunking to prevent unnecessary wrapping
+// of lines padded by tmux capture-pane.
+func wordWrapChunks(cells []Cell, contentWidth int) []wrapChunk {
+	n := trimTrailingSpaceCells(cells)
+	if n == 0 {
+		return []wrapChunk{{0, 0}}
+	}
+	if contentWidth <= 0 {
+		return []wrapChunk{{0, n}}
+	}
+
+	var chunks []wrapChunk
+	pos := 0
+	for pos < n {
+		end := pos + contentWidth
+		if end >= n {
+			// Remaining cells fit in one row.
+			chunks = append(chunks, wrapChunk{pos, n})
+			break
+		}
+		// Search backwards from the break point for a space to wrap after.
+		breakAt := -1
+		for j := end - 1; j > pos; j-- {
+			if cells[j].Rune == ' ' {
+				breakAt = j + 1 // include the space in this chunk
+				break
+			}
+		}
+		if breakAt < 0 {
+			// No space found — hard wrap at contentWidth.
+			breakAt = end
+		}
+		chunks = append(chunks, wrapChunk{pos, breakAt})
+		pos = breakAt
+	}
+	return chunks
+}
+
+// renderWrap renders with line wrapping — long lines span multiple display rows.
+// Uses word-boundary wrapping so lines break at spaces when possible.
+func (t *TUI) renderWrap() {
+	var b strings.Builder
+	b.WriteString("\x1b[H")
+
+	// In wrap mode, horizontal offset is always 0.
+	t.hOffset = 0
+
+	region := t.modeMachine.Region()
+
+	sampleGutter := t.formatter.RenderGutter(1, 1)
+	gutterWidth := len(stripANSI(sampleGutter))
+	contentWidth := t.width - gutterWidth
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+	blankGutter := t.formatter.RenderBlankGutter()
+
+	// Adjust viewport so cursor is on-screen (wrap-aware).
+	t.ensureCursorVisibleWrap(contentWidth)
+
+	displayRow := 0
+	lineCount := t.doc.LineCount()
+
+	for i := t.viewportTop; i < lineCount && displayRow < t.height; i++ {
+		cells := t.doc.Cells(i)
+		cursorCol, selStart, selEnd := t.lineSelection(i, region)
+
+		chunks := wordWrapChunks(cells, contentWidth)
+
+		// Render each chunk (display row) of this content line
+		for ci, chunk := range chunks {
+			if displayRow >= t.height {
+				break
+			}
+			// Gutter: line number on first chunk, blank on continuation
+			if ci == 0 {
+				gutter := t.formatter.RenderGutter(i+1, t.cursorLine+1)
+				b.WriteString(gutter)
+			} else {
+				b.WriteString(blankGutter)
+			}
+
+			chunkWidth := chunk.end - chunk.start
+			// For the last chunk of the cursor line, use full contentWidth
+			// so the cursor can be rendered past the end of text.
+			maxWidth := chunkWidth
+			if i == t.cursorLine && ci == len(chunks)-1 {
+				maxWidth = contentWidth
+			}
+
+			renderedLine := RenderCellsWithPalette(cells, cursorCol, selStart, selEnd, chunk.start, maxWidth, t.palette)
+			b.WriteString(renderedLine)
+			// Extend the last cell's background through \x1b[K so that
+			// full-width highlights (e.g. git diff) don't break on wrapped rows.
+			if chunkWidth < contentWidth && chunk.end > chunk.start && chunk.end-1 < len(cells) {
+				if bg := bgEscape(cells[chunk.end-1].Style); bg != "" {
+					b.WriteString(bg)
+					b.WriteString("\x1b[K\x1b[0m")
+				} else {
+					b.WriteString("\x1b[K")
+				}
+			} else {
+				b.WriteString("\x1b[K")
+			}
+
+			displayRow++
+			if displayRow < t.height {
+				b.WriteString("\r\n")
+			}
+		}
+	}
+
+	// Clear remaining display rows
+	for displayRow < t.height {
+		if displayRow > 0 {
+			b.WriteString("\r\n")
+		}
+		b.WriteString("\x1b[K")
+		displayRow++
+	}
+
 	fmt.Print(b.String())
 }
 

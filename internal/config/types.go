@@ -26,6 +26,13 @@ const (
 	StartPositionBottom StartPosition = "bottom"
 )
 
+type WrapMode string
+
+const (
+	WrapModeScroll WrapMode = "scroll"
+	WrapModeWrap   WrapMode = "wrap"
+)
+
 // CLIOptions holds raw string values from CLI flags before validation.
 type CLIOptions struct {
 	PaneID          string
@@ -51,6 +58,7 @@ type CLIOptions struct {
 	CopyTarget    string
 	ExitOnYank    string
 	StartPosition string
+	WrapMode      string
 }
 
 // Settings is the validated, typed settings passed into the TUI.
@@ -65,4 +73,5 @@ type Settings struct {
 	CopyTarget    CopyTarget
 	ExitOnYank    bool
 	StartPosition StartPosition
+	WrapMode      WrapMode
 }

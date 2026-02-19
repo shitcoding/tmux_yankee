@@ -8,6 +8,7 @@ const (
 	DefaultCopyTarget      = "both"
 	DefaultExitOnYank      = "on"
 	DefaultStartPosition   = "bottom"
+	DefaultWrapMode        = "scroll"
 	MinScrollbackLines     = 100
 	MaxScrollbackLines     = 200000
 )
