@@ -117,12 +117,15 @@ set_scroll_bindings() {
 }
 
 main() {
+    # Register yankee bindings first — they don't need a clipboard command
+    # and must not be blocked by the early exit in error_handling_if_command_not_present.
+    set_yankee_binding
+    set_scroll_bindings
+
     local copy_command
     copy_command="$(clipboard_copy_command)"
     error_handling_if_command_not_present "$copy_command"
     set_copy_mode_bindings "$copy_command"
     set_normal_bindings
-    set_yankee_binding
-    set_scroll_bindings
 }
 main

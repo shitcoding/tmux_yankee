@@ -20,9 +20,9 @@ main() {
     # shellcheck disable=SC2119
     copy_command="$(clipboard_copy_command)"
     payload="$(pane_current_path | tr -d '\n')"
-    # $copy_command below should not be quoted
-    echo "$payload" | $copy_command
-    tmux set-buffer "$payload"
+    # eval is needed because $copy_command may contain shell operators (e.g., pipelines on WSL).
+    echo "$payload" | eval "$copy_command"
+    tmux set-buffer -- "$payload"
     display_notice
 }
 main

@@ -1,5 +1,4 @@
-#!bash
-# shellcheck disable=SC2239
+#!/usr/bin/env bash
 
 yank_line="y"
 yank_line_option="@yank_line"
@@ -41,12 +40,26 @@ override_copy_command_default=""
 override_copy_command_option="@override_copy_command"
 
 # helper functions
+
+# Cache all global tmux options in a single call to avoid repeated subprocesses.
+# Loaded eagerly at source time so subshells ($() calls) inherit the cache.
+_tmux_options_cache=$(tmux show-options -g 2>/dev/null || true)
+
 get_tmux_option() {
     local option="$1"
     local default_value="$2"
-    local option_value
-    option_value=$(tmux show-option -gqv "$option")
-    if [ -z "$option_value" ]; then
+    # Search cache: option lines are "option-name value" or "option-name \"value\""
+    local line
+    line=$(echo "$_tmux_options_cache" | grep -E "^${option} " || true)
+    if [[ -z "$line" ]]; then
+        echo "$default_value"
+        return
+    fi
+    # Extract value: everything after first space, strip surrounding quotes
+    local option_value="${line#* }"
+    option_value="${option_value#\"}"
+    option_value="${option_value%\"}"
+    if [[ -z "$option_value" ]]; then
         echo "$default_value"
     else
         echo "$option_value"
@@ -176,6 +189,12 @@ clipboard_copy_command() {
 # Cache the TMUX version for speed.
 tmux_version="$(tmux -V | cut -d ' ' -f 2 | sed 's/next-//')"
 
+# Strip non-digit suffixes from a version segment (e.g., "5a" → "5", "" → "0").
+_version_segment_to_int() {
+    local seg="${1//[^0-9]/}"
+    echo "${seg:-0}"
+}
+
 tmux_is_at_least() {
     if [[ $tmux_version == "$1" ]] || [[ $tmux_version == master ]]; then
         return 0
@@ -197,10 +216,13 @@ tmux_is_at_least() {
     done
 
     for ((i = 0; i < ${#current_version[@]}; i++)); do
-        if ((10#${current_version[i]} < 10#${wanted_version[i]})); then
+        local cur_seg wan_seg
+        cur_seg=$(_version_segment_to_int "${current_version[i]}")
+        wan_seg=$(_version_segment_to_int "${wanted_version[i]}")
+        if ((10#$cur_seg < 10#$wan_seg)); then
             return 1
         fi
-        if ((10#${current_version[i]} > 10#${wanted_version[i]})); then
+        if ((10#$cur_seg > 10#$wan_seg)); then
             return 0
         fi
     done

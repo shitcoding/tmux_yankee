@@ -19,8 +19,9 @@ if [ -z "$copy_command" ]; then
     exit 1
 fi
 
-# Copy stdin to clipboard with error handling
-if ! $copy_command; then
+# Copy stdin to clipboard with error handling.
+# eval is needed because $copy_command may contain shell operators (e.g., "cat | clip.exe" on WSL).
+if ! eval "$copy_command"; then
     display_message "tmux-yankee: Clipboard copy failed. Text saved to tmux buffer only."
     exit 1
 fi
