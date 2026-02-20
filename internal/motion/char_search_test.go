@@ -207,6 +207,26 @@ func TestApplyCharSearch_NonASCIINoFalseMatch(t *testing.T) {
 	}
 }
 
+func TestApplyCharSearch_Latin1Character(t *testing.T) {
+	// 'é' (U+00E9, byte 0xE9) should be findable via char search
+	doc := &charSearchDoc{lines: []string{"café"}}
+	h := NewVimHandler()
+	got := h.ApplyCharSearch(doc, Cursor{0, 0}, CharSearchFindForward, 0xE9, 1)
+	if got.Col != 3 {
+		t.Errorf("Latin-1 char search: col = %d, want 3", got.Col)
+	}
+}
+
+func TestApplyCharSearch_Latin1Backward(t *testing.T) {
+	// Backward search for 'é' from end
+	doc := &charSearchDoc{lines: []string{"café latte"}}
+	h := NewVimHandler()
+	got := h.ApplyCharSearch(doc, Cursor{0, 9}, CharSearchFindBackward, 0xE9, 1)
+	if got.Col != 3 {
+		t.Errorf("Latin-1 backward: col = %d, want 3", got.Col)
+	}
+}
+
 func TestApplyCharSearch_EmptyLine(t *testing.T) {
 	doc := &charSearchDoc{lines: []string{""}}
 	h := NewVimHandler()

@@ -10,20 +10,20 @@ func TestResolve_DefaultPreset(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if p.Cursor.FG != "#1d2021" {
-		t.Errorf("Cursor.FG: got %q, want %q", p.Cursor.FG, "#1d2021")
+	if p.Cursor.FG != "#ebdbb2" {
+		t.Errorf("Cursor.FG: got %q, want %q", p.Cursor.FG, "#ebdbb2")
 	}
-	if p.Cursor.BG != "#fe8018" {
-		t.Errorf("Cursor.BG: got %q, want %q", p.Cursor.BG, "#fe8018")
+	if p.Cursor.BG != "#FF8700" {
+		t.Errorf("Cursor.BG: got %q, want %q", p.Cursor.BG, "#FF8700")
 	}
-	if p.Selection.FG != "#fbf1c7" {
-		t.Errorf("Selection.FG: got %q, want %q", p.Selection.FG, "#fbf1c7")
+	if p.Selection.FG != "" {
+		t.Errorf("Selection.FG: got %q, want %q", p.Selection.FG, "")
 	}
-	if p.Selection.BG != "#458588" {
-		t.Errorf("Selection.BG: got %q, want %q", p.Selection.BG, "#458588")
+	if p.Selection.BG != "#FF8700" {
+		t.Errorf("Selection.BG: got %q, want %q", p.Selection.BG, "#FF8700")
 	}
-	if p.Gutter.FG != "#a89984" {
-		t.Errorf("Gutter.FG: got %q, want %q", p.Gutter.FG, "#a89984")
+	if p.Gutter.FG != "#665c54" {
+		t.Errorf("Gutter.FG: got %q, want %q", p.Gutter.FG, "#665c54")
 	}
 	if p.Gutter.SeparatorFG != "" {
 		t.Errorf("Gutter.SeparatorFG: got %q, want %q", p.Gutter.SeparatorFG, "")
@@ -31,20 +31,20 @@ func TestResolve_DefaultPreset(t *testing.T) {
 	if p.Gutter.SeparatorChar != "│" {
 		t.Errorf("Gutter.SeparatorChar: got %q, want %q", p.Gutter.SeparatorChar, "│")
 	}
-	if p.LineNum.AbsoluteFG != "#d5c4a1" {
-		t.Errorf("LineNum.AbsoluteFG: got %q, want %q", p.LineNum.AbsoluteFG, "#d5c4a1")
+	if p.LineNum.AbsoluteFG != "#7c6f64" {
+		t.Errorf("LineNum.AbsoluteFG: got %q, want %q", p.LineNum.AbsoluteFG, "#7c6f64")
 	}
-	if p.LineNum.RelativeFG != "#fabd2f" {
-		t.Errorf("LineNum.RelativeFG: got %q, want %q", p.LineNum.RelativeFG, "#fabd2f")
+	if p.LineNum.RelativeFG != "#7c6f64" {
+		t.Errorf("LineNum.RelativeFG: got %q, want %q", p.LineNum.RelativeFG, "#7c6f64")
 	}
-	if p.LineNum.CursorFG != "#b8bb26" {
-		t.Errorf("LineNum.CursorFG: got %q, want %q", p.LineNum.CursorFG, "#b8bb26")
+	if p.LineNum.CursorFG != "#FF8700" {
+		t.Errorf("LineNum.CursorFG: got %q, want %q", p.LineNum.CursorFG, "#FF8700")
 	}
 	if !p.LineNum.CursorStyle.Bold {
 		t.Errorf("LineNum.CursorStyle.Bold: got false, want true")
 	}
-	if p.Status.FG != "#ebdbb2" {
-		t.Errorf("Status.FG: got %q, want %q", p.Status.FG, "#ebdbb2")
+	if p.Status.FG != "#a89984" {
+		t.Errorf("Status.FG: got %q, want %q", p.Status.FG, "#a89984")
 	}
 	if p.Status.BG != "#3c3836" {
 		t.Errorf("Status.BG: got %q, want %q", p.Status.BG, "#3c3836")
@@ -65,11 +65,11 @@ func TestResolve_OverridePrecedence(t *testing.T) {
 		t.Errorf("Cursor.FG: got %q, want %q", p.Cursor.FG, "#aabbcc")
 	}
 	// All other fields should remain as preset values
-	if p.Cursor.BG != "#fe8018" {
-		t.Errorf("Cursor.BG: got %q, want %q (should not be overridden)", p.Cursor.BG, "#fe8018")
+	if p.Cursor.BG != "#FF8700" {
+		t.Errorf("Cursor.BG: got %q, want %q (should not be overridden)", p.Cursor.BG, "#FF8700")
 	}
-	if p.Selection.FG != "#fbf1c7" {
-		t.Errorf("Selection.FG: got %q, want %q (should not be overridden)", p.Selection.FG, "#fbf1c7")
+	if p.Selection.FG != "" {
+		t.Errorf("Selection.FG: got %q, want %q (should not be overridden)", p.Selection.FG, "")
 	}
 }
 
@@ -132,9 +132,9 @@ func TestResolve_AllFivePresets(t *testing.T) {
 		name   ThemeName
 		wantBG HexColor
 	}{
-		{ThemeDefault, "#fe8018"},
+		{ThemeDefault, "#FF8700"},
 		{ThemeDracula, "#ffb86c"},
-		{ThemeGruvbox, "#fe8019"},
+		{ThemeGruvbox, "#3c3836"},
 		{ThemeNord, "#88c0d0"},
 		{ThemeSolarized, "#cb4b16"},
 	}

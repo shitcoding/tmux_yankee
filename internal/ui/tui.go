@@ -56,6 +56,11 @@ type TUI struct {
 	oldState       *term.State
 	displayGoalCol int  // desired display column within wrapped row (for gj/gk)
 	hasDisplayGoal bool // whether displayGoalCol is set
+	dirty          bool // true when visible state changed and render is needed
+
+	// Wrap chunk cache: avoids recomputing wordWrapChunks for the same line+width
+	wrapCache      map[int][]wrapChunk // line index → chunks
+	wrapCacheWidth int                 // contentWidth used to populate wrapCache
 
 	// Demo mode fields
 	isDemo          bool
@@ -261,8 +266,8 @@ func (t *TUI) Run() error {
 				return fmt.Errorf("read failed: %w", event.err)
 			}
 
-			// Process each byte individually to handle rapid key presses
-			needsRender := false
+			// Process each byte individually to handle rapid key presses.
+			// Only render when visible state actually changes (dirty flag).
 			for i := 0; i < len(event.data); i++ {
 				key := event.data[i : i+1]
 
@@ -271,8 +276,6 @@ func (t *TUI) Run() error {
 				if quit {
 					return nil
 				}
-
-				needsRender = true
 			}
 
 			// Flush any pending ESC that wasn't followed by '[' in this read.
@@ -283,12 +286,12 @@ func (t *TUI) Run() error {
 				if t.handleCommand(flushCmd) {
 					return nil
 				}
-				needsRender = true
 			}
 
-			// Re-render once after processing all bytes to reduce flicker
-			if needsRender {
+			// Re-render once after processing all bytes, only if state changed
+			if t.dirty {
 				t.render()
+				t.dirty = false
 			}
 
 		case <-resizeCh:
@@ -449,7 +452,7 @@ func (t *TUI) centerViewportWrap(contentWidth int) {
 	rowsAbove := 0
 	vt := t.cursorLine
 	for vt > 0 {
-		chunks := wordWrapChunks(t.doc.Cells(vt-1), contentWidth)
+		chunks := t.cachedWrapChunks(vt-1, t.doc.Cells(vt-1), contentWidth)
 		if rowsAbove+len(chunks) > targetRowsAbove {
 			break
 		}
@@ -480,7 +483,7 @@ func (t *TUI) ensureCursorVisibleWrap(contentWidth int) {
 		cursorFirstRow := 0
 		lineCount := t.doc.LineCount()
 		for i := t.viewportTop; i < lineCount; i++ {
-			chunks := wordWrapChunks(t.doc.Cells(i), contentWidth)
+			chunks := t.cachedWrapChunks(i, t.doc.Cells(i), contentWidth)
 			if i == t.cursorLine {
 				cursorFirstRow = rows
 			}
@@ -518,6 +521,7 @@ func (t *TUI) handleInput(key []byte) bool {
 		// rather than waiting for a second key (like 'yy' for yank-line).
 		if t.parser.HasPendingYPrefix() && t.modeMachine.Mode() != vmode.Normal {
 			t.parser.ClearPending()
+			t.dirty = true
 			return t.yank()
 		}
 		return false
@@ -540,7 +544,7 @@ func (t *TUI) moveDisplayLine(delta int) {
 
 	// Find which display row within the current line we're on.
 	cells := t.doc.Cells(t.cursorLine)
-	chunks := wordWrapChunks(cells, contentWidth)
+	chunks := t.cachedWrapChunks(t.cursorLine, cells, contentWidth)
 
 	// Determine current chunk index and display column within it.
 	chunkIdx := 0
@@ -550,7 +554,12 @@ func (t *TUI) moveDisplayLine(delta int) {
 			break
 		}
 	}
-	displayCol := t.cursorCol - chunks[chunkIdx].start
+	// Calculate display column (terminal columns) from chunk start to cursor,
+	// accounting for wide characters (CJK, emoji).
+	displayCol := 0
+	for ci := chunks[chunkIdx].start; ci < t.cursorCol && ci < chunks[chunkIdx].end; ci++ {
+		displayCol += runeDisplayWidth(cells[ci].Rune)
+	}
 
 	// Set goal column on first gj/gk; reuse on subsequent ones.
 	if !t.hasDisplayGoal {
@@ -574,12 +583,12 @@ func (t *TUI) moveDisplayLine(delta int) {
 					line = lineCount - 1
 					// Stay on last chunk of last line.
 					cells = t.doc.Cells(line)
-					chunks = wordWrapChunks(cells, contentWidth)
+					chunks = t.cachedWrapChunks(line, cells, contentWidth)
 					ci = len(chunks) - 1
 					break
 				}
 				cells = t.doc.Cells(line)
-				chunks = wordWrapChunks(cells, contentWidth)
+				chunks = t.cachedWrapChunks(line, cells, contentWidth)
 				ci = 0
 			}
 			remaining--
@@ -596,30 +605,40 @@ func (t *TUI) moveDisplayLine(delta int) {
 				if line < 0 {
 					line = 0
 					cells = t.doc.Cells(line)
-					chunks = wordWrapChunks(cells, contentWidth)
+					chunks = t.cachedWrapChunks(line, cells, contentWidth)
 					ci = 0
 					break
 				}
 				cells = t.doc.Cells(line)
-				chunks = wordWrapChunks(cells, contentWidth)
+				chunks = t.cachedWrapChunks(line, cells, contentWidth)
 				ci = len(chunks) - 1
 			}
 			remaining--
 		}
 	}
 
-	// Apply goal column in target chunk.
+	// Apply goal column in target chunk using display-column-aware positioning.
+	// Walk display columns from chunk start until we reach the goal column,
+	// correctly handling wide characters (CJK, emoji).
 	ch := chunks[ci]
-	chunkLen := ch.end - ch.start
-	col := t.displayGoalCol
-	if col >= chunkLen {
-		col = chunkLen - 1
+	col := ch.start
+	displayCols := 0
+	for col < ch.end && col < len(cells) {
+		w := runeDisplayWidth(cells[col].Rune)
+		if displayCols+w > t.displayGoalCol {
+			break
+		}
+		displayCols += w
+		col++
 	}
-	if col < 0 {
-		col = 0
+	if col >= ch.end {
+		col = ch.end - 1
+	}
+	if col < ch.start {
+		col = ch.start
 	}
 	t.cursorLine = line
-	t.cursorCol = ch.start + col
+	t.cursorCol = col
 }
 
 // handleCommand executes a parsed command. Returns true if the TUI should exit.
@@ -755,6 +774,9 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		}
 	}
 
+	// All commands reaching this point changed visible state.
+	t.dirty = true
+
 	// Reset display goal column on any command that isn't gj/gk.
 	if cmd.Type != input.CommandDisplayLineDown && cmd.Type != input.CommandDisplayLineUp {
 		t.hasDisplayGoal = false
@@ -799,12 +821,19 @@ func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
 	}
 	lastLine := lineCount - 1
 
+	// In wrap mode, scroll by 1 logical line instead of scrollStep because
+	// a single logical line can span many display rows when wrapped.
+	step := scrollStep
+	if t.cfg.WrapMode == config.WrapModeOn {
+		step = 1
+	}
+
 	// Viewport-scroll path: content is taller than the terminal window.
 	if t.height > 0 && lineCount > t.height {
 		maxViewportTop := lastLine - t.height + 1
 		switch dir {
 		case input.ScrollUp:
-			t.viewportTop -= scrollStep
+			t.viewportTop -= step
 			if t.viewportTop < 0 {
 				t.viewportTop = 0
 			}
@@ -813,13 +842,14 @@ func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
 				t.cursorLine = newBottom
 			}
 			t.clampViewportAndCursor()
+			t.dirty = true
 			return false
 
 		case input.ScrollDown:
 			if t.viewportTop >= maxViewportTop {
 				return true // viewport already at bottom of content: overscroll → exit
 			}
-			t.viewportTop += scrollStep
+			t.viewportTop += step
 			if t.viewportTop > maxViewportTop {
 				t.viewportTop = maxViewportTop
 			}
@@ -828,6 +858,7 @@ func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
 				t.cursorLine = t.viewportTop
 			}
 			t.clampViewportAndCursor()
+			t.dirty = true
 			return false
 		}
 	}
@@ -838,6 +869,7 @@ func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
 		if t.cursorLine > 0 {
 			t.cursorLine--
 			t.clampViewportAndCursor()
+			t.dirty = true
 		}
 		return false
 	case input.ScrollDown:
@@ -846,6 +878,7 @@ func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
 		}
 		t.cursorLine++
 		t.clampViewportAndCursor()
+		t.dirty = true
 		return false
 	}
 	return false
@@ -907,6 +940,7 @@ func (t *TUI) cycleDemoPage(delta int) {
 	// Rebuild document from new page
 	content := t.demoPages[t.demoPageIndex]
 	t.doc = NewDocument(content)
+	t.wrapCache = nil
 
 	maxLine := t.doc.LineCount()
 	if maxLine == 0 {
@@ -981,24 +1015,29 @@ func (t *TUI) lineSelection(lineIdx int, region selection.Region) (cursorCol, se
 		start, end = end, start
 	}
 
+	lastCol := t.doc.LineRuneCount(lineIdx) - 1
+	if lastCol < 0 {
+		lastCol = 0
+	}
+
 	if region.Kind == selection.KindChar {
 		if lineIdx == start.Line && lineIdx == end.Line {
 			selStart = start.Col
 			selEnd = end.Col
 		} else if lineIdx == start.Line {
 			selStart = start.Col
-			selEnd = 9999
+			selEnd = lastCol
 		} else if lineIdx == end.Line {
 			selStart = 0
 			selEnd = end.Col
 		} else if lineIdx > start.Line && lineIdx < end.Line {
 			selStart = 0
-			selEnd = 9999
+			selEnd = lastCol
 		}
 	} else if region.Kind == selection.KindLine {
 		if lineIdx >= start.Line && lineIdx <= end.Line {
 			selStart = 0
-			selEnd = 9999
+			selEnd = lastCol
 		}
 	}
 	return
@@ -1100,6 +1139,23 @@ func trimTrailingSpaceCells(cells []Cell) int {
 	return n
 }
 
+// cachedWrapChunks returns wordWrapChunks for a line, using the TUI's cache.
+// The cache is invalidated when contentWidth changes (e.g., on resize).
+func (t *TUI) cachedWrapChunks(lineIdx int, cells []Cell, contentWidth int) []wrapChunk {
+	if t.wrapCache != nil && t.wrapCacheWidth == contentWidth {
+		if chunks, ok := t.wrapCache[lineIdx]; ok {
+			return chunks
+		}
+	} else {
+		// Width changed — invalidate entire cache
+		t.wrapCache = make(map[int][]wrapChunk)
+		t.wrapCacheWidth = contentWidth
+	}
+	chunks := wordWrapChunks(cells, contentWidth)
+	t.wrapCache[lineIdx] = chunks
+	return chunks
+}
+
 // wordWrapChunks splits a line's cells into display-row chunks that break at
 // word boundaries (spaces). If no space is found within a chunk, it hard-wraps
 // at contentWidth as a fallback for long unbroken words.
@@ -1184,7 +1240,7 @@ func (t *TUI) renderWrap() {
 		cells := t.doc.Cells(i)
 		cursorCol, selStart, selEnd := t.lineSelection(i, region)
 
-		chunks := wordWrapChunks(cells, contentWidth)
+		chunks := t.cachedWrapChunks(i, cells, contentWidth)
 
 		// Render each chunk (display row) of this content line
 		for ci, chunk := range chunks {
@@ -1199,10 +1255,15 @@ func (t *TUI) renderWrap() {
 				b.WriteString(blankGutter)
 			}
 
-			chunkWidth := chunk.end - chunk.start
+			// Calculate chunk display width in terminal columns (not rune count)
+			// so wide characters (CJK, emoji) are accounted for correctly.
+			chunkDW := 0
+			for ci2 := chunk.start; ci2 < chunk.end && ci2 < len(cells); ci2++ {
+				chunkDW += runeDisplayWidth(cells[ci2].Rune)
+			}
 			// For the last chunk of the cursor line, use full contentWidth
 			// so the cursor can be rendered past the end of text.
-			maxWidth := chunkWidth
+			maxWidth := chunkDW
 			if i == t.cursorLine && ci == len(chunks)-1 {
 				maxWidth = contentWidth
 			}
@@ -1211,7 +1272,7 @@ func (t *TUI) renderWrap() {
 			b.WriteString(renderedLine)
 			// Extend the last cell's background through \x1b[K so that
 			// full-width highlights (e.g. git diff) don't break on wrapped rows.
-			if chunkWidth < contentWidth && chunk.end > chunk.start && chunk.end-1 < len(cells) {
+			if chunkDW < contentWidth && chunk.end > chunk.start && chunk.end-1 < len(cells) {
 				if bg := bgEscape(cells[chunk.end-1].Style); bg != "" {
 					b.WriteString(bg)
 					b.WriteString("\x1b[K\x1b[0m")

@@ -149,10 +149,10 @@ func TestVimHandler_GoalColumn(t *testing.T) {
 	// Start at column 10 on long line
 	cursor := Cursor{Line: 1, Col: 10}
 
-	// Move down to short line (col should clamp to 3)
+	// Move down to short line (col should clamp to 2, last char of "mid")
 	result := handler.Apply(doc, cursor, viewport, MotionDown, 1)
-	if result.Cursor.Line != 2 || result.Cursor.Col != 3 {
-		t.Errorf("expected cursor at line 2 col 3, got %+v", result.Cursor)
+	if result.Cursor.Line != 2 || result.Cursor.Col != 2 {
+		t.Errorf("expected cursor at line 2 col 2, got %+v", result.Cursor)
 	}
 
 	// Move down to another long line (col should restore to 10)
@@ -261,16 +261,16 @@ func TestVimHandler_MotionRight(t *testing.T) {
 			expected: Cursor{Line: 0, Col: 3},
 		},
 		{
-			name:     "right beyond bounds (clamps to line length)",
+			name:     "right beyond bounds (clamps to last char)",
 			cursor:   Cursor{Line: 0, Col: 3},
 			count:    10,
-			expected: Cursor{Line: 0, Col: 5},
+			expected: Cursor{Line: 0, Col: 4},
 		},
 		{
 			name:     "right from end (no-op)",
-			cursor:   Cursor{Line: 0, Col: 5},
+			cursor:   Cursor{Line: 0, Col: 4},
 			count:    1,
-			expected: Cursor{Line: 0, Col: 5},
+			expected: Cursor{Line: 0, Col: 4},
 		},
 	}
 
@@ -309,7 +309,7 @@ func TestVimHandler_MotionLineEnd(t *testing.T) {
 	cursor := Cursor{Line: 0, Col: 2}
 	result := handler.Apply(doc, cursor, viewport, MotionLineEnd, 1)
 
-	expected := Cursor{Line: 0, Col: 5}
+	expected := Cursor{Line: 0, Col: 4} // vim: ON last char, not past it
 	if result.Cursor != expected {
 		t.Errorf("expected cursor %+v, got %+v", expected, result.Cursor)
 	}
@@ -660,9 +660,9 @@ func TestVimHandler_UnicodeSupport(t *testing.T) {
 	cursor := Cursor{Line: 0, Col: 0}
 	result := handler.Apply(doc, cursor, viewport, MotionLineEnd, 1)
 
-	expected := Cursor{Line: 0, Col: 8} // 8 runes total
+	expected := Cursor{Line: 0, Col: 7} // 8 runes total, vim stops ON last (index 7)
 	if result.Cursor != expected {
-		t.Errorf("expected cursor at col 8 (8 runes), got %+v", result.Cursor)
+		t.Errorf("expected cursor at col 7 (last rune), got %+v", result.Cursor)
 	}
 
 	// Move right from position 6 should go to 7 (first rune of 世)

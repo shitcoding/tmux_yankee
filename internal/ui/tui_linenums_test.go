@@ -166,8 +166,8 @@ func TestTUILineNumbersUpdateOnNavigation(t *testing.T) {
 func TestTUIHybridModeColors(t *testing.T) {
 	content := []string{"line 1", "line 2", "line 3", "line 4", "line 5"}
 	// newTestTUI uses theme.ThemeDefault:
-	//   LineNum.CursorFG  = "#b8bb26" → rgb(184,187,38)
-	//   LineNum.RelativeFG = "#fabd2f" → rgb(250,189,47)
+	//   LineNum.CursorFG  = "#FF8700" → rgb(255,135,0)
+	//   LineNum.RelativeFG = "#7c6f64" → rgb(124,111,100)
 	tui := newTestTUI("test-pane", content, "hybrid")
 	tui.width = 80
 	tui.height = 10
@@ -176,13 +176,13 @@ func TestTUIHybridModeColors(t *testing.T) {
 	output := captureRender(tui)
 
 	// Should contain default-palette cursor color for cursor line
-	if !strings.Contains(output, "38;2;184;187;38") {
-		t.Error("hybrid mode should use palette cursor color (38;2;184;187;38) for cursor line")
+	if !strings.Contains(output, "38;2;255;135;0") {
+		t.Error("hybrid mode should use palette cursor color (38;2;255;135;0) for cursor line")
 	}
 
 	// Should contain default-palette relative color for non-cursor lines
-	if !strings.Contains(output, "38;2;250;189;47") {
-		t.Error("hybrid mode should use palette relative color (38;2;250;189;47) for non-cursor lines")
+	if !strings.Contains(output, "38;2;124;111;100") {
+		t.Error("hybrid mode should use palette relative color (38;2;124;111;100) for non-cursor lines")
 	}
 
 	// Should contain reset codes

@@ -76,7 +76,7 @@ func (h *VimHandler) doCharSearch(doc Document, cursor Cursor, dir CharSearchDir
 		}
 		found := 0
 		for i := start; i < lineLen; i++ {
-			if runes[i] < 128 && byte(runes[i]) == char {
+			if runes[i] == rune(char) {
 				found++
 				if found == count {
 					if dir == CharSearchTillForward {
@@ -99,7 +99,7 @@ func (h *VimHandler) doCharSearch(doc Document, cursor Cursor, dir CharSearchDir
 		}
 		found := 0
 		for i := start; i >= 0; i-- {
-			if runes[i] < 128 && byte(runes[i]) == char {
+			if runes[i] == rune(char) {
 				found++
 				if found == count {
 					if dir == CharSearchTillBackward {

@@ -168,8 +168,8 @@ func TestFormatterRenderGutterRelativeMode(t *testing.T) {
 // TestFormatterRenderGutterHybridMode tests hybrid line number rendering
 func TestFormatterRenderGutterHybridMode(t *testing.T) {
 	// Use default theme palette colors:
-	//   CursorFG   = "#b8bb26" → rgb(184,187,38)  → 38;2;184;187;38
-	//   RelativeFG = "#fabd2f" → rgb(250,189,47)  → 38;2;250;189;47
+	//   CursorFG   = "#FF8700" → rgb(255,135,0)  → 38;2;255;135;0
+	//   RelativeFG = "#7c6f64" → rgb(124,111,100) → 38;2;124;111;100
 	defaultPal := theme.Presets[theme.ThemeDefault].LineNum
 
 	tests := []struct {
@@ -187,7 +187,7 @@ func TestFormatterRenderGutterHybridMode(t *testing.T) {
 			cursorLine:        10,
 			gutterWidth:       3,
 			wantNumber:        "  10 │ ",
-			wantColorContains: "38;2;184;187;38",
+			wantColorContains: "38;2;255;135;0",
 			shouldContainANSI: true,
 		},
 		{
@@ -196,7 +196,7 @@ func TestFormatterRenderGutterHybridMode(t *testing.T) {
 			cursorLine:        10,
 			gutterWidth:       3,
 			wantNumber:        "   2 │ ", // distance is 2
-			wantColorContains: "38;2;250;189;47",
+			wantColorContains: "38;2;124;111;100",
 			shouldContainANSI: true,
 		},
 		{
@@ -205,7 +205,7 @@ func TestFormatterRenderGutterHybridMode(t *testing.T) {
 			cursorLine:        10,
 			gutterWidth:       3,
 			wantNumber:        "   5 │ ", // distance is 5
-			wantColorContains: "38;2;250;189;47",
+			wantColorContains: "38;2;124;111;100",
 			shouldContainANSI: true,
 		},
 		{
@@ -214,7 +214,7 @@ func TestFormatterRenderGutterHybridMode(t *testing.T) {
 			cursorLine:        123,
 			gutterWidth:       4,
 			wantNumber:        "  123 │ ",
-			wantColorContains: "38;2;184;187;38",
+			wantColorContains: "38;2;255;135;0",
 			shouldContainANSI: true,
 		},
 	}

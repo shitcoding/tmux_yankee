@@ -13,8 +13,9 @@ type Parser struct {
 	pending      Pending
 	toggleKey    byte
 	wrapKey      byte
-	mouseBuf     []byte  // accumulates bytes of an in-progress SGR mouse sequence
+	mouseBuf     []byte  // accumulates bytes of an in-progress SGR mouse or CSI sequence
 	inMouse      bool    // true while accumulating \x1b[< ... M/m
+	inCSI        bool    // true while accumulating a non-mouse CSI param sequence
 	deferredCmd  Command // command to emit on next Parse call (used when ESC is held)
 	hasDeferred  bool    // true if a deferred command is waiting
 }
@@ -86,6 +87,23 @@ func (p *Parser) parseInner(b byte) Command {
 		return Command{Type: CommandNone}
 	}
 
+	// Generic CSI sequence accumulation (ESC [ params... final).
+	// Entered when ESC [ is followed by a parameter/intermediate byte.
+	if p.inCSI {
+		p.mouseBuf = append(p.mouseBuf, b)
+		if len(p.mouseBuf) > 32 {
+			// Too long — discard.
+			p.inCSI = false
+			p.mouseBuf = nil
+			return Command{Type: CommandNone}
+		}
+		// Final byte (0x40-0x7E) terminates the CSI sequence.
+		if b >= 0x40 && b <= 0x7E {
+			return p.finalizeCSI()
+		}
+		return Command{Type: CommandNone}
+	}
+
 	// Detect 3-byte prefix: ESC [ <
 	// We speculatively buffer ESC and ESC+[ to detect SGR mouse sequences.
 	// ESC is held (deferred) until we know whether '[' follows.
@@ -105,8 +123,9 @@ func (p *Parser) parseInner(b byte) Command {
 			// Hold ESC [ — wait to see if '<' follows. Emit nothing yet.
 			return Command{Type: CommandNone}
 		}
-		// Not '[' — ESC was standalone. Emit ESC now, process b normally in next call.
+		// Not '[' — ESC was standalone. Clear pending state and emit ESC.
 		p.mouseBuf = nil
+		p.clearPending()
 		p.deferredCmd = p.parseNormalByte(b)
 		p.hasDeferred = true
 		return Command{Type: CommandEscape}
@@ -121,12 +140,15 @@ func (p *Parser) parseInner(b byte) Command {
 			p.mouseBuf = nil
 			return Command{Type: CommandDemoPrev}
 		}
-		// Not '<' — ESC [ X is not a mouse sequence.
-		// Emit deferred ESC, then process b normally.
-		p.mouseBuf = nil
-		p.deferredCmd = p.parseNormalByte(b)
-		p.hasDeferred = true
-		return Command{Type: CommandEscape}
+		// CSI final byte without params (e.g., ESC[A for arrow up).
+		if b >= 0x40 && b <= 0x7E {
+			p.mouseBuf = nil
+			return p.csiCommand("", b)
+		}
+		// CSI parameter/intermediate byte — start accumulating.
+		p.mouseBuf = append(p.mouseBuf, b)
+		p.inCSI = true
+		return Command{Type: CommandNone}
 	}
 
 	// Handle pending 'g', 'z', 'y', or char-search (f/t/F/T) prefix first
@@ -450,15 +472,30 @@ func (p *Parser) ClearPending() {
 	p.clearPending()
 }
 
-// Flush resolves any buffered ESC that is waiting for mouse sequence
-// disambiguation. Call this after processing all bytes from a single read
-// to avoid requiring a second keypress for standalone ESC.
-// Returns CommandEscape if a pending ESC was flushed, CommandNone otherwise.
+// Flush resolves any buffered state that is waiting for the next byte.
+// Call this after processing all bytes from a single read to avoid requiring
+// a second keypress for standalone ESC or deferred commands.
+// May return a deferred command, CommandEscape (pending ESC flush), or CommandNone.
 func (p *Parser) Flush() Command {
+	// Return any deferred command that was waiting for the next Parse() call.
+	if p.hasDeferred {
+		deferred := p.deferredCmd
+		p.hasDeferred = false
+		p.deferredCmd = Command{}
+		return deferred
+	}
+	if p.inCSI {
+		// Incomplete CSI parameter sequence — discard silently.
+		p.inCSI = false
+		p.mouseBuf = nil
+		return Command{Type: CommandNone}
+	}
 	if !p.inMouse && len(p.mouseBuf) > 0 {
 		// Pending ESC (or ESC [) that didn't complete a mouse sequence.
-		// Treat it as a standalone ESC.
+		// Treat it as a standalone ESC. Clear any accumulated count/prefix
+		// so stale state doesn't leak into subsequent commands.
 		p.mouseBuf = nil
+		p.clearPending()
 		return Command{Type: CommandEscape}
 	}
 	return Command{Type: CommandNone}
@@ -521,6 +558,51 @@ func (p *Parser) parseNormalByte(b byte) Command {
 	cmd := p.parseCommand(b)
 	p.clearPending()
 	return cmd
+}
+
+// csiCommand maps a parsed CSI sequence (params + final byte) to a Command.
+// Handles arrow keys, Home/End, Page Up/Down, and silently discards unknown sequences.
+func (p *Parser) csiCommand(params string, final byte) Command {
+	// CSI sequences (arrow keys, etc.) are terminal-generated, not vim counts.
+	// Clear any accumulated count/prefix so it doesn't leak to the next key.
+	p.clearPending()
+	switch final {
+	case 'A':
+		return Command{Type: CommandMotion, Motion: motion.MotionUp, Count: 1}
+	case 'B':
+		return Command{Type: CommandMotion, Motion: motion.MotionDown, Count: 1}
+	case 'C':
+		return Command{Type: CommandMotion, Motion: motion.MotionRight, Count: 1}
+	case 'D':
+		return Command{Type: CommandMotion, Motion: motion.MotionLeft, Count: 1}
+	case 'H':
+		return Command{Type: CommandMotion, Motion: motion.MotionLineStart, Count: 0}
+	case 'F':
+		return Command{Type: CommandMotion, Motion: motion.MotionLineEnd, Count: 0}
+	case '~':
+		switch params {
+		case "5":
+			return Command{Type: CommandMotion, Motion: motion.MotionHalfPageUp, Count: 0}
+		case "6":
+			return Command{Type: CommandMotion, Motion: motion.MotionHalfPageDown, Count: 0}
+		}
+	}
+	return Command{Type: CommandNone}
+}
+
+// finalizeCSI parses a complete non-mouse CSI sequence from p.mouseBuf.
+func (p *Parser) finalizeCSI() Command {
+	p.inCSI = false
+	buf := p.mouseBuf
+	p.mouseBuf = nil
+
+	// buf: ESC [ params... final (at least 3 bytes: ESC [ final)
+	if len(buf) < 3 {
+		return Command{Type: CommandNone}
+	}
+	final := buf[len(buf)-1]
+	params := string(buf[2 : len(buf)-1]) // skip ESC [, exclude final
+	return p.csiCommand(params, final)
 }
 
 // finalizeMouse parses a complete SGR mouse sequence from p.mouseBuf.

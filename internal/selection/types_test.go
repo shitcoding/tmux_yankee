@@ -96,7 +96,7 @@ func TestExtractRegion_CharWise_SingleLine(t *testing.T) {
 			region: Region{
 				Kind:  KindChar,
 				Start: Pos{Line: 0, Col: 0},
-				End:   Pos{Line: 0, Col: 5},
+				End:   Pos{Line: 0, Col: 4}, // inclusive: 'o' at col 4
 			},
 			want:    "hello",
 			wantErr: false,
@@ -106,7 +106,7 @@ func TestExtractRegion_CharWise_SingleLine(t *testing.T) {
 			region: Region{
 				Kind:  KindChar,
 				Start: Pos{Line: 0, Col: 6},
-				End:   Pos{Line: 0, Col: 7},
+				End:   Pos{Line: 0, Col: 6}, // inclusive: 'w' at col 6
 			},
 			want:    "w",
 			wantErr: false,
@@ -116,7 +116,7 @@ func TestExtractRegion_CharWise_SingleLine(t *testing.T) {
 			region: Region{
 				Kind:  KindChar,
 				Start: Pos{Line: 0, Col: 6},
-				End:   Pos{Line: 0, Col: 11},
+				End:   Pos{Line: 0, Col: 10}, // inclusive: 'd' at col 10
 			},
 			want:    "world",
 			wantErr: false,
@@ -155,7 +155,7 @@ func TestExtractRegion_CharWise_MultiLine(t *testing.T) {
 			region: Region{
 				Kind:  KindChar,
 				Start: Pos{Line: 0, Col: 6},
-				End:   Pos{Line: 1, Col: 6},
+				End:   Pos{Line: 1, Col: 5}, // inclusive: 'd' of "second" at col 5
 			},
 			want:    "line\nsecond",
 			wantErr: false,
@@ -165,7 +165,7 @@ func TestExtractRegion_CharWise_MultiLine(t *testing.T) {
 			region: Region{
 				Kind:  KindChar,
 				Start: Pos{Line: 0, Col: 0},
-				End:   Pos{Line: 2, Col: 5},
+				End:   Pos{Line: 2, Col: 4}, // inclusive: 'd' of "third" at col 4
 			},
 			want:    "first line\nsecond line\nthird",
 			wantErr: false,
@@ -250,8 +250,8 @@ func TestExtractRegion_Reversed(t *testing.T) {
 			name: "reversed selection same line",
 			region: Region{
 				Kind:  KindChar,
-				Start: Pos{Line: 0, Col: 11},
-				End:   Pos{Line: 0, Col: 6},
+				Start: Pos{Line: 0, Col: 10}, // inclusive: 'd' at col 10
+				End:   Pos{Line: 0, Col: 6},  // inclusive: 'w' at col 6
 			},
 			want:    "world",
 			wantErr: false,
@@ -289,7 +289,7 @@ func TestExtractRegion_UTF8(t *testing.T) {
 			region: Region{
 				Kind:  KindChar,
 				Start: Pos{Line: 0, Col: 6},
-				End:   Pos{Line: 0, Col: 8},
+				End:   Pos{Line: 0, Col: 7}, // inclusive: '界' at col 7
 			},
 			want:    "世界",
 			wantErr: false,
@@ -299,7 +299,7 @@ func TestExtractRegion_UTF8(t *testing.T) {
 			region: Region{
 				Kind:  KindChar,
 				Start: Pos{Line: 1, Col: 0},
-				End:   Pos{Line: 1, Col: 4},
+				End:   Pos{Line: 1, Col: 3}, // inclusive: 'é' at col 3
 			},
 			want:    "café",
 			wantErr: false,

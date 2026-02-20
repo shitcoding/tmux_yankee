@@ -568,6 +568,173 @@ func TestParser_ShiftTab_DemoPrev(t *testing.T) {
 	}
 }
 
+func TestParser_Flush_ClearsPendingCount(t *testing.T) {
+	p := NewParser()
+	// Accumulate count, then ESC via Flush
+	p.Parse('5')
+	p.Parse(0x1b)
+	cmd := p.Flush()
+	if cmd.Type != CommandEscape {
+		t.Fatalf("Flush after 5+ESC: got type %d, want CommandEscape", cmd.Type)
+	}
+	// Pending count should be cleared — next motion should have count=0
+	cmd = p.Parse('j')
+	if cmd.Type != CommandMotion {
+		t.Fatalf("j after ESC: got type %d, want CommandMotion", cmd.Type)
+	}
+	if cmd.Count != 0 {
+		t.Errorf("j after ESC: count = %d, want 0 (ESC should clear pending)", cmd.Count)
+	}
+}
+
+func TestParser_Flush_ClearsPendingPrefix(t *testing.T) {
+	p := NewParser()
+	// Set 'f' prefix, then ESC via Flush
+	p.Parse('f')
+	p.Parse(0x1b)
+	cmd := p.Flush()
+	if cmd.Type != CommandEscape {
+		t.Fatalf("Flush after f+ESC: got type %d, want CommandEscape", cmd.Type)
+	}
+	// Prefix should be cleared — 'j' should be motion, not char search target
+	cmd = p.Parse('j')
+	if cmd.Type != CommandMotion {
+		t.Fatalf("j after f+ESC: got type %d, want CommandMotion", cmd.Type)
+	}
+}
+
+func TestParser_ESC_ClearsPendingCount_InlineResolution(t *testing.T) {
+	p := NewParser()
+	// "5 ESC q" where ESC and q arrive in same read
+	p.Parse('5')
+	p.Parse(0x1b)
+	cmd := p.Parse('q') // ESC resolves immediately (not '[')
+	if cmd.Type != CommandEscape {
+		t.Fatalf("5+ESC+q first result: got type %d, want CommandEscape", cmd.Type)
+	}
+	// Deferred 'q' should fire next, as CommandQuit with no stale count
+	cmd = p.Parse('j') // trigger deferred
+	if cmd.Type != CommandQuit {
+		t.Fatalf("deferred q: got type %d, want CommandQuit", cmd.Type)
+	}
+}
+
+func TestParser_CSI_ArrowKeys(t *testing.T) {
+	tests := []struct {
+		name    string
+		final   byte
+		wantMot motion.Motion
+	}{
+		{"arrow up", 'A', motion.MotionUp},
+		{"arrow down", 'B', motion.MotionDown},
+		{"arrow right", 'C', motion.MotionRight},
+		{"arrow left", 'D', motion.MotionLeft},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewParser()
+			p.Parse(0x1b)
+			p.Parse('[')
+			cmd := p.Parse(tt.final)
+			if cmd.Type != CommandMotion {
+				t.Fatalf("ESC[%c: got type %d, want CommandMotion", tt.final, cmd.Type)
+			}
+			if cmd.Motion != tt.wantMot {
+				t.Errorf("ESC[%c: motion = %v, want %v", tt.final, cmd.Motion, tt.wantMot)
+			}
+		})
+	}
+}
+
+func TestParser_CSI_HomeEnd(t *testing.T) {
+	tests := []struct {
+		name    string
+		final   byte
+		wantMot motion.Motion
+	}{
+		{"Home", 'H', motion.MotionLineStart},
+		{"End", 'F', motion.MotionLineEnd},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewParser()
+			p.Parse(0x1b)
+			p.Parse('[')
+			cmd := p.Parse(tt.final)
+			if cmd.Type != CommandMotion {
+				t.Fatalf("ESC[%c: got type %d, want CommandMotion", tt.final, cmd.Type)
+			}
+			if cmd.Motion != tt.wantMot {
+				t.Errorf("ESC[%c: motion = %v, want %v", tt.final, cmd.Motion, tt.wantMot)
+			}
+		})
+	}
+}
+
+func TestParser_CSI_PageUpDown(t *testing.T) {
+	tests := []struct {
+		name    string
+		param   byte
+		wantMot motion.Motion
+	}{
+		{"Page Up ESC[5~", '5', motion.MotionHalfPageUp},
+		{"Page Down ESC[6~", '6', motion.MotionHalfPageDown},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewParser()
+			p.Parse(0x1b)
+			p.Parse('[')
+			p.Parse(tt.param)
+			cmd := p.Parse('~')
+			if cmd.Type != CommandMotion {
+				t.Fatalf("%s: got type %d, want CommandMotion", tt.name, cmd.Type)
+			}
+			if cmd.Motion != tt.wantMot {
+				t.Errorf("%s: motion = %v, want %v", tt.name, cmd.Motion, tt.wantMot)
+			}
+		})
+	}
+}
+
+func TestParser_CSI_UnknownConsumedSilently(t *testing.T) {
+	// ESC[X where X is an unrecognized CSI final should not produce ESC
+	p := NewParser()
+	p.Parse(0x1b)
+	p.Parse('[')
+	cmd := p.Parse('X') // Unknown CSI final
+	if cmd.Type != CommandNone {
+		t.Errorf("ESC[X: got type %d, want CommandNone (silently consumed)", cmd.Type)
+	}
+}
+
+func TestParser_CSI_ArrowDoesNotEmitEscape(t *testing.T) {
+	// Regression: arrow keys used to emit CommandEscape + misclassified byte
+	p := NewParser()
+	p.Parse(0x1b)
+	p.Parse('[')
+	cmd := p.Parse('A') // Arrow up
+	if cmd.Type == CommandEscape {
+		t.Error("ESC[A should NOT produce CommandEscape (it's arrow up)")
+	}
+}
+
+func TestParser_Flush_IncompleteCSI(t *testing.T) {
+	p := NewParser()
+	// Start a parameterized CSI: ESC [ 5 (incomplete — no final byte)
+	p.Parse(0x1b)
+	p.Parse('[')
+	p.Parse('5')
+	// Flush should discard the incomplete sequence
+	cmd := p.Flush()
+	if cmd.Type != CommandNone {
+		t.Errorf("Flush of incomplete CSI: got type %d, want CommandNone", cmd.Type)
+	}
+}
+
 func TestParser_Flush_MouseSequenceNotFlushed(t *testing.T) {
 	p := NewParser()
 	// Start a real mouse sequence: ESC [ <
@@ -578,5 +745,76 @@ func TestParser_Flush_MouseSequenceNotFlushed(t *testing.T) {
 	cmd := p.Flush()
 	if cmd.Type != CommandNone {
 		t.Errorf("Flush during mouse sequence: got type %d, want CommandNone", cmd.Type)
+	}
+}
+
+func TestParser_Flush_ReturnsDeferredCommand(t *testing.T) {
+	// When ESC is followed by a non-'[' byte, Parse returns CommandEscape
+	// and defers the byte's command. If Flush() is called instead of Parse(),
+	// it must return the deferred command rather than losing it.
+	p := NewParser()
+	// ESC held in mouseBuf
+	cmd := p.Parse(0x1b)
+	if cmd.Type != CommandNone {
+		t.Fatalf("ESC byte: got type %d, want CommandNone", cmd.Type)
+	}
+	// 'j' resolves ESC → CommandEscape returned, 'j' motion deferred.
+	cmd = p.Parse('j')
+	if cmd.Type != CommandEscape {
+		t.Fatalf("ESC+j: got type %d, want CommandEscape", cmd.Type)
+	}
+	// Now the deferred 'j' motion is pending. Flush must return it.
+	cmd = p.Flush()
+	if cmd.Type != CommandMotion {
+		t.Errorf("Flush deferred: got type %d, want CommandMotion", cmd.Type)
+	}
+	if cmd.Motion != motion.MotionDown {
+		t.Errorf("Flush deferred motion: got %v, want MotionDown", cmd.Motion)
+	}
+}
+
+func TestParser_CSI_ClearsPendingCount(t *testing.T) {
+	// Regression: "5 ESC[A j" should NOT apply count=5 to j.
+	// The CSI arrow should clear the pending count.
+	p := NewParser()
+	// Accumulate count 5
+	p.Parse('5')
+	// Send ESC [ A (arrow up)
+	p.Parse(0x1b)
+	p.Parse('[')
+	cmd := p.Parse('A')
+	if cmd.Type != CommandMotion || cmd.Motion != motion.MotionUp {
+		t.Fatalf("CSI A: got type=%d motion=%v, want MotionUp", cmd.Type, cmd.Motion)
+	}
+	// Now press 'j' — count should be 0 (default, no explicit count), not 5
+	cmd = p.Parse('j')
+	if cmd.Type != CommandMotion {
+		t.Fatalf("j after CSI: got type=%d, want CommandMotion", cmd.Type)
+	}
+	if cmd.Count != 0 {
+		t.Errorf("j count after CSI: got %d, want 0 (pending should be cleared)", cmd.Count)
+	}
+}
+
+func TestParser_CSI_ClearsPendingPrefix(t *testing.T) {
+	// Regression: "f ESC[B j" should NOT treat j as char-search target.
+	// The CSI arrow should clear the pending f prefix.
+	p := NewParser()
+	// Start char search prefix
+	p.Parse('f')
+	// Send ESC [ B (arrow down)
+	p.Parse(0x1b)
+	p.Parse('[')
+	cmd := p.Parse('B')
+	if cmd.Type != CommandMotion || cmd.Motion != motion.MotionDown {
+		t.Fatalf("CSI B: got type=%d motion=%v, want MotionDown", cmd.Type, cmd.Motion)
+	}
+	// Now press 'j' — should be plain motion, not char search for 'j'
+	cmd = p.Parse('j')
+	if cmd.Type != CommandMotion {
+		t.Fatalf("j after CSI: got type=%d, want CommandMotion", cmd.Type)
+	}
+	if cmd.Motion != motion.MotionDown {
+		t.Errorf("j motion after CSI: got %v, want MotionDown (not char search)", cmd.Motion)
 	}
 }

@@ -109,7 +109,7 @@ func (c *Client) GetScrollPosition(paneID string) (int, error) {
 
 // SetBuffer sets the tmux paste buffer
 func (c *Client) SetBuffer(text string) error {
-	cmd := exec.Command("tmux", "set-buffer", text)
+	cmd := exec.Command("tmux", "set-buffer", "--", text)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("set-buffer failed: %w", err)
 	}
