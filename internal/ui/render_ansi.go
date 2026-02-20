@@ -66,6 +66,17 @@ func ParseANSILine(line string) []Cell {
 			continue
 		}
 
+		// Tab expansion: replace with spaces to next 4-column tab stop
+		if runes[i] == '\t' {
+			tabWidth := 4
+			spacesNeeded := tabWidth - (len(cells) % tabWidth)
+			for j := 0; j < spacesNeeded; j++ {
+				cells = append(cells, Cell{Rune: ' ', Style: currentStyle})
+			}
+			i++
+			continue
+		}
+
 		// Regular character - add cell with current style
 		cells = append(cells, Cell{
 			Rune:  runes[i],
@@ -247,8 +258,17 @@ func RenderCellWithPalette(cell Cell, applyCursor, applySelection bool, pal them
 		if fgCode != "" {
 			codes = append(codes, fgCode)
 		}
-		if pal.Cursor.Bold {
+		if pal.Cursor.Style.Bold {
 			codes = append(codes, "1")
+		}
+		if pal.Cursor.Style.Dim {
+			codes = append(codes, "2")
+		}
+		if pal.Cursor.Style.Italic {
+			codes = append(codes, "3")
+		}
+		if pal.Cursor.Style.Underline {
+			codes = append(codes, "4")
 		}
 	} else if applySelection {
 		bgCode := hexToBGAnsi(pal.Selection.BG)
@@ -259,8 +279,17 @@ func RenderCellWithPalette(cell Cell, applyCursor, applySelection bool, pal them
 		if fgCode != "" {
 			codes = append(codes, fgCode)
 		}
-		if pal.Selection.Bold {
+		if pal.Selection.Style.Bold {
 			codes = append(codes, "1")
+		}
+		if pal.Selection.Style.Dim {
+			codes = append(codes, "2")
+		}
+		if pal.Selection.Style.Italic {
+			codes = append(codes, "3")
+		}
+		if pal.Selection.Style.Underline {
+			codes = append(codes, "4")
 		}
 	} else if cell.Style.Reverse {
 		codes = append(codes, "7")
@@ -367,10 +396,46 @@ func RenderLine(rawLine string, cursorCol, selStart, selEnd int, maxWidth int) s
 	return RenderLineWithPalette(rawLine, cursorCol, selStart, selEnd, maxWidth, theme.Palette{})
 }
 
+// runeDisplayWidth returns the terminal display width of a rune.
+// Most characters occupy 1 column; CJK, emoji, and full-width characters occupy 2.
+func runeDisplayWidth(r rune) int {
+	if r < 0x20 {
+		return 0 // control characters
+	}
+	switch {
+	case r >= 0x1100 && r <= 0x115F: // Hangul Jamo
+		return 2
+	case r >= 0x2E80 && r <= 0x303E: // CJK Radicals, Kangxi, Symbols/Punctuation
+		return 2
+	case r >= 0x3041 && r <= 0x33BF: // Hiragana, Katakana, Bopomofo, CJK Letters
+		return 2
+	case r >= 0x3400 && r <= 0x4DBF: // CJK Extension A
+		return 2
+	case r >= 0x4E00 && r <= 0xA4CF: // CJK Unified Ideographs + Yi
+		return 2
+	case r >= 0xAC00 && r <= 0xD7AF: // Hangul Syllables
+		return 2
+	case r >= 0xF900 && r <= 0xFAFF: // CJK Compatibility Ideographs
+		return 2
+	case r >= 0xFE10 && r <= 0xFE6F: // CJK Compatibility Forms
+		return 2
+	case r >= 0xFF01 && r <= 0xFF60: // Full-width Latin/Punctuation
+		return 2
+	case r >= 0xFFE0 && r <= 0xFFE6: // Full-width Symbols
+		return 2
+	case r >= 0x1F300 && r <= 0x1FAFF: // Emoji (Misc Symbols, Emoticons, etc.)
+		return 2
+	case r >= 0x20000 && r <= 0x2FA1F: // CJK Extension B-F, Supplements
+		return 2
+	}
+	return 1
+}
+
 // RenderCellsWithPalette renders pre-parsed cells with cursor/selection overlay.
 // This is the performance-critical path: cells are pre-parsed at document load,
 // so this function does no ANSI parsing.
 // startCol is the horizontal viewport offset — cells before startCol are not rendered.
+// maxWidth is the maximum number of terminal display columns to render.
 // cursorCol, selStart, selEnd are absolute (0-based from line start); the renderer
 // maps them to viewport-relative positions internally.
 func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, startCol, maxWidth int, pal theme.Palette) string {
@@ -382,28 +447,27 @@ func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, start
 		startCol = len(cells)
 	}
 
-	// Slice visible window
-	visible := cells[startCol:]
-	if len(visible) > maxWidth {
-		visible = visible[:maxWidth]
-	}
-
 	var b strings.Builder
+	displayCols := 0
 
-	for vi, cell := range visible {
-		absIdx := startCol + vi // map back to absolute index
+	for vi := 0; startCol+vi < len(cells); vi++ {
+		cell := cells[startCol+vi]
+		w := runeDisplayWidth(cell.Rune)
+		if displayCols+w > maxWidth {
+			break
+		}
+		absIdx := startCol + vi
 		inSelection := selStart >= 0 && absIdx >= selStart && absIdx <= selEnd
 		applyCursor := (absIdx == cursorCol) && !inSelection
 		applySelection := inSelection
 		b.WriteString(RenderCellWithPalette(cell, applyCursor, applySelection, pal))
+		displayCols += w
 	}
 
 	// If cursor is at or past end of visible content, render cursor block
-	if cursorCol >= startCol && cursorCol < startCol+maxWidth {
-		if cursorCol >= len(cells) {
-			emptyCell := Cell{Rune: ' ', Style: Style{}}
-			b.WriteString(RenderCellWithPalette(emptyCell, true, false, pal))
-		}
+	if cursorCol >= startCol && cursorCol >= len(cells) && displayCols < maxWidth {
+		emptyCell := Cell{Rune: ' ', Style: Style{}}
+		b.WriteString(RenderCellWithPalette(emptyCell, true, false, pal))
 	}
 
 	return b.String()

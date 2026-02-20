@@ -25,8 +25,11 @@ func TestResolve_DefaultPreset(t *testing.T) {
 	if p.Gutter.FG != "#a89984" {
 		t.Errorf("Gutter.FG: got %q, want %q", p.Gutter.FG, "#a89984")
 	}
-	if p.Gutter.Separator != "#665c54" {
-		t.Errorf("Gutter.Separator: got %q, want %q", p.Gutter.Separator, "#665c54")
+	if p.Gutter.SeparatorFG != "" {
+		t.Errorf("Gutter.SeparatorFG: got %q, want %q", p.Gutter.SeparatorFG, "")
+	}
+	if p.Gutter.SeparatorChar != "│" {
+		t.Errorf("Gutter.SeparatorChar: got %q, want %q", p.Gutter.SeparatorChar, "│")
 	}
 	if p.LineNum.AbsoluteFG != "#d5c4a1" {
 		t.Errorf("LineNum.AbsoluteFG: got %q, want %q", p.LineNum.AbsoluteFG, "#d5c4a1")
@@ -37,8 +40,8 @@ func TestResolve_DefaultPreset(t *testing.T) {
 	if p.LineNum.CursorFG != "#b8bb26" {
 		t.Errorf("LineNum.CursorFG: got %q, want %q", p.LineNum.CursorFG, "#b8bb26")
 	}
-	if !p.LineNum.CursorBold {
-		t.Errorf("LineNum.CursorBold: got false, want true")
+	if !p.LineNum.CursorStyle.Bold {
+		t.Errorf("LineNum.CursorStyle.Bold: got false, want true")
 	}
 	if p.Status.FG != "#ebdbb2" {
 		t.Errorf("Status.FG: got %q, want %q", p.Status.FG, "#ebdbb2")
@@ -84,7 +87,6 @@ func TestResolve_UnknownThemeFallsBackToDefault(t *testing.T) {
 }
 
 func TestResolve_LineNumCursorBoldOverrideOn(t *testing.T) {
-	// Start with a preset where CursorBold is true, override to "on" should keep it true
 	overrides := ThemeOverrides{
 		LineNumCursorBold: "on",
 	}
@@ -92,8 +94,8 @@ func TestResolve_LineNumCursorBoldOverrideOn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !p.LineNum.CursorBold {
-		t.Errorf("LineNum.CursorBold: got false, want true")
+	if !p.LineNum.CursorStyle.Bold {
+		t.Errorf("LineNum.CursorStyle.Bold: got false, want true")
 	}
 }
 
@@ -105,8 +107,8 @@ func TestResolve_LineNumCursorBoldOverrideOff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if p.LineNum.CursorBold {
-		t.Errorf("LineNum.CursorBold: got true, want false")
+	if p.LineNum.CursorStyle.Bold {
+		t.Errorf("LineNum.CursorStyle.Bold: got true, want false")
 	}
 }
 
@@ -119,9 +121,9 @@ func TestResolve_LineNumCursorBoldOverrideEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Default preset has CursorBold = true
-	if !p.LineNum.CursorBold {
-		t.Errorf("LineNum.CursorBold: got false, want true (preset value preserved)")
+	// Default preset has CursorStyle.Bold = true
+	if !p.LineNum.CursorStyle.Bold {
+		t.Errorf("LineNum.CursorStyle.Bold: got false, want true (preset value preserved)")
 	}
 }
 
@@ -147,5 +149,47 @@ func TestResolve_AllFivePresets(t *testing.T) {
 				t.Errorf("Cursor.BG: got %q, want %q", p.Cursor.BG, tt.wantBG)
 			}
 		})
+	}
+}
+
+func TestResolve_NewStyleOverrides(t *testing.T) {
+	overrides := ThemeOverrides{
+		LineNumAbsoluteDim:    "on",
+		LineNumRelativeItalic: "on",
+		LineNumCursorDim:      "on",
+		StatusBold:            "on",
+		CursorDim:             "on",
+		SelectionItalic:       "on",
+		GutterSeparatorBG:     "#112233",
+		GutterSeparatorChar:   "▎",
+	}
+	p, err := Resolve(ThemeDefault, overrides)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !p.LineNum.AbsoluteStyle.Dim {
+		t.Error("LineNum.AbsoluteStyle.Dim: got false, want true")
+	}
+	if !p.LineNum.RelativeStyle.Italic {
+		t.Error("LineNum.RelativeStyle.Italic: got false, want true")
+	}
+	if !p.LineNum.CursorStyle.Dim {
+		t.Error("LineNum.CursorStyle.Dim: got false, want true")
+	}
+	if !p.Status.Style.Bold {
+		t.Error("Status.Style.Bold: got false, want true")
+	}
+	if !p.Cursor.Style.Dim {
+		t.Error("Cursor.Style.Dim: got false, want true")
+	}
+	if !p.Selection.Style.Italic {
+		t.Error("Selection.Style.Italic: got false, want true")
+	}
+	if p.Gutter.SeparatorBG != "#112233" {
+		t.Errorf("Gutter.SeparatorBG: got %q, want %q", p.Gutter.SeparatorBG, "#112233")
+	}
+	if p.Gutter.SeparatorChar != "▎" {
+		t.Errorf("Gutter.SeparatorChar: got %q, want %q", p.Gutter.SeparatorChar, "▎")
 	}
 }

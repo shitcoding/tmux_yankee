@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"unicode/utf8"
 
 	"github.com/shitcoding/tmux_yankee/internal/config"
 	"github.com/shitcoding/tmux_yankee/internal/input"
@@ -53,6 +54,12 @@ type TUI struct {
 	width         int
 	height        int
 	oldState      *term.State
+
+	// Demo mode fields
+	isDemo         bool
+	demoPages      [][]string
+	demoPageIndex  int
+	demoPageNames  []string
 }
 
 // NewTUI creates a new TUI instance from resolved settings.
@@ -97,7 +104,7 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 		paneID:        cfg.PaneID,
 		doc:           doc,
 		lineNumMode:   string(cfg.Mode),
-		formatter:     linenums.NewFormatterWithPalette(lineNumMode, maxLine, cfg.Palette.LineNum),
+		formatter:     linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, cfg.Palette.Gutter, cfg.Palette.LineNum),
 		palette:       cfg.Palette,
 		modeMachine:   vmode.NewMachine(),
 		client:        tmux.NewClient(),
@@ -106,6 +113,55 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 		cursorLine:    initialCursorLine,
 		cursorCol:     0,
 		viewportTop:   0,
+	}
+}
+
+// NewDemoTUI creates a TUI in demo mode with the given demo pages.
+func NewDemoTUI(cfg config.Settings, pages [][]string, pageNames []string) *TUI {
+	if len(pages) == 0 {
+		pages = [][]string{{""}}
+		pageNames = []string{"Empty"}
+	}
+
+	content := pages[0]
+	doc := NewDocument(content)
+	maxLine := doc.LineCount()
+	if maxLine == 0 {
+		maxLine = 1
+	}
+
+	lineNumMode, err := linenums.ModeFromString(string(cfg.Mode))
+	if err != nil {
+		lineNumMode = linenums.ModeHybrid
+	}
+
+	// Start at middle of content
+	initialCursorLine := (maxLine - 1) / 2
+	if initialCursorLine < 0 {
+		initialCursorLine = 0
+	}
+
+	toggleKey := cfg.ToggleModeKey
+	if toggleKey == 0 {
+		toggleKey = 'L'
+	}
+
+	return &TUI{
+		cfg:           cfg,
+		doc:           doc,
+		lineNumMode:   string(cfg.Mode),
+		formatter:     linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, cfg.Palette.Gutter, cfg.Palette.LineNum),
+		palette:       cfg.Palette,
+		modeMachine:   vmode.NewMachine(),
+		parser:        input.NewParserWithToggleKey(toggleKey),
+		motionHandler: motion.NewVimHandler(),
+		cursorLine:    initialCursorLine,
+		cursorCol:     0,
+		viewportTop:   0,
+		isDemo:        true,
+		demoPages:     pages,
+		demoPageIndex: 0,
+		demoPageNames: pageNames,
 	}
 }
 
@@ -350,7 +406,7 @@ func (t *TUI) ensureCursorVisibleH(contentWidth int) {
 // line-number gutter. Used by wrap-mode viewport helpers.
 func (t *TUI) wrapContentWidth() int {
 	sampleGutter := t.formatter.RenderGutter(1, 1)
-	gutterWidth := len(stripANSI(sampleGutter))
+	gutterWidth := utf8.RuneCountInString(stripANSI(sampleGutter))
 	cw := t.width - gutterWidth
 	if cw < 1 {
 		cw = 1
@@ -505,6 +561,16 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 	case input.CommandToggleLineMode:
 		t.toggleMode()
 
+	case input.CommandDemoNext:
+		if t.isDemo {
+			t.cycleDemoPage(1)
+		}
+
+	case input.CommandDemoPrev:
+		if t.isDemo {
+			t.cycleDemoPage(-1)
+		}
+
 	case input.CommandQuit:
 		return true
 
@@ -657,6 +723,42 @@ func (t *TUI) toggleMode() {
 	}
 }
 
+// cycleDemoPage cycles the demo page by delta (+1 or -1) with wrapping.
+func (t *TUI) cycleDemoPage(delta int) {
+	if len(t.demoPages) == 0 {
+		return
+	}
+	t.demoPageIndex = (t.demoPageIndex + delta + len(t.demoPages)) % len(t.demoPages)
+
+	// Rebuild document from new page
+	content := t.demoPages[t.demoPageIndex]
+	t.doc = NewDocument(content)
+
+	maxLine := t.doc.LineCount()
+	if maxLine == 0 {
+		maxLine = 1
+	}
+
+	// Recalculate formatter gutter width
+	lineNumMode, err := linenums.ModeFromString(t.lineNumMode)
+	if err != nil {
+		lineNumMode = linenums.ModeHybrid
+	}
+	t.formatter = linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, t.palette.Gutter, t.palette.LineNum)
+
+	// Reset cursor to middle
+	t.cursorLine = (maxLine - 1) / 2
+	if t.cursorLine < 0 {
+		t.cursorLine = 0
+	}
+	t.cursorCol = 0
+	t.viewportTop = 0
+	t.hOffset = 0
+
+	// Reset selection mode machine state
+	t.modeMachine = vmode.NewMachine()
+}
+
 // lineSelection computes cursor column and selection range for a given line
 // relative to the current mode machine region.
 func (t *TUI) lineSelection(lineIdx int, region selection.Region) (cursorCol, selStart, selEnd int) {
@@ -717,10 +819,21 @@ func bgEscape(s Style) string {
 
 // render draws the TUI
 func (t *TUI) render() {
+	contentHeight := t.height
+	if t.isDemo && t.height > 1 {
+		contentHeight = t.height - 1 // reserve last row for status bar
+		t.height = contentHeight
+	}
+
 	if t.cfg.WrapMode == config.WrapModeWrap {
 		t.renderWrap()
 	} else {
 		t.renderScroll()
+	}
+
+	if t.isDemo {
+		t.height = contentHeight + 1 // restore full height
+		t.renderDemoStatusBar()
 	}
 }
 
@@ -737,7 +850,7 @@ func (t *TUI) renderScroll() {
 	region := t.modeMachine.Region()
 
 	sampleGutter := t.formatter.RenderGutter(1, 1)
-	gutterWidth := len(stripANSI(sampleGutter))
+	gutterWidth := utf8.RuneCountInString(stripANSI(sampleGutter))
 	contentWidth := t.width - gutterWidth
 	if contentWidth < 0 {
 		contentWidth = 0
@@ -802,7 +915,21 @@ func wordWrapChunks(cells []Cell, contentWidth int) []wrapChunk {
 	var chunks []wrapChunk
 	pos := 0
 	for pos < n {
-		end := pos + contentWidth
+		// Find the furthest cell index that fits within contentWidth display columns.
+		end := pos
+		displayCols := 0
+		for end < n {
+			w := runeDisplayWidth(cells[end].Rune)
+			if displayCols+w > contentWidth {
+				break
+			}
+			displayCols += w
+			end++
+		}
+		if end == pos {
+			// Single cell wider than contentWidth — include it to avoid infinite loop.
+			end = pos + 1
+		}
 		if end >= n {
 			// Remaining cells fit in one row.
 			chunks = append(chunks, wrapChunk{pos, n})
@@ -817,7 +944,7 @@ func wordWrapChunks(cells []Cell, contentWidth int) []wrapChunk {
 			}
 		}
 		if breakAt < 0 {
-			// No space found — hard wrap at contentWidth.
+			// No space found — hard wrap at end.
 			breakAt = end
 		}
 		chunks = append(chunks, wrapChunk{pos, breakAt})
@@ -838,7 +965,7 @@ func (t *TUI) renderWrap() {
 	region := t.modeMachine.Region()
 
 	sampleGutter := t.formatter.RenderGutter(1, 1)
-	gutterWidth := len(stripANSI(sampleGutter))
+	gutterWidth := utf8.RuneCountInString(stripANSI(sampleGutter))
 	contentWidth := t.width - gutterWidth
 	if contentWidth < 1 {
 		contentWidth = 1
@@ -910,6 +1037,80 @@ func (t *TUI) renderWrap() {
 	}
 
 	fmt.Print(b.String())
+}
+
+// renderDemoStatusBar renders the demo status bar on the last terminal row.
+func (t *TUI) renderDemoStatusBar() {
+	// Build status text
+	pageName := "Demo"
+	if t.demoPageIndex < len(t.demoPageNames) {
+		pageName = t.demoPageNames[t.demoPageIndex]
+	}
+	modeStr := strings.ToUpper(t.lineNumMode)
+	status := fmt.Sprintf(" [%d/%d] %s  │  %s  │  L:%d/%d  │  yankee --demo ",
+		t.demoPageIndex+1, len(t.demoPages), pageName, modeStr,
+		t.cursorLine+1, t.doc.LineCount())
+
+	// Apply Status palette colors and style
+	var codes []string
+	if t.palette.Status.FG != "" {
+		r, g, b, ok := parseStatusHex(string(t.palette.Status.FG))
+		if ok {
+			codes = append(codes, fmt.Sprintf("38;2;%d;%d;%d", r, g, b))
+		}
+	}
+	if t.palette.Status.BG != "" {
+		r, g, b, ok := parseStatusHex(string(t.palette.Status.BG))
+		if ok {
+			codes = append(codes, fmt.Sprintf("48;2;%d;%d;%d", r, g, b))
+		}
+	}
+	if t.palette.Status.Style.Bold {
+		codes = append(codes, "1")
+	}
+	if t.palette.Status.Style.Dim {
+		codes = append(codes, "2")
+	}
+	if t.palette.Status.Style.Italic {
+		codes = append(codes, "3")
+	}
+
+	var b strings.Builder
+	b.WriteString("\r\n")
+	if len(codes) > 0 {
+		b.WriteString("\x1b[")
+		b.WriteString(strings.Join(codes, ";"))
+		b.WriteString("m")
+	}
+
+	// Pad status to full width
+	runeCount := 0
+	for range status {
+		runeCount++
+	}
+	if runeCount < t.width {
+		status += strings.Repeat(" ", t.width-runeCount)
+	}
+	b.WriteString(status)
+
+	if len(codes) > 0 {
+		b.WriteString("\x1b[0m")
+	}
+
+	fmt.Print(b.String())
+}
+
+// parseStatusHex parses a "#rrggbb" string into RGB components (for status bar).
+func parseStatusHex(hex string) (r, g, b int, ok bool) {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		return 0, 0, 0, false
+	}
+	rv, err := fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b)
+	if err != nil || rv != 3 {
+		return 0, 0, 0, false
+	}
+	return r, g, b, true
 }
 
 // GetMode returns the current line number mode

@@ -110,6 +110,11 @@ func (p *Parser) parseInner(b byte) Command {
 			p.inMouse = true
 			return Command{Type: CommandNone} // start accumulating mouse sequence
 		}
+		if b == 'Z' {
+			// ESC [ Z = Shift+Tab → demo page prev
+			p.mouseBuf = nil
+			return Command{Type: CommandDemoPrev}
+		}
 		// Not '<' — ESC [ X is not a mouse sequence.
 		// Emit deferred ESC, then process b normally.
 		p.mouseBuf = nil
@@ -388,6 +393,10 @@ func (p *Parser) parseCommand(b byte) Command {
 			SearchKind: SearchRepeatReverse,
 			Count:      count,
 		}
+
+	// Tab: next demo page
+	case 9: // Tab
+		return Command{Type: CommandDemoNext}
 
 	// Quit
 	case 'q', 3: // 'q' or Ctrl-C

@@ -24,6 +24,7 @@ const (
 type Formatter struct {
 	mode        Mode
 	gutterWidth int
+	gutterPal   theme.GutterPalette
 	lineNumPal  theme.LineNumPalette
 }
 
@@ -36,9 +37,18 @@ func NewFormatter(mode Mode, maxLine int) *Formatter {
 // NewFormatterWithPalette creates a Formatter that uses the provided palette for
 // line number coloring in hybrid (and optionally absolute/relative) modes.
 func NewFormatterWithPalette(mode Mode, maxLine int, pal theme.LineNumPalette) *Formatter {
+	return NewFormatterWithFullPalette(mode, maxLine, theme.GutterPalette{SeparatorChar: "│"}, pal)
+}
+
+// NewFormatterWithFullPalette creates a Formatter with full gutter and line-number palettes.
+func NewFormatterWithFullPalette(mode Mode, maxLine int, gutterPal theme.GutterPalette, lineNumPal theme.LineNumPalette) *Formatter {
+	if gutterPal.SeparatorChar == "" {
+		gutterPal.SeparatorChar = "│"
+	}
 	f := &Formatter{
 		mode:       mode,
-		lineNumPal: pal,
+		gutterPal:  gutterPal,
+		lineNumPal: lineNumPal,
 	}
 	f.gutterWidth = f.CalculateGutterWidth(maxLine)
 	return f
@@ -47,71 +57,191 @@ func NewFormatterWithPalette(mode Mode, maxLine int, pal theme.LineNumPalette) *
 // RenderGutter renders the line number gutter for a given line.
 // Returns a formatted string with line number and separator.
 func (f *Formatter) RenderGutter(lineNum, cursorLine int) string {
+	var b strings.Builder
+
+	// Gutter BG: emit once at the start if set
+	gutterBG := f.gutterPal.BG
+	if gutterBG != "" {
+		b.WriteString(hexBGEscape(string(gutterBG)))
+	}
+
+	// Determine number text and style based on mode
+	var numText string
+	var numFG theme.HexColor
+	var numStyle theme.TextStyle
+
 	switch f.mode {
 	case ModeAbsolute:
-		num := fmt.Sprintf("%*d", f.gutterWidth, lineNum)
-		if f.lineNumPal.AbsoluteFG != "" {
-			return hexFGWrap(string(f.lineNumPal.AbsoluteFG), num) + " │ "
-		}
-		return num + " │ "
+		numText = fmt.Sprintf("%*d", f.gutterWidth, lineNum)
+		numFG = f.lineNumPal.AbsoluteFG
+		numStyle = f.lineNumPal.AbsoluteStyle
 
 	case ModeRelative:
 		dist := abs(lineNum - cursorLine)
-		num := fmt.Sprintf("%*d", f.gutterWidth, dist)
-		if f.lineNumPal.RelativeFG != "" {
-			return hexFGWrap(string(f.lineNumPal.RelativeFG), num) + " │ "
-		}
-		return num + " │ "
+		numText = fmt.Sprintf("%*d", f.gutterWidth, dist)
+		numFG = f.lineNumPal.RelativeFG
+		numStyle = f.lineNumPal.RelativeStyle
 
 	case ModeHybrid:
 		if lineNum == cursorLine {
-			num := fmt.Sprintf("%*d", f.gutterWidth, lineNum)
-			if f.lineNumPal.CursorFG != "" {
-				fg := string(f.lineNumPal.CursorFG)
-				styled := hexFGWrap(fg, num)
-				if f.lineNumPal.CursorBold {
-					styled = "\x1b[1m" + hexFGWrap(fg, num) + "\x1b[0m"
-					// Re-wrap so reset appears only once at end
-					styled = hexFGBoldWrap(fg, num)
-				}
-				return styled + " │ "
-			}
-			// No palette color: fall back to plain bold
-			return fmt.Sprintf("\x1b[1m%*d\x1b[0m │ ", f.gutterWidth, lineNum)
+			numText = fmt.Sprintf("%*d", f.gutterWidth, lineNum)
+			numFG = f.lineNumPal.CursorFG
+			numStyle = f.lineNumPal.CursorStyle
+		} else {
+			dist := abs(lineNum - cursorLine)
+			numText = fmt.Sprintf("%*d", f.gutterWidth, dist)
+			numFG = f.lineNumPal.RelativeFG
+			numStyle = f.lineNumPal.RelativeStyle
 		}
-		dist := abs(lineNum - cursorLine)
-		num := fmt.Sprintf("%*d", f.gutterWidth, dist)
-		if f.lineNumPal.RelativeFG != "" {
-			return hexFGWrap(string(f.lineNumPal.RelativeFG), num) + " │ "
-		}
-		return num + " │ "
 	}
-	return ""
+
+	// Render styled line number
+	b.WriteString(styledText(numText, numFG, numStyle))
+
+	// Render separator: " <char> "
+	b.WriteString(" ")
+	b.WriteString(f.renderSeparator())
+	b.WriteString(" ")
+
+	// Reset all attributes
+	if gutterBG != "" || numFG != "" || hasStyle(numStyle) {
+		b.WriteString("\x1b[0m")
+	}
+
+	return b.String()
 }
 
 // RenderBlankGutter returns a blank gutter of the same visual width as a
 // normal line-number gutter. Used for wrap-continuation rows.
 func (f *Formatter) RenderBlankGutter() string {
-	return strings.Repeat(" ", f.gutterWidth) + " │ "
+	var b strings.Builder
+	if f.gutterPal.BG != "" {
+		b.WriteString(hexBGEscape(string(f.gutterPal.BG)))
+	}
+	b.WriteString(strings.Repeat(" ", f.gutterWidth))
+	b.WriteString(" ")
+	b.WriteString(f.renderSeparator())
+	b.WriteString(" ")
+	if f.gutterPal.BG != "" {
+		b.WriteString("\x1b[0m")
+	}
+	return b.String()
 }
 
-// hexFGWrap wraps text in a 24-bit foreground color escape + reset.
-// hex must be a "#rrggbb" string.
-func hexFGWrap(hex, text string) string {
-	r, g, b, ok := parseHex(hex)
-	if !ok {
+// renderSeparator renders the separator char with its own FG/BG/style.
+func (f *Formatter) renderSeparator() string {
+	ch := f.gutterPal.SeparatorChar
+	if ch == "" {
+		ch = "│"
+	}
+	fg := f.gutterPal.SeparatorFG
+	bg := f.gutterPal.SeparatorBG
+	style := f.gutterPal.SeparatorStyle
+
+	needsEscape := fg != "" || bg != "" || hasStyle(style)
+	if !needsEscape {
+		return ch
+	}
+
+	var b strings.Builder
+	var codes []string
+	if fg != "" {
+		if code := hexToFGCode(string(fg)); code != "" {
+			codes = append(codes, code)
+		}
+	}
+	if bg != "" {
+		if code := hexToBGCode(string(bg)); code != "" {
+			codes = append(codes, code)
+		}
+	}
+	codes = append(codes, styleCodes(style)...)
+
+	if len(codes) > 0 {
+		b.WriteString("\x1b[")
+		b.WriteString(strings.Join(codes, ";"))
+		b.WriteString("m")
+	}
+	b.WriteString(ch)
+	if len(codes) > 0 {
+		b.WriteString("\x1b[0m")
+		// Re-apply gutter BG after separator reset if set
+		if f.gutterPal.BG != "" {
+			b.WriteString(hexBGEscape(string(f.gutterPal.BG)))
+		}
+	}
+	return b.String()
+}
+
+// styledText wraps text with optional FG color and TextStyle codes.
+func styledText(text string, fg theme.HexColor, style theme.TextStyle) string {
+	if fg == "" && !hasStyle(style) {
 		return text
 	}
-	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%s\x1b[0m", r, g, b, text)
+
+	var codes []string
+	if fg != "" {
+		if code := hexToFGCode(string(fg)); code != "" {
+			codes = append(codes, code)
+		}
+	}
+	codes = append(codes, styleCodes(style)...)
+
+	if len(codes) == 0 {
+		return text
+	}
+
+	return "\x1b[" + strings.Join(codes, ";") + "m" + text + "\x1b[0m"
 }
 
-// hexFGBoldWrap wraps text in bold + 24-bit foreground color + reset.
-func hexFGBoldWrap(hex, text string) string {
+// hasStyle returns true if any TextStyle flag is set.
+func hasStyle(s theme.TextStyle) bool {
+	return s.Bold || s.Dim || s.Italic || s.Underline
+}
+
+// styleCodes returns SGR code strings for set TextStyle flags.
+func styleCodes(s theme.TextStyle) []string {
+	var codes []string
+	if s.Bold {
+		codes = append(codes, "1")
+	}
+	if s.Dim {
+		codes = append(codes, "2")
+	}
+	if s.Italic {
+		codes = append(codes, "3")
+	}
+	if s.Underline {
+		codes = append(codes, "4")
+	}
+	return codes
+}
+
+// hexToFGCode returns a 24-bit foreground SGR code for "#rrggbb".
+func hexToFGCode(hex string) string {
 	r, g, b, ok := parseHex(hex)
 	if !ok {
-		return "\x1b[1m" + text + "\x1b[0m"
+		return ""
 	}
-	return fmt.Sprintf("\x1b[1;38;2;%d;%d;%dm%s\x1b[0m", r, g, b, text)
+	return fmt.Sprintf("38;2;%d;%d;%d", r, g, b)
+}
+
+// hexToBGCode returns a 24-bit background SGR code for "#rrggbb".
+func hexToBGCode(hex string) string {
+	r, g, b, ok := parseHex(hex)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("48;2;%d;%d;%d", r, g, b)
+}
+
+// hexBGEscape returns a complete background escape sequence for "#rrggbb".
+func hexBGEscape(hex string) string {
+	code := hexToBGCode(hex)
+	if code == "" {
+		return ""
+	}
+	return "\x1b[" + code + "m"
 }
 
 // parseHex parses a "#rrggbb" string into r, g, b components.

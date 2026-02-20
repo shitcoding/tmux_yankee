@@ -34,8 +34,11 @@ func Resolve(name ThemeName, overrides ThemeOverrides) (Palette, error) {
 	if err := applyColorOverride(overrides.GutterBG, &p.Gutter.BG); err != nil {
 		return Palette{}, fmt.Errorf("gutter-bg: %w", err)
 	}
-	if err := applyColorOverride(overrides.GutterSeparatorFG, &p.Gutter.Separator); err != nil {
+	if err := applyColorOverride(overrides.GutterSeparatorFG, &p.Gutter.SeparatorFG); err != nil {
 		return Palette{}, fmt.Errorf("gutter-separator-fg: %w", err)
+	}
+	if err := applyColorOverride(overrides.GutterSeparatorBG, &p.Gutter.SeparatorBG); err != nil {
+		return Palette{}, fmt.Errorf("gutter-separator-bg: %w", err)
 	}
 	if err := applyColorOverride(overrides.LineNumAbsoluteFG, &p.LineNum.AbsoluteFG); err != nil {
 		return Palette{}, fmt.Errorf("linenum-absolute-fg: %w", err)
@@ -53,15 +56,35 @@ func Resolve(name ThemeName, overrides ThemeOverrides) (Palette, error) {
 		return Palette{}, fmt.Errorf("status-bg: %w", err)
 	}
 
-	// LineNumCursorBold: "on"/"off"/""
-	switch overrides.LineNumCursorBold {
-	case "on":
-		p.LineNum.CursorBold = true
-	case "off":
-		p.LineNum.CursorBold = false
-	case "":
-		// keep preset value
+	// Separator char override
+	if overrides.GutterSeparatorChar != "" {
+		p.Gutter.SeparatorChar = overrides.GutterSeparatorChar
 	}
+
+	// LineNumCursorBold: backward compat "on"/"off"/"" → CursorStyle.Bold
+	applyBoolOverride(overrides.LineNumCursorBold, &p.LineNum.CursorStyle.Bold)
+
+	// LineNum style overrides
+	applyBoolOverride(overrides.LineNumAbsoluteBold, &p.LineNum.AbsoluteStyle.Bold)
+	applyBoolOverride(overrides.LineNumAbsoluteDim, &p.LineNum.AbsoluteStyle.Dim)
+	applyBoolOverride(overrides.LineNumAbsoluteItalic, &p.LineNum.AbsoluteStyle.Italic)
+	applyBoolOverride(overrides.LineNumRelativeBold, &p.LineNum.RelativeStyle.Bold)
+	applyBoolOverride(overrides.LineNumRelativeDim, &p.LineNum.RelativeStyle.Dim)
+	applyBoolOverride(overrides.LineNumRelativeItalic, &p.LineNum.RelativeStyle.Italic)
+	applyBoolOverride(overrides.LineNumCursorDim, &p.LineNum.CursorStyle.Dim)
+	applyBoolOverride(overrides.LineNumCursorItalic, &p.LineNum.CursorStyle.Italic)
+
+	// Status style overrides
+	applyBoolOverride(overrides.StatusBold, &p.Status.Style.Bold)
+	applyBoolOverride(overrides.StatusDim, &p.Status.Style.Dim)
+
+	// Cursor style overrides
+	applyBoolOverride(overrides.CursorDim, &p.Cursor.Style.Dim)
+	applyBoolOverride(overrides.CursorItalic, &p.Cursor.Style.Italic)
+
+	// Selection style overrides
+	applyBoolOverride(overrides.SelectionDim, &p.Selection.Style.Dim)
+	applyBoolOverride(overrides.SelectionItalic, &p.Selection.Style.Italic)
 
 	return p, nil
 }
@@ -74,4 +97,16 @@ func applyColorOverride(override string, dst *HexColor) error {
 	// Colors were already validated by config.Validate, but normalize to lowercase
 	*dst = HexColor(strings.ToLower(override))
 	return nil
+}
+
+// applyBoolOverride applies an "on"/"off"/"" override to a bool pointer.
+func applyBoolOverride(override string, dst *bool) {
+	switch override {
+	case "on":
+		*dst = true
+	case "off":
+		*dst = false
+	case "":
+		// keep preset value
+	}
 }

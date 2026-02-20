@@ -13,7 +13,7 @@ func TestFormatter_GutterColorFromPalette(t *testing.T) {
 	pal := theme.LineNumPalette{
 		CursorFG:   "#00ffff",  // cyan for cursor line
 		RelativeFG: "#ff00ff",  // magenta for relative lines
-		CursorBold: true,
+		CursorStyle: theme.TextStyle{Bold: true},
 	}
 
 	f := NewFormatterWithPalette(ModeHybrid, 10, pal)

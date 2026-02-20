@@ -35,22 +35,23 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// Create tmux client
-	client := tmux.NewClient()
+	var tui *ui.TUI
 
-	// Capture pane content with ANSI color codes preserved.
-	// Capture scrollback: negative value is the -S flag passed to tmux capture-pane
-	content, err := client.CapturePane(cfg.PaneID, -cfg.ScrollbackLines, -1, true)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error capturing pane: %v\n", err)
-		os.Exit(1)
+	if cfg.Demo {
+		// Demo mode: skip tmux, use synthetic demo content
+		pages := ui.DemoPages()
+		tui = ui.NewDemoTUI(cfg, pages, ui.DemoPageNames)
+	} else {
+		// Normal mode: capture pane content from tmux
+		client := tmux.NewClient()
+		content, err := client.CapturePane(cfg.PaneID, -cfg.ScrollbackLines, -1, true)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error capturing pane: %v\n", err)
+			os.Exit(1)
+		}
+		content = trimTrailingEmptyLines(content)
+		tui = ui.NewTUI(cfg, content)
 	}
-
-	// Trim trailing empty lines (common in scrollback buffers)
-	content = trimTrailingEmptyLines(content)
-
-	// Create TUI
-	tui := ui.NewTUI(cfg, content)
 
 	// Run TUI in goroutine
 	errChan := make(chan error, 1)

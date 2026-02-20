@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"unicode"
+	"unicode/utf8"
 )
 
 var hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -10,9 +12,9 @@ var hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 // Validate checks all CLIOptions fields for correctness.
 // ScrollbackLines is clamped (not an error) — the caller handles clamping.
 func Validate(opts CLIOptions) error {
-	// PaneID
-	if opts.PaneID == "" {
-		return fmt.Errorf("--pane is required")
+	// PaneID: required unless --demo
+	if opts.PaneID == "" && !opts.Demo {
+		return fmt.Errorf("--pane is required (unless --demo is set)")
 	}
 
 	// Mode
@@ -43,6 +45,7 @@ func Validate(opts CLIOptions) error {
 		{"gutter-fg", opts.GutterFG},
 		{"gutter-bg", opts.GutterBG},
 		{"gutter-separator-fg", opts.GutterSeparatorFG},
+		{"gutter-separator-bg", opts.GutterSeparatorBG},
 		{"linenum-absolute-fg", opts.LineNumAbsoluteFG},
 		{"linenum-relative-fg", opts.LineNumRelativeFG},
 		{"linenum-cursor-fg", opts.LineNumCursorFG},
@@ -52,6 +55,17 @@ func Validate(opts CLIOptions) error {
 	for _, f := range colorFields {
 		if f.val != "" && !hexColorRe.MatchString(f.val) {
 			return fmt.Errorf("invalid color for --%s: %q (must be #RRGGBB)", f.name, f.val)
+		}
+	}
+
+	// GutterSeparatorChar: must be exactly 1 printable rune when non-empty
+	if opts.GutterSeparatorChar != "" {
+		if utf8.RuneCountInString(opts.GutterSeparatorChar) != 1 {
+			return fmt.Errorf("invalid gutter-separator-char %q: must be exactly one printable character", opts.GutterSeparatorChar)
+		}
+		r, _ := utf8.DecodeRuneInString(opts.GutterSeparatorChar)
+		if !unicode.IsPrint(r) {
+			return fmt.Errorf("invalid gutter-separator-char %q: must be a printable character", opts.GutterSeparatorChar)
 		}
 	}
 
@@ -88,12 +102,34 @@ func Validate(opts CLIOptions) error {
 		return fmt.Errorf("invalid start-position %q: must be one of top, middle, bottom", opts.StartPosition)
 	}
 
-	// LineNumCursorBold
-	switch opts.LineNumCursorBold {
-	case "on", "off", "":
-		// valid
-	default:
-		return fmt.Errorf("invalid linenum-cursor-bold %q: must be on, off, or empty", opts.LineNumCursorBold)
+	// On/off boolean style fields
+	boolFields := []struct {
+		name string
+		val  string
+	}{
+		{"linenum-cursor-bold", opts.LineNumCursorBold},
+		{"linenum-absolute-bold", opts.LineNumAbsoluteBold},
+		{"linenum-absolute-dim", opts.LineNumAbsoluteDim},
+		{"linenum-absolute-italic", opts.LineNumAbsoluteItalic},
+		{"linenum-relative-bold", opts.LineNumRelativeBold},
+		{"linenum-relative-dim", opts.LineNumRelativeDim},
+		{"linenum-relative-italic", opts.LineNumRelativeItalic},
+		{"linenum-cursor-dim", opts.LineNumCursorDim},
+		{"linenum-cursor-italic", opts.LineNumCursorItalic},
+		{"status-bold", opts.StatusBold},
+		{"status-dim", opts.StatusDim},
+		{"cursor-dim", opts.CursorDim},
+		{"cursor-italic", opts.CursorItalic},
+		{"selection-dim", opts.SelectionDim},
+		{"selection-italic", opts.SelectionItalic},
+	}
+	for _, f := range boolFields {
+		switch f.val {
+		case "on", "off", "":
+			// valid
+		default:
+			return fmt.Errorf("invalid %s %q: must be on, off, or empty", f.name, f.val)
+		}
 	}
 
 	return nil

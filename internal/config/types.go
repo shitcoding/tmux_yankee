@@ -39,6 +39,7 @@ type CLIOptions struct {
 	Mode            string
 	ScrollbackLines int
 	Theme           string
+	Demo            bool
 
 	CursorFG          string
 	CursorBG          string
@@ -47,12 +48,30 @@ type CLIOptions struct {
 	GutterFG          string
 	GutterBG          string
 	GutterSeparatorFG string
+	GutterSeparatorBG string
+	GutterSeparatorChar string
 	LineNumAbsoluteFG string
 	LineNumRelativeFG string
 	LineNumCursorFG   string
 	LineNumCursorBold string
 	StatusFG          string
 	StatusBG          string
+
+	// TextStyle override flags ("on"/"off"/"")
+	LineNumAbsoluteBold   string
+	LineNumAbsoluteDim    string
+	LineNumAbsoluteItalic string
+	LineNumRelativeBold   string
+	LineNumRelativeDim    string
+	LineNumRelativeItalic string
+	LineNumCursorDim      string
+	LineNumCursorItalic   string
+	StatusBold            string
+	StatusDim             string
+	CursorDim             string
+	CursorItalic          string
+	SelectionDim          string
+	SelectionItalic       string
 
 	ToggleModeKey string
 	CopyTarget    string
@@ -66,6 +85,7 @@ type Settings struct {
 	PaneID          string
 	Mode            LineNumberMode
 	ScrollbackLines int
+	Demo            bool
 
 	Palette theme.Palette
 

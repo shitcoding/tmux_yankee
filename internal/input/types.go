@@ -17,6 +17,8 @@ const (
 	CommandMouseScroll // set when a mouse wheel event is received
 	CommandYankLine    // yy: yank current line without requiring a visual selection
 	CommandCharSearch  // f/t/F/T/;/,: character search on current line
+	CommandDemoNext   // Tab: next demo page
+	CommandDemoPrev   // Shift+Tab: previous demo page
 )
 
 // ScrollDirection indicates mouse wheel direction for CommandMouseScroll.

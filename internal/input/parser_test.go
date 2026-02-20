@@ -521,6 +521,31 @@ func TestParser_Flush_NoOp(t *testing.T) {
 	}
 }
 
+func TestParser_Tab_DemoNext(t *testing.T) {
+	p := NewParser()
+	cmd := p.Parse(9) // Tab = 0x09
+	if cmd.Type != CommandDemoNext {
+		t.Errorf("Tab: got type %d, want CommandDemoNext", cmd.Type)
+	}
+}
+
+func TestParser_ShiftTab_DemoPrev(t *testing.T) {
+	p := NewParser()
+	// Shift+Tab sends ESC [ Z
+	cmd := p.Parse(0x1b)
+	if cmd.Type != CommandNone {
+		t.Fatalf("ESC: got type %d, want CommandNone (buffered)", cmd.Type)
+	}
+	cmd = p.Parse('[')
+	if cmd.Type != CommandNone {
+		t.Fatalf("ESC [: got type %d, want CommandNone (buffered)", cmd.Type)
+	}
+	cmd = p.Parse('Z')
+	if cmd.Type != CommandDemoPrev {
+		t.Errorf("ESC [ Z: got type %d, want CommandDemoPrev", cmd.Type)
+	}
+}
+
 func TestParser_Flush_MouseSequenceNotFlushed(t *testing.T) {
 	p := NewParser()
 	// Start a real mouse sequence: ESC [ <

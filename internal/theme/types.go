@@ -14,32 +14,46 @@ const (
 // HexColor is a normalized "#rrggbb" hex color string, or empty string for transparent/default.
 type HexColor string
 
+// TextStyle holds per-element text decoration flags.
+type TextStyle struct {
+	Bold      bool
+	Dim       bool
+	Italic    bool
+	Underline bool
+}
+
 // CellPalette holds foreground and background colors for a UI element.
 type CellPalette struct {
-	FG   HexColor
-	BG   HexColor
-	Bold bool
+	FG    HexColor
+	BG    HexColor
+	Style TextStyle
 }
 
 // GutterPalette holds colors for the line-number gutter.
 type GutterPalette struct {
-	FG        HexColor
-	BG        HexColor
-	Separator HexColor
+	FG             HexColor
+	BG             HexColor
+	SeparatorFG    HexColor
+	SeparatorBG    HexColor
+	SeparatorChar  string
+	SeparatorStyle TextStyle
 }
 
 // LineNumPalette holds colors for line number text within the gutter.
 type LineNumPalette struct {
-	AbsoluteFG HexColor
-	RelativeFG HexColor
-	CursorFG   HexColor
-	CursorBold bool
+	AbsoluteFG    HexColor
+	RelativeFG    HexColor
+	CursorFG      HexColor
+	CursorStyle   TextStyle
+	AbsoluteStyle TextStyle
+	RelativeStyle TextStyle
 }
 
 // StatusPalette holds colors for the status bar.
 type StatusPalette struct {
-	FG HexColor
-	BG HexColor
+	FG    HexColor
+	BG    HexColor
+	Style TextStyle
 }
 
 // Palette is the full set of colors used by the TUI.
@@ -61,10 +75,28 @@ type ThemeOverrides struct {
 	GutterFG          string
 	GutterBG          string
 	GutterSeparatorFG string
+	GutterSeparatorBG string
+	GutterSeparatorChar string
 	LineNumAbsoluteFG string
 	LineNumRelativeFG string
 	LineNumCursorFG   string
-	LineNumCursorBold string // "on"/"off"/""
+	LineNumCursorBold string // "on"/"off"/"" — backward compat, maps to CursorStyle.Bold
 	StatusFG          string
 	StatusBG          string
+
+	// TextStyle overrides ("on"/"off"/"")
+	LineNumAbsoluteBold   string
+	LineNumAbsoluteDim    string
+	LineNumAbsoluteItalic string
+	LineNumRelativeBold   string
+	LineNumRelativeDim    string
+	LineNumRelativeItalic string
+	LineNumCursorDim      string
+	LineNumCursorItalic   string
+	StatusBold            string
+	StatusDim             string
+	CursorDim             string
+	CursorItalic          string
+	SelectionDim          string
+	SelectionItalic       string
 }
