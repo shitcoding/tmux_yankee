@@ -42,8 +42,9 @@ func RegisterFlags(fs *flag.FlagSet, opts *CLIOptions) {
 	fs.StringVar(&opts.SelectionItalic, "selection-italic", "", "Selection italic (on, off)")
 
 	fs.StringVar(&opts.ToggleModeKey, "toggle-mode-key", DefaultToggleModeKey, "Key to toggle line number mode (single ASCII char)")
+	fs.StringVar(&opts.WrapKey, "wrap-key", DefaultWrapKey, "Key to toggle wrap mode after g prefix (single ASCII char)")
 	fs.StringVar(&opts.CopyTarget, "copy-target", DefaultCopyTarget, "Copy destination (both, tmux, clipboard)")
 	fs.StringVar(&opts.ExitOnYank, "exit-on-yank", DefaultExitOnYank, "Exit TUI after yanking (on, off)")
 	fs.StringVar(&opts.StartPosition, "start-position", DefaultStartPosition, "Initial cursor position (top, middle, bottom)")
-	fs.StringVar(&opts.WrapMode, "wrap-mode", DefaultWrapMode, "Long line handling (scroll, wrap)")
+	fs.StringVar(&opts.WrapMode, "wrap-mode", DefaultWrapMode, "Long line wrapping (on, off)")
 }

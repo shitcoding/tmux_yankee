@@ -246,6 +246,7 @@ build_yankee_args() {
         "@yankee_status_fg"           "--status-fg"
         "@yankee_status_bg"           "--status-bg"
         "@yankee_toggle_mode_key"     "--toggle-mode-key"
+        "@yankee_wrap_key"            "--wrap-key"
         "@yankee_copy_target"         "--copy-target"
         "@yankee_exit_on_yank"        "--exit-on-yank"
         "@yankee_start_position"      "--start-position"

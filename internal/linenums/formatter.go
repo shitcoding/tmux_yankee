@@ -95,8 +95,16 @@ func (f *Formatter) RenderGutter(lineNum, cursorLine int) string {
 		}
 	}
 
+	// Left margin
+	b.WriteString(" ")
+
 	// Render styled line number
 	b.WriteString(styledText(numText, numFG, numStyle))
+
+	// Re-apply gutter BG after styledText reset
+	if gutterBG != "" {
+		b.WriteString(hexBGEscape(string(gutterBG)))
+	}
 
 	// Render separator: " <char> "
 	b.WriteString(" ")
@@ -118,6 +126,7 @@ func (f *Formatter) RenderBlankGutter() string {
 	if f.gutterPal.BG != "" {
 		b.WriteString(hexBGEscape(string(f.gutterPal.BG)))
 	}
+	b.WriteString(" ")
 	b.WriteString(strings.Repeat(" ", f.gutterWidth))
 	b.WriteString(" ")
 	b.WriteString(f.renderSeparator())

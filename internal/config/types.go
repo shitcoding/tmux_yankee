@@ -29,8 +29,8 @@ const (
 type WrapMode string
 
 const (
-	WrapModeScroll WrapMode = "scroll"
-	WrapModeWrap   WrapMode = "wrap"
+	WrapModeOff WrapMode = "off"
+	WrapModeOn  WrapMode = "on"
 )
 
 // CLIOptions holds raw string values from CLI flags before validation.
@@ -74,6 +74,7 @@ type CLIOptions struct {
 	SelectionItalic       string
 
 	ToggleModeKey string
+	WrapKey       string
 	CopyTarget    string
 	ExitOnYank    string
 	StartPosition string
@@ -86,10 +87,12 @@ type Settings struct {
 	Mode            LineNumberMode
 	ScrollbackLines int
 	Demo            bool
+	ThemeName       string
 
 	Palette theme.Palette
 
 	ToggleModeKey byte
+	WrapKey       byte
 	CopyTarget    CopyTarget
 	ExitOnYank    bool
 	StartPosition StartPosition

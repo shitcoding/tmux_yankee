@@ -23,7 +23,7 @@ func TestFormatterRenderGutterAbsoluteMode(t *testing.T) {
 			cursorLine:   5,
 			gutterWidth:  3,
 			wantContains: "1",
-			wantPrefix:   "  1 │ ",
+			wantPrefix:   "   1 │ ",
 		},
 		{
 			name:         "double digit line",
@@ -31,7 +31,7 @@ func TestFormatterRenderGutterAbsoluteMode(t *testing.T) {
 			cursorLine:   5,
 			gutterWidth:  3,
 			wantContains: "42",
-			wantPrefix:   " 42 │ ",
+			wantPrefix:   "  42 │ ",
 		},
 		{
 			name:         "triple digit line",
@@ -39,7 +39,7 @@ func TestFormatterRenderGutterAbsoluteMode(t *testing.T) {
 			cursorLine:   50,
 			gutterWidth:  4,
 			wantContains: "123",
-			wantPrefix:   " 123 │ ",
+			wantPrefix:   "  123 │ ",
 		},
 		{
 			name:         "line at cursor position",
@@ -47,7 +47,7 @@ func TestFormatterRenderGutterAbsoluteMode(t *testing.T) {
 			cursorLine:   10,
 			gutterWidth:  3,
 			wantContains: "10",
-			wantPrefix:   " 10 │ ",
+			wantPrefix:   "  10 │ ",
 		},
 		{
 			name:         "wide gutter for large files",
@@ -55,7 +55,7 @@ func TestFormatterRenderGutterAbsoluteMode(t *testing.T) {
 			cursorLine:   5000,
 			gutterWidth:  5,
 			wantContains: "9999",
-			wantPrefix:   " 9999 │ ",
+			wantPrefix:   "  9999 │ ",
 		},
 	}
 
@@ -100,7 +100,7 @@ func TestFormatterRenderGutterRelativeMode(t *testing.T) {
 			cursorLine:   10,
 			gutterWidth:  3,
 			wantDistance: 0,
-			wantPrefix:   "  0 │ ",
+			wantPrefix:   "   0 │ ",
 		},
 		{
 			name:         "line above cursor",
@@ -108,7 +108,7 @@ func TestFormatterRenderGutterRelativeMode(t *testing.T) {
 			cursorLine:   10,
 			gutterWidth:  3,
 			wantDistance: 5,
-			wantPrefix:   "  5 │ ",
+			wantPrefix:   "   5 │ ",
 		},
 		{
 			name:         "line below cursor",
@@ -116,7 +116,7 @@ func TestFormatterRenderGutterRelativeMode(t *testing.T) {
 			cursorLine:   10,
 			gutterWidth:  3,
 			wantDistance: 5,
-			wantPrefix:   "  5 │ ",
+			wantPrefix:   "   5 │ ",
 		},
 		{
 			name:         "adjacent line above",
@@ -124,7 +124,7 @@ func TestFormatterRenderGutterRelativeMode(t *testing.T) {
 			cursorLine:   10,
 			gutterWidth:  3,
 			wantDistance: 1,
-			wantPrefix:   "  1 │ ",
+			wantPrefix:   "   1 │ ",
 		},
 		{
 			name:         "adjacent line below",
@@ -132,7 +132,7 @@ func TestFormatterRenderGutterRelativeMode(t *testing.T) {
 			cursorLine:   10,
 			gutterWidth:  3,
 			wantDistance: 1,
-			wantPrefix:   "  1 │ ",
+			wantPrefix:   "   1 │ ",
 		},
 		{
 			name:         "far from cursor",
@@ -140,7 +140,7 @@ func TestFormatterRenderGutterRelativeMode(t *testing.T) {
 			cursorLine:   10,
 			gutterWidth:  3,
 			wantDistance: 90,
-			wantPrefix:   " 90 │ ",
+			wantPrefix:   "  90 │ ",
 		},
 	}
 
@@ -186,7 +186,7 @@ func TestFormatterRenderGutterHybridMode(t *testing.T) {
 			lineNum:           10,
 			cursorLine:        10,
 			gutterWidth:       3,
-			wantNumber:        " 10 │ ",
+			wantNumber:        "  10 │ ",
 			wantColorContains: "38;2;184;187;38",
 			shouldContainANSI: true,
 		},
@@ -195,7 +195,7 @@ func TestFormatterRenderGutterHybridMode(t *testing.T) {
 			lineNum:           8,
 			cursorLine:        10,
 			gutterWidth:       3,
-			wantNumber:        "  2 │ ", // distance is 2
+			wantNumber:        "   2 │ ", // distance is 2
 			wantColorContains: "38;2;250;189;47",
 			shouldContainANSI: true,
 		},
@@ -204,7 +204,7 @@ func TestFormatterRenderGutterHybridMode(t *testing.T) {
 			lineNum:           15,
 			cursorLine:        10,
 			gutterWidth:       3,
-			wantNumber:        "  5 │ ", // distance is 5
+			wantNumber:        "   5 │ ", // distance is 5
 			wantColorContains: "38;2;250;189;47",
 			shouldContainANSI: true,
 		},
@@ -213,7 +213,7 @@ func TestFormatterRenderGutterHybridMode(t *testing.T) {
 			lineNum:           123,
 			cursorLine:        123,
 			gutterWidth:       4,
-			wantNumber:        " 123 │ ",
+			wantNumber:        "  123 │ ",
 			wantColorContains: "38;2;184;187;38",
 			shouldContainANSI: true,
 		},
@@ -409,10 +409,10 @@ func TestFormatterRenderGutterAlignment(t *testing.T) {
 		lineNum int
 		want    string
 	}{
-		{1, "   1 │ "},
-		{10, "  10 │ "},
-		{100, " 100 │ "},
-		{1000, "1000 │ "},
+		{1, "    1 │ "},
+		{10, "   10 │ "},
+		{100, "  100 │ "},
+		{1000, " 1000 │ "},
 	}
 
 	for _, tt := range tests {

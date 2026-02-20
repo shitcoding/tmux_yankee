@@ -97,7 +97,7 @@ func DemoShellSession() []string {
 	lines = append(lines, bold(green("user@host"))+":"+bold(blue("~/projects/tmux-yankee"))+"$ git log --oneline -5")
 	lines = append(lines, yellow("596e57d")+" feat(config): support root key table for yankee binding")
 	lines = append(lines, yellow("d932eb5")+" feat(ui): improve wrap mode viewport and rendering")
-	lines = append(lines, yellow("f2925c9")+" feat(config): add wrap mode setting (scroll/wrap)")
+	lines = append(lines, yellow("f2925c9")+" feat(config): add wrap mode setting (on/off)")
 	lines = append(lines, yellow("4dc3562")+" feat(ui): add word wrapping and wrap-aware viewport for wrap mode")
 	lines = append(lines, yellow("c0f34d8")+" build: rebuild binary with horizontal scroll")
 	lines = append(lines, "")

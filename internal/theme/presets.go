@@ -3,11 +3,11 @@ package theme
 // Presets maps theme names to their full palette definitions.
 var Presets = map[ThemeName]Palette{
 	ThemeDefault: {
-		Cursor:    CellPalette{FG: "#1d2021", BG: "#fe8018"},
-		Selection: CellPalette{FG: "#fbf1c7", BG: "#458588"},
-		Gutter:    GutterPalette{FG: "#a89984", BG: "", SeparatorChar: "│"},
-		LineNum:   LineNumPalette{AbsoluteFG: "#d5c4a1", RelativeFG: "#fabd2f", CursorFG: "#b8bb26", CursorStyle: TextStyle{Bold: true}},
-		Status:    StatusPalette{FG: "#ebdbb2", BG: "#3c3836"},
+		Cursor:    CellPalette{FG: "#ebdbb2", BG: "#FF8700"},
+		Selection: CellPalette{FG: "", BG: "#FF8700"},
+		Gutter:    GutterPalette{FG: "#665c54", BG: "", SeparatorChar: "│"},
+		LineNum:   LineNumPalette{AbsoluteFG: "#7c6f64", RelativeFG: "#7c6f64", CursorFG: "#FF8700", CursorStyle: TextStyle{Bold: true}},
+		Status:    StatusPalette{FG: "#a89984", BG: "#3c3836"},
 	},
 	ThemeDracula: {
 		Cursor:    CellPalette{FG: "#282a36", BG: "#ffb86c"},
@@ -17,11 +17,11 @@ var Presets = map[ThemeName]Palette{
 		Status:    StatusPalette{FG: "#f8f8f2", BG: "#44475a"},
 	},
 	ThemeGruvbox: {
-		Cursor:    CellPalette{FG: "#282828", BG: "#fe8019"},
-		Selection: CellPalette{FG: "#fbf1c7", BG: "#458588"},
-		Gutter:    GutterPalette{FG: "#928374", BG: "", SeparatorChar: "│"},
-		LineNum:   LineNumPalette{AbsoluteFG: "#d5c4a1", RelativeFG: "#d79921", CursorFG: "#b8bb26", CursorStyle: TextStyle{Bold: true}},
-		Status:    StatusPalette{FG: "#ebdbb2", BG: "#3c3836"},
+		Cursor:    CellPalette{FG: "#ebdbb2", BG: "#3c3836"},                         // CursorLine: fg1 on bg1
+		Selection: CellPalette{FG: "", BG: "#665c54"},                                 // Visual: bg3
+		Gutter:    GutterPalette{FG: "#665c54", BG: "", SeparatorChar: "│"},            // VertSplit: bg3
+		LineNum:   LineNumPalette{AbsoluteFG: "#7c6f64", RelativeFG: "#7c6f64", CursorFG: "#fabd2f", CursorStyle: TextStyle{Bold: true}}, // LineNr: bg4, CursorLineNr: bright_yellow
+		Status:    StatusPalette{FG: "#a89984", BG: "#3c3836"},                        // StatusLineNC: fg4 on bg1
 	},
 	ThemeNord: {
 		Cursor:    CellPalette{FG: "#2e3440", BG: "#88c0d0"},

@@ -24,8 +24,9 @@ func Resolve(opts CLIOptions) (Settings, error) {
 	// Parse bool strings
 	exitOnYank := opts.ExitOnYank == "on"
 
-	// Parse ToggleModeKey to byte
+	// Parse ToggleModeKey and WrapKey to byte
 	toggleKey := opts.ToggleModeKey[0]
+	wrapKey := opts.WrapKey[0]
 
 	// Build ThemeOverrides from CLI options
 	overrides := theme.ThemeOverrides{
@@ -66,8 +67,8 @@ func Resolve(opts CLIOptions) (Settings, error) {
 	}
 
 	wrapMode := WrapMode(opts.WrapMode)
-	if wrapMode != WrapModeScroll && wrapMode != WrapModeWrap {
-		wrapMode = WrapModeScroll
+	if wrapMode != WrapModeOff && wrapMode != WrapModeOn {
+		wrapMode = WrapModeOff
 	}
 
 	return Settings{
@@ -75,8 +76,10 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		Mode:            LineNumberMode(opts.Mode),
 		ScrollbackLines: scrollback,
 		Demo:            opts.Demo,
+		ThemeName:       opts.Theme,
 		Palette:         palette,
 		ToggleModeKey:   toggleKey,
+		WrapKey:         wrapKey,
 		CopyTarget:      CopyTarget(opts.CopyTarget),
 		ExitOnYank:      exitOnYank,
 		StartPosition:   StartPosition(opts.StartPosition),

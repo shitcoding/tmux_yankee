@@ -11,6 +11,9 @@ const (
 	ThemeSolarized ThemeName = "solarized"
 )
 
+// ThemeOrder lists all built-in themes in a stable cycle order.
+var ThemeOrder = []ThemeName{ThemeDefault, ThemeDracula, ThemeGruvbox, ThemeNord, ThemeSolarized}
+
 // HexColor is a normalized "#rrggbb" hex color string, or empty string for transparent/default.
 type HexColor string
 

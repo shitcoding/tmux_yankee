@@ -13,6 +13,7 @@ func defaultOpts() CLIOptions {
 		ScrollbackLines: DefaultScrollbackLines,
 		Theme:           DefaultTheme,
 		ToggleModeKey:   DefaultToggleModeKey,
+		WrapKey:         DefaultWrapKey,
 		CopyTarget:      DefaultCopyTarget,
 		ExitOnYank:      DefaultExitOnYank,
 		StartPosition:   DefaultStartPosition,

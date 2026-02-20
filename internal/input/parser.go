@@ -12,6 +12,7 @@ import (
 type Parser struct {
 	pending      Pending
 	toggleKey    byte
+	wrapKey      byte
 	mouseBuf     []byte  // accumulates bytes of an in-progress SGR mouse sequence
 	inMouse      bool    // true while accumulating \x1b[< ... M/m
 	deferredCmd  Command // command to emit on next Parse call (used when ESC is held)
@@ -20,12 +21,17 @@ type Parser struct {
 
 // NewParser creates a new input parser with the default toggle key ('L').
 func NewParser() *Parser {
-	return &Parser{toggleKey: 'L'}
+	return &Parser{toggleKey: 'L', wrapKey: 'w'}
 }
 
 // NewParserWithToggleKey creates a new input parser with a configurable toggle key.
 func NewParserWithToggleKey(toggleKey byte) *Parser {
-	return &Parser{toggleKey: toggleKey}
+	return &Parser{toggleKey: toggleKey, wrapKey: 'w'}
+}
+
+// NewParserWithKeys creates a parser with custom toggle and wrap keys.
+func NewParserWithKeys(toggleKey, wrapKey byte) *Parser {
+	return &Parser{toggleKey: toggleKey, wrapKey: wrapKey}
 }
 
 // Parse processes a single byte of input and returns a command if complete.
@@ -196,6 +202,15 @@ func (p *Parser) parsePrefixedKey(b byte) Command {
 				Motion: motion.MotionFirstLine,
 				Count:  p.pending.Count,
 			}
+		case 'j':
+			// gj → display line down
+			return Command{Type: CommandDisplayLineDown, Count: p.pending.Count}
+		case 'k':
+			// gk → display line up
+			return Command{Type: CommandDisplayLineUp, Count: p.pending.Count}
+		case p.wrapKey:
+			// gw → toggle wrap mode
+			return Command{Type: CommandToggleWrapMode}
 		default:
 			// Invalid sequence, clear pending
 			return Command{Type: CommandNone}
@@ -397,6 +412,12 @@ func (p *Parser) parseCommand(b byte) Command {
 	// Tab: next demo page
 	case 9: // Tab
 		return Command{Type: CommandDemoNext}
+
+	// Bracket keys: demo theme cycling
+	case ']':
+		return Command{Type: CommandDemoThemeNext}
+	case '[':
+		return Command{Type: CommandDemoThemePrev}
 
 	// Quit
 	case 'q', 3: // 'q' or Ctrl-C

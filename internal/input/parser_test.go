@@ -202,7 +202,7 @@ func TestParser_InvalidSequences(t *testing.T) {
 		}
 	})
 
-	t.Run("g alone then motion", func(t *testing.T) {
+	t.Run("g alone then motion gj", func(t *testing.T) {
 		p := NewParser()
 
 		cmd := p.Parse('g')
@@ -211,8 +211,30 @@ func TestParser_InvalidSequences(t *testing.T) {
 		}
 
 		cmd = p.Parse('j')
-		if cmd.Type != CommandNone {
-			t.Errorf("'gj' should return CommandNone (invalid), got %v", cmd.Type)
+		if cmd.Type != CommandDisplayLineDown {
+			t.Errorf("'gj' should return CommandDisplayLineDown, got %v", cmd.Type)
+		}
+	})
+
+	t.Run("gk display line up", func(t *testing.T) {
+		p := NewParser()
+		p.Parse('g')
+		cmd := p.Parse('k')
+		if cmd.Type != CommandDisplayLineUp {
+			t.Errorf("'gk' should return CommandDisplayLineUp, got %v", cmd.Type)
+		}
+	})
+
+	t.Run("5gj display line down with count", func(t *testing.T) {
+		p := NewParser()
+		p.Parse('5')
+		p.Parse('g')
+		cmd := p.Parse('j')
+		if cmd.Type != CommandDisplayLineDown {
+			t.Errorf("'5gj' should return CommandDisplayLineDown, got %v", cmd.Type)
+		}
+		if cmd.Count != 5 {
+			t.Errorf("'5gj' Count = %v, want 5", cmd.Count)
 		}
 	})
 

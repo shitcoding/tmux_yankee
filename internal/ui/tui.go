@@ -50,16 +50,20 @@ type TUI struct {
 	cursorLine    int
 	cursorCol     int
 	viewportTop   int
-	hOffset       int // horizontal scroll offset (0-based column index of leftmost visible char)
-	width         int
-	height        int
-	oldState      *term.State
+	hOffset        int // horizontal scroll offset (0-based column index of leftmost visible char)
+	width          int
+	height         int
+	oldState       *term.State
+	displayGoalCol int  // desired display column within wrapped row (for gj/gk)
+	hasDisplayGoal bool // whether displayGoalCol is set
 
 	// Demo mode fields
-	isDemo         bool
-	demoPages      [][]string
-	demoPageIndex  int
-	demoPageNames  []string
+	isDemo          bool
+	demoPages       [][]string
+	demoPageIndex   int
+	demoPageNames   []string
+	demoThemeIndex  int
+	demoThemeName   theme.ThemeName
 }
 
 // NewTUI creates a new TUI instance from resolved settings.
@@ -98,6 +102,10 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 	if toggleKey == 0 {
 		toggleKey = 'L'
 	}
+	wrapKey := cfg.WrapKey
+	if wrapKey == 0 {
+		wrapKey = 'w'
+	}
 
 	return &TUI{
 		cfg:           cfg,
@@ -108,7 +116,7 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 		palette:       cfg.Palette,
 		modeMachine:   vmode.NewMachine(),
 		client:        tmux.NewClient(),
-		parser:        input.NewParserWithToggleKey(toggleKey),
+		parser:        input.NewParserWithKeys(toggleKey, wrapKey),
 		motionHandler: motion.NewVimHandler(),
 		cursorLine:    initialCursorLine,
 		cursorCol:     0,
@@ -145,23 +153,39 @@ func NewDemoTUI(cfg config.Settings, pages [][]string, pageNames []string) *TUI 
 	if toggleKey == 0 {
 		toggleKey = 'L'
 	}
+	wrapKey := cfg.WrapKey
+	if wrapKey == 0 {
+		wrapKey = 'w'
+	}
+
+	// Find starting theme index from config
+	startThemeName := theme.ThemeName(cfg.ThemeName)
+	themeIndex := 0
+	for i, tn := range theme.ThemeOrder {
+		if tn == startThemeName {
+			themeIndex = i
+			break
+		}
+	}
 
 	return &TUI{
-		cfg:           cfg,
-		doc:           doc,
-		lineNumMode:   string(cfg.Mode),
-		formatter:     linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, cfg.Palette.Gutter, cfg.Palette.LineNum),
-		palette:       cfg.Palette,
-		modeMachine:   vmode.NewMachine(),
-		parser:        input.NewParserWithToggleKey(toggleKey),
-		motionHandler: motion.NewVimHandler(),
-		cursorLine:    initialCursorLine,
-		cursorCol:     0,
-		viewportTop:   0,
-		isDemo:        true,
-		demoPages:     pages,
-		demoPageIndex: 0,
-		demoPageNames: pageNames,
+		cfg:            cfg,
+		doc:            doc,
+		lineNumMode:    string(cfg.Mode),
+		formatter:      linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, cfg.Palette.Gutter, cfg.Palette.LineNum),
+		palette:        cfg.Palette,
+		modeMachine:    vmode.NewMachine(),
+		parser:         input.NewParserWithKeys(toggleKey, wrapKey),
+		motionHandler:  motion.NewVimHandler(),
+		cursorLine:     initialCursorLine,
+		cursorCol:      0,
+		viewportTop:    0,
+		isDemo:         true,
+		demoPages:      pages,
+		demoPageIndex:  0,
+		demoPageNames:  pageNames,
+		demoThemeIndex: themeIndex,
+		demoThemeName:  startThemeName,
 	}
 }
 
@@ -187,7 +211,7 @@ func (t *TUI) Run() error {
 	// clampViewportAndCursor only ensures the cursor is barely visible
 	// (at the edge); we want the initial view centered on the cursor.
 	if t.height > 0 && t.doc.LineCount() > 0 {
-		if t.cfg.WrapMode == config.WrapModeWrap {
+		if t.cfg.WrapMode == config.WrapModeOn {
 			t.centerViewportWrap(t.wrapContentWidth())
 		} else {
 			t.viewportTop = t.cursorLine - t.height/2
@@ -344,7 +368,7 @@ func (t *TUI) clampViewportAndCursor() {
 		return
 	}
 
-	if t.cfg.WrapMode == config.WrapModeWrap {
+	if t.cfg.WrapMode == config.WrapModeOn {
 		// Skip maxTop clamping (assumes 1 line = 1 display row).
 		// ensureCursorVisibleWrap handles wrap-aware viewport during render.
 		// Only enforce basic bounds here.
@@ -501,6 +525,103 @@ func (t *TUI) handleInput(key []byte) bool {
 	return t.handleCommand(cmd)
 }
 
+// moveDisplayLine moves the cursor by `delta` display rows within wrapped content.
+// Positive delta moves down, negative moves up. Uses displayGoalCol to maintain
+// a sticky column position across successive gj/gk movements.
+func (t *TUI) moveDisplayLine(delta int) {
+	contentWidth := t.wrapContentWidth()
+	if contentWidth <= 0 {
+		return
+	}
+	lineCount := t.doc.LineCount()
+	if lineCount == 0 {
+		return
+	}
+
+	// Find which display row within the current line we're on.
+	cells := t.doc.Cells(t.cursorLine)
+	chunks := wordWrapChunks(cells, contentWidth)
+
+	// Determine current chunk index and display column within it.
+	chunkIdx := 0
+	for i, ch := range chunks {
+		if t.cursorCol < ch.end || i == len(chunks)-1 {
+			chunkIdx = i
+			break
+		}
+	}
+	displayCol := t.cursorCol - chunks[chunkIdx].start
+
+	// Set goal column on first gj/gk; reuse on subsequent ones.
+	if !t.hasDisplayGoal {
+		t.displayGoalCol = displayCol
+		t.hasDisplayGoal = true
+	}
+
+	// Walk delta display rows.
+	line := t.cursorLine
+	ci := chunkIdx
+	remaining := delta
+	if remaining > 0 {
+		for remaining > 0 {
+			if ci < len(chunks)-1 {
+				// Move to next chunk within same line.
+				ci++
+			} else {
+				// Cross to next line.
+				line++
+				if line >= lineCount {
+					line = lineCount - 1
+					// Stay on last chunk of last line.
+					cells = t.doc.Cells(line)
+					chunks = wordWrapChunks(cells, contentWidth)
+					ci = len(chunks) - 1
+					break
+				}
+				cells = t.doc.Cells(line)
+				chunks = wordWrapChunks(cells, contentWidth)
+				ci = 0
+			}
+			remaining--
+		}
+	} else {
+		remaining = -remaining
+		for remaining > 0 {
+			if ci > 0 {
+				// Move to previous chunk within same line.
+				ci--
+			} else {
+				// Cross to previous line.
+				line--
+				if line < 0 {
+					line = 0
+					cells = t.doc.Cells(line)
+					chunks = wordWrapChunks(cells, contentWidth)
+					ci = 0
+					break
+				}
+				cells = t.doc.Cells(line)
+				chunks = wordWrapChunks(cells, contentWidth)
+				ci = len(chunks) - 1
+			}
+			remaining--
+		}
+	}
+
+	// Apply goal column in target chunk.
+	ch := chunks[ci]
+	chunkLen := ch.end - ch.start
+	col := t.displayGoalCol
+	if col >= chunkLen {
+		col = chunkLen - 1
+	}
+	if col < 0 {
+		col = 0
+	}
+	t.cursorLine = line
+	t.cursorCol = ch.start + col
+}
+
 // handleCommand executes a parsed command. Returns true if the TUI should exit.
 func (t *TUI) handleCommand(cmd input.Command) bool {
 	switch cmd.Type {
@@ -516,7 +637,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		// Update cursor and viewport
 		t.cursorLine = result.Cursor.Line
 		t.cursorCol = result.Cursor.Col
-		if t.cfg.WrapMode == config.WrapModeWrap {
+		if t.cfg.WrapMode == config.WrapModeOn {
 			// In wrap mode, only accept viewport from motions that intentionally
 			// reposition it. For cursor-only motions, keep the current viewport
 			// and let ensureCursorVisibleWrap handle it during render (the motion
@@ -561,6 +682,9 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 	case input.CommandToggleLineMode:
 		t.toggleMode()
 
+	case input.CommandToggleWrapMode:
+		t.toggleWrapMode()
+
 	case input.CommandDemoNext:
 		if t.isDemo {
 			t.cycleDemoPage(1)
@@ -571,11 +695,45 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 			t.cycleDemoPage(-1)
 		}
 
+	case input.CommandDemoThemeNext:
+		if t.isDemo {
+			t.cycleDemoTheme(1)
+		}
+
+	case input.CommandDemoThemePrev:
+		if t.isDemo {
+			t.cycleDemoTheme(-1)
+		}
+
 	case input.CommandQuit:
 		return true
 
 	case input.CommandMouseScroll:
 		return t.handleMouseScroll(cmd.ScrollDirection)
+
+	case input.CommandDisplayLineDown:
+		if t.cfg.WrapMode != config.WrapModeOn {
+			// Wrap off → delegate to regular j
+			return t.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionDown, Count: cmd.Count})
+		}
+		count := cmd.Count
+		if count == 0 {
+			count = 1
+		}
+		t.moveDisplayLine(count)
+		t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+
+	case input.CommandDisplayLineUp:
+		if t.cfg.WrapMode != config.WrapModeOn {
+			// Wrap off → delegate to regular k
+			return t.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionUp, Count: cmd.Count})
+		}
+		count := cmd.Count
+		if count == 0 {
+			count = 1
+		}
+		t.moveDisplayLine(-count)
+		t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
 
 	case input.CommandCharSearch:
 		if cs, ok := t.motionHandler.(motion.CharSearcher); ok {
@@ -595,6 +753,11 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 			pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 			t.modeMachine.OnCursorMoved(pos)
 		}
+	}
+
+	// Reset display goal column on any command that isn't gj/gk.
+	if cmd.Type != input.CommandDisplayLineDown && cmd.Type != input.CommandDisplayLineUp {
+		t.hasDisplayGoal = false
 	}
 
 	return false
@@ -723,6 +886,17 @@ func (t *TUI) toggleMode() {
 	}
 }
 
+// toggleWrapMode switches between wrap and scroll mode at runtime.
+func (t *TUI) toggleWrapMode() {
+	if t.cfg.WrapMode == config.WrapModeOn {
+		t.cfg.WrapMode = config.WrapModeOff
+	} else {
+		t.cfg.WrapMode = config.WrapModeOn
+	}
+	t.hOffset = 0
+	t.clampViewportAndCursor()
+}
+
 // cycleDemoPage cycles the demo page by delta (+1 or -1) with wrapping.
 func (t *TUI) cycleDemoPage(delta int) {
 	if len(t.demoPages) == 0 {
@@ -757,6 +931,34 @@ func (t *TUI) cycleDemoPage(delta int) {
 
 	// Reset selection mode machine state
 	t.modeMachine = vmode.NewMachine()
+}
+
+// cycleDemoTheme cycles the demo theme by delta (+1 or -1) with wrapping.
+func (t *TUI) cycleDemoTheme(delta int) {
+	n := len(theme.ThemeOrder)
+	if n == 0 {
+		return
+	}
+	t.demoThemeIndex = (t.demoThemeIndex + delta + n) % n
+	t.demoThemeName = theme.ThemeOrder[t.demoThemeIndex]
+
+	// Resolve the new theme palette (pure preset, no overrides)
+	palette, err := theme.Resolve(t.demoThemeName, theme.ThemeOverrides{})
+	if err != nil {
+		return
+	}
+	t.palette = palette
+
+	// Recreate formatter with new palette colors
+	lineNumMode, modeErr := linenums.ModeFromString(t.lineNumMode)
+	if modeErr != nil {
+		lineNumMode = linenums.ModeHybrid
+	}
+	maxLine := t.doc.LineCount()
+	if maxLine == 0 {
+		maxLine = 1
+	}
+	t.formatter = linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, palette.Gutter, palette.LineNum)
 }
 
 // lineSelection computes cursor column and selection range for a given line
@@ -825,7 +1027,7 @@ func (t *TUI) render() {
 		t.height = contentHeight
 	}
 
-	if t.cfg.WrapMode == config.WrapModeWrap {
+	if t.cfg.WrapMode == config.WrapModeOn {
 		t.renderWrap()
 	} else {
 		t.renderScroll()
@@ -1047,8 +1249,16 @@ func (t *TUI) renderDemoStatusBar() {
 		pageName = t.demoPageNames[t.demoPageIndex]
 	}
 	modeStr := strings.ToUpper(t.lineNumMode)
-	status := fmt.Sprintf(" [%d/%d] %s  │  %s  │  L:%d/%d  │  yankee --demo ",
-		t.demoPageIndex+1, len(t.demoPages), pageName, modeStr,
+	themeName := string(t.demoThemeName)
+	if themeName == "" {
+		themeName = "default"
+	}
+	wrapStr := "WRAP OFF"
+	if t.cfg.WrapMode == config.WrapModeOn {
+		wrapStr = "WRAP ON"
+	}
+	status := fmt.Sprintf(" [%d/%d] %s  │  %s  │  %s  │  %s  │  L:%d/%d  │  yankee --demo ",
+		t.demoPageIndex+1, len(t.demoPages), pageName, themeName, modeStr, wrapStr,
 		t.cursorLine+1, t.doc.LineCount())
 
 	// Apply Status palette colors and style

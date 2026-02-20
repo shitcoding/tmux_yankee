@@ -78,6 +78,15 @@ func Validate(opts CLIOptions) error {
 		return fmt.Errorf("invalid toggle-mode-key %q: must be a printable ASCII character", opts.ToggleModeKey)
 	}
 
+	// WrapKey: exactly 1 printable ASCII character
+	if len(opts.WrapKey) != 1 {
+		return fmt.Errorf("invalid wrap-key %q: must be exactly one ASCII character", opts.WrapKey)
+	}
+	wk := opts.WrapKey[0]
+	if wk < 0x20 || wk > 0x7e {
+		return fmt.Errorf("invalid wrap-key %q: must be a printable ASCII character", opts.WrapKey)
+	}
+
 	// CopyTarget
 	switch opts.CopyTarget {
 	case "both", "tmux", "clipboard":
