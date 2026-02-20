@@ -1,12 +1,16 @@
 package ui
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // Line represents a single line in the document with both raw ANSI and plain text.
 type Line struct {
-	RawANSI string // Original line with ANSI escape codes
-	Plain   string // Line with ANSI codes stripped (for motion calculations)
-	Cells   []Cell // Pre-parsed ANSI cells (cached at load time to avoid per-frame reparse)
+	RawANSI   string // Original line with ANSI escape codes
+	Plain     string // Line with ANSI codes stripped (for motion calculations)
+	Cells     []Cell // Pre-parsed ANSI cells (cached at load time to avoid per-frame reparse)
+	RuneCount int    // Number of runes in Plain (cached to avoid repeated allocation)
 }
 
 // Document holds pane content with color preservation.
@@ -18,10 +22,12 @@ type Document struct {
 func NewDocument(rawLines []string) *Document {
 	lines := make([]Line, len(rawLines))
 	for i, raw := range rawLines {
+		plain := stripANSI(raw)
 		lines[i] = Line{
-			RawANSI: raw,
-			Plain:   stripANSI(raw),
-			Cells:   ParseANSILine(raw),
+			RawANSI:   raw,
+			Plain:     plain,
+			Cells:     ParseANSILine(raw),
+			RuneCount: utf8.RuneCountInString(plain),
 		}
 	}
 	return &Document{lines: lines}
@@ -62,7 +68,7 @@ func (d *Document) LineRuneCount(index int) int {
 	if index < 0 || index >= len(d.lines) {
 		return 0
 	}
-	return len([]rune(d.lines[index].Plain))
+	return d.lines[index].RuneCount
 }
 
 // stripANSI removes ANSI escape codes from a string.

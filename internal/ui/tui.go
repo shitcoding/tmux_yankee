@@ -475,34 +475,28 @@ func (t *TUI) ensureCursorVisibleWrap(contentWidth int) {
 	if t.cursorLine < t.viewportTop {
 		t.viewportTop = t.cursorLine
 	}
+	if t.viewportTop == t.cursorLine {
+		return // cursor line IS the viewport top; always visible
+	}
 
-	// Count display rows from viewportTop to the cursor line's first row.
-	// If that exceeds t.height, advance viewportTop one content line at a time.
-	for {
-		rows := 0
-		cursorFirstRow := 0
-		lineCount := t.doc.LineCount()
-		for i := t.viewportTop; i < lineCount; i++ {
-			chunks := t.cachedWrapChunks(i, t.doc.Cells(i), contentWidth)
-			if i == t.cursorLine {
-				cursorFirstRow = rows
-			}
-			rows += len(chunks)
-			// Early exit: we've counted past the cursor and past the screen.
-			if i > t.cursorLine && rows >= t.height {
-				break
-			}
-		}
+	// Single forward pass: count display rows from viewportTop to cursorLine.
+	totalRows := 0
+	for i := t.viewportTop; i < t.cursorLine; i++ {
+		chunks := t.cachedWrapChunks(i, t.doc.Cells(i), contentWidth)
+		totalRows += len(chunks)
+	}
 
-		if cursorFirstRow < t.height {
-			break // cursor is visible
-		}
-		// Advance viewportTop by one line and retry.
+	// If cursor's first row fits in the viewport, nothing to do.
+	if totalRows < t.height {
+		return
+	}
+
+	// Cursor is below viewport. Walk viewportTop forward, subtracting each
+	// line's wrapped row count, until the cursor fits. O(n) total.
+	for totalRows >= t.height && t.viewportTop < t.cursorLine {
+		chunks := t.cachedWrapChunks(t.viewportTop, t.doc.Cells(t.viewportTop), contentWidth)
+		totalRows -= len(chunks)
 		t.viewportTop++
-		if t.viewportTop > t.cursorLine {
-			t.viewportTop = t.cursorLine
-			break
-		}
 	}
 }
 
@@ -643,6 +637,15 @@ func (t *TUI) moveDisplayLine(delta int) {
 
 // handleCommand executes a parsed command. Returns true if the TUI should exit.
 func (t *TUI) handleCommand(cmd input.Command) bool {
+	// Snapshot visible state before executing the command.
+	prevCursorLine := t.cursorLine
+	prevCursorCol := t.cursorCol
+	prevViewportTop := t.viewportTop
+	prevHOffset := t.hOffset
+	prevMode := t.modeMachine.Mode()
+	prevRegion := t.modeMachine.Region()
+	prevWrapMode := t.cfg.WrapMode
+
 	switch cmd.Type {
 	case input.CommandNone:
 		return false
@@ -774,8 +777,18 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		}
 	}
 
-	// All commands reaching this point changed visible state.
-	t.dirty = true
+	// Only mark dirty if visible state actually changed.
+	curMode := t.modeMachine.Mode()
+	curRegion := t.modeMachine.Region()
+	if t.cursorLine != prevCursorLine ||
+		t.cursorCol != prevCursorCol ||
+		t.viewportTop != prevViewportTop ||
+		t.hOffset != prevHOffset ||
+		curMode != prevMode ||
+		curRegion != prevRegion ||
+		t.cfg.WrapMode != prevWrapMode {
+		t.dirty = true
+	}
 
 	// Reset display goal column on any command that isn't gj/gk.
 	if cmd.Type != input.CommandDisplayLineDown && cmd.Type != input.CommandDisplayLineUp {
@@ -1141,6 +1154,7 @@ func trimTrailingSpaceCells(cells []Cell) int {
 
 // cachedWrapChunks returns wordWrapChunks for a line, using the TUI's cache.
 // The cache is invalidated when contentWidth changes (e.g., on resize).
+// When the cache exceeds a size threshold, entries far from the viewport are evicted.
 func (t *TUI) cachedWrapChunks(lineIdx int, cells []Cell, contentWidth int) []wrapChunk {
 	if t.wrapCache != nil && t.wrapCacheWidth == contentWidth {
 		if chunks, ok := t.wrapCache[lineIdx]; ok {
@@ -1153,6 +1167,23 @@ func (t *TUI) cachedWrapChunks(lineIdx int, cells []Cell, contentWidth int) []wr
 	}
 	chunks := wordWrapChunks(cells, contentWidth)
 	t.wrapCache[lineIdx] = chunks
+
+	// Evict entries far from the viewport when cache grows too large.
+	maxEntries := t.height * 20
+	if maxEntries < 100 {
+		maxEntries = 100
+	}
+	if len(t.wrapCache) > maxEntries {
+		margin := t.height * 5
+		lo := t.viewportTop - margin
+		hi := t.viewportTop + t.height + margin
+		for k := range t.wrapCache {
+			if k < lo || k > hi {
+				delete(t.wrapCache, k)
+			}
+		}
+	}
+
 	return chunks
 }
 

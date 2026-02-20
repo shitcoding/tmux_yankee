@@ -431,6 +431,90 @@ func runeDisplayWidth(r rune) int {
 	return 1
 }
 
+// cellMode tracks what overlay (cursor/selection/normal) is active for a cell.
+type cellMode byte
+
+const (
+	cellModeNormal    cellMode = 0
+	cellModeCursor    cellMode = 1
+	cellModeSelection cellMode = 2
+)
+
+// cellStyleKey is a compact representation of a cell's visual style for run tracking.
+// Adjacent cells with the same key need no SGR transition.
+type cellStyleKey struct {
+	mode  cellMode
+	style Style // only compared when mode == cellModeNormal
+}
+
+// writeSGRNormal writes the SGR sequence for a normal (non-cursor, non-selection) cell
+// directly to the builder, avoiding per-cell string allocations.
+func writeSGRNormal(b *strings.Builder, s Style) {
+	b.WriteString("\x1b[0;")
+	first := true
+	writeSep := func() {
+		if !first {
+			b.WriteByte(';')
+		}
+		first = false
+	}
+	if s.Reverse {
+		writeSep()
+		b.WriteByte('7')
+	}
+	if s.Bold {
+		writeSep()
+		b.WriteByte('1')
+	}
+	if s.Dim {
+		writeSep()
+		b.WriteByte('2')
+	}
+	if s.Italic {
+		writeSep()
+		b.WriteByte('3')
+	}
+	if s.Underline {
+		writeSep()
+		b.WriteByte('4')
+	}
+	if s.FgColor == -1 {
+		writeSep()
+		b.WriteString("38;2;")
+		b.WriteString(strconv.Itoa(s.FgR))
+		b.WriteByte(';')
+		b.WriteString(strconv.Itoa(s.FgG))
+		b.WriteByte(';')
+		b.WriteString(strconv.Itoa(s.FgB))
+	} else if s.FgColor > 0 {
+		writeSep()
+		if s.FgColor >= 256 {
+			b.WriteString("38;5;")
+			b.WriteString(strconv.Itoa(s.FgColor - 256))
+		} else {
+			b.WriteString(strconv.Itoa(s.FgColor))
+		}
+	}
+	if s.BgColor == -1 {
+		writeSep()
+		b.WriteString("48;2;")
+		b.WriteString(strconv.Itoa(s.BgR))
+		b.WriteByte(';')
+		b.WriteString(strconv.Itoa(s.BgG))
+		b.WriteByte(';')
+		b.WriteString(strconv.Itoa(s.BgB))
+	} else if s.BgColor > 0 {
+		writeSep()
+		if s.BgColor >= 256 {
+			b.WriteString("48;5;")
+			b.WriteString(strconv.Itoa(s.BgColor - 256))
+		} else {
+			b.WriteString(strconv.Itoa(s.BgColor))
+		}
+	}
+	b.WriteByte('m')
+}
+
 // RenderCellsWithPalette renders pre-parsed cells with cursor/selection overlay.
 // This is the performance-critical path: cells are pre-parsed at document load,
 // so this function does no ANSI parsing.
@@ -438,6 +522,9 @@ func runeDisplayWidth(r rune) int {
 // maxWidth is the maximum number of terminal display columns to render.
 // cursorCol, selStart, selEnd are absolute (0-based from line start); the renderer
 // maps them to viewport-relative positions internally.
+//
+// Uses style-run optimization: SGR sequences are only emitted when the effective
+// style changes from the previous cell, reducing output size and allocations.
 func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, startCol, maxWidth int, pal theme.Palette) string {
 	// Clamp startCol to valid range
 	if startCol < 0 {
@@ -450,6 +537,15 @@ func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, start
 	var b strings.Builder
 	displayCols := 0
 
+	// Precompute cursor and selection SGR strings once (constant for whole line).
+	cursorSGR := buildOverlaySGR(pal.Cursor)
+	selectionSGR := buildOverlaySGR(pal.Selection)
+
+	// Track current style to avoid redundant SGR emission.
+	var prevKey cellStyleKey
+	prevKey.mode = 255 // sentinel: force first cell to emit SGR
+	styled := false    // whether we have emitted any SGR (need reset at end)
+
 	for vi := 0; startCol+vi < len(cells); vi++ {
 		cell := cells[startCol+vi]
 		w := runeDisplayWidth(cell.Rune)
@@ -458,17 +554,78 @@ func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, start
 		}
 		absIdx := startCol + vi
 		inSelection := selStart >= 0 && absIdx >= selStart && absIdx <= selEnd
-		applyCursor := (absIdx == cursorCol) && !inSelection
-		applySelection := inSelection
-		b.WriteString(RenderCellWithPalette(cell, applyCursor, applySelection, pal))
+
+		var key cellStyleKey
+		if inSelection {
+			key.mode = cellModeSelection
+		} else if absIdx == cursorCol {
+			key.mode = cellModeCursor
+		} else {
+			key.mode = cellModeNormal
+			key.style = cell.Style
+		}
+
+		// Emit SGR only when style changes from previous cell.
+		if key != prevKey {
+			switch key.mode {
+			case cellModeCursor:
+				b.WriteString(cursorSGR)
+			case cellModeSelection:
+				b.WriteString(selectionSGR)
+			default:
+				if key.style == (Style{}) {
+					// Default style — just reset.
+					b.WriteString("\x1b[0m")
+				} else {
+					writeSGRNormal(&b, key.style)
+				}
+			}
+			styled = true
+			prevKey = key
+		}
+
+		b.WriteRune(cell.Rune)
 		displayCols += w
 	}
 
 	// If cursor is at or past end of visible content, render cursor block
 	if cursorCol >= startCol && cursorCol >= len(cells) && displayCols < maxWidth {
-		emptyCell := Cell{Rune: ' ', Style: Style{}}
-		b.WriteString(RenderCellWithPalette(emptyCell, true, false, pal))
+		b.WriteString(cursorSGR)
+		b.WriteByte(' ')
+		styled = true
 	}
 
+	if styled {
+		b.WriteString("\x1b[0m")
+	}
+
+	return b.String()
+}
+
+// buildOverlaySGR precomputes the full SGR escape for a theme overlay (cursor or selection).
+func buildOverlaySGR(overlay theme.CellPalette) string {
+	var b strings.Builder
+	b.WriteString("\x1b[0")
+	if bg := hexToBGAnsi(overlay.BG); bg != "" {
+		b.WriteByte(';')
+		b.WriteString(bg)
+	}
+	if fg := hexToFGAnsi(overlay.FG); fg != "" {
+		b.WriteByte(';')
+		b.WriteString(fg)
+	}
+	if overlay.Style.Bold {
+		b.WriteString(";1")
+	}
+	if overlay.Style.Dim {
+		b.WriteString(";2")
+	}
+	if overlay.Style.Italic {
+		b.WriteString(";3")
+	}
+	if overlay.Style.Underline {
+		b.WriteString(";4")
+	}
+	b.WriteByte('m')
 	return b.String()
 }
