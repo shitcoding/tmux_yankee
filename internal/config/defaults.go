@@ -10,6 +10,7 @@ const (
 	DefaultStartPosition   = "bottom"
 	DefaultWrapMode        = "off"
 	DefaultWrapKey         = "w"
+	DefaultStatusBar       = "on"
 	MinScrollbackLines     = 100
 	MaxScrollbackLines     = 200000
 )

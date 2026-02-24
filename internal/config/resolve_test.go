@@ -17,6 +17,7 @@ func defaultOpts() CLIOptions {
 		CopyTarget:      DefaultCopyTarget,
 		ExitOnYank:      DefaultExitOnYank,
 		StartPosition:   DefaultStartPosition,
+		StatusBar:       DefaultStatusBar,
 	}
 }
 

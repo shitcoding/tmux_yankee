@@ -71,6 +71,11 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		wrapMode = WrapModeOff
 	}
 
+	statusBar := StatusBarMode(opts.StatusBar)
+	if statusBar != StatusBarOn && statusBar != StatusBarOff {
+		statusBar = StatusBarOn
+	}
+
 	return Settings{
 		PaneID:          opts.PaneID,
 		Mode:            LineNumberMode(opts.Mode),
@@ -84,5 +89,6 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		ExitOnYank:      exitOnYank,
 		StartPosition:   StartPosition(opts.StartPosition),
 		WrapMode:        wrapMode,
+		StatusBar:       statusBar,
 	}, nil
 }

@@ -111,6 +111,14 @@ func Validate(opts CLIOptions) error {
 		return fmt.Errorf("invalid start-position %q: must be one of top, middle, bottom", opts.StartPosition)
 	}
 
+	// StatusBar
+	switch opts.StatusBar {
+	case "on", "off":
+		// valid
+	default:
+		return fmt.Errorf("invalid status-bar %q: must be on or off", opts.StatusBar)
+	}
+
 	// On/off boolean style fields
 	boolFields := []struct {
 		name string

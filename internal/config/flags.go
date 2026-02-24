@@ -47,4 +47,5 @@ func RegisterFlags(fs *flag.FlagSet, opts *CLIOptions) {
 	fs.StringVar(&opts.ExitOnYank, "exit-on-yank", DefaultExitOnYank, "Exit TUI after yanking (on, off)")
 	fs.StringVar(&opts.StartPosition, "start-position", DefaultStartPosition, "Initial cursor position (top, middle, bottom)")
 	fs.StringVar(&opts.WrapMode, "wrap-mode", DefaultWrapMode, "Long line wrapping (on, off)")
+	fs.StringVar(&opts.StatusBar, "status-bar", DefaultStatusBar, "Powerline status bar (on, off)")
 }

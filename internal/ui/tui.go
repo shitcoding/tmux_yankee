@@ -845,6 +845,11 @@ func (t *TUI) mouseToDocPos(termRow, termCol int) (selection.Pos, bool) {
 		return selection.Pos{}, false
 	}
 
+	// Ignore clicks on the status bar row
+	if t.shouldShowStatusBar() && termRow >= t.height-1 {
+		return selection.Pos{}, false
+	}
+
 	// Compute gutter width (same as render path)
 	sampleGutter := t.formatter.RenderGutter(1, 1)
 	gutterWidth := utf8.RuneCountInString(stripANSI(sampleGutter))
@@ -1224,6 +1229,7 @@ func (t *TUI) cycleDemoPage(delta int) {
 
 	// Reset selection mode machine state
 	t.modeMachine = vmode.NewMachine()
+	t.dirty = true
 }
 
 // cycleDemoTheme cycles the demo theme by delta (+1 or -1) with wrapping.
@@ -1252,6 +1258,7 @@ func (t *TUI) cycleDemoTheme(delta int) {
 		maxLine = 1
 	}
 	t.formatter = linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, palette.Gutter, palette.LineNum)
+	t.dirty = true
 }
 
 // lineSelection computes cursor column and selection range for a given line
@@ -1317,10 +1324,22 @@ func bgEscape(s Style) string {
 	return ""
 }
 
+// shouldShowStatusBar returns true if the status bar should be displayed.
+func (t *TUI) shouldShowStatusBar() bool {
+	if t.height <= 1 {
+		return false
+	}
+	if t.isDemo {
+		return true // demo always shows status bar
+	}
+	return t.cfg.StatusBar == config.StatusBarOn
+}
+
 // render draws the TUI
 func (t *TUI) render() {
+	showStatus := t.shouldShowStatusBar()
 	contentHeight := t.height
-	if t.isDemo && t.height > 1 {
+	if showStatus {
 		contentHeight = t.height - 1 // reserve last row for status bar
 		t.height = contentHeight
 	}
@@ -1331,9 +1350,9 @@ func (t *TUI) render() {
 		t.renderScroll()
 	}
 
-	if t.isDemo {
+	if showStatus {
 		t.height = contentHeight + 1 // restore full height
-		t.renderDemoStatusBar()
+		t.renderStatusBar()
 	}
 }
 
@@ -1574,75 +1593,6 @@ func (t *TUI) renderWrap() {
 		}
 		b.WriteString("\x1b[K")
 		displayRow++
-	}
-
-	fmt.Print(b.String())
-}
-
-// renderDemoStatusBar renders the demo status bar on the last terminal row.
-func (t *TUI) renderDemoStatusBar() {
-	// Build status text
-	pageName := "Demo"
-	if t.demoPageIndex < len(t.demoPageNames) {
-		pageName = t.demoPageNames[t.demoPageIndex]
-	}
-	modeStr := strings.ToUpper(t.lineNumMode)
-	themeName := string(t.demoThemeName)
-	if themeName == "" {
-		themeName = "default"
-	}
-	wrapStr := "WRAP OFF"
-	if t.cfg.WrapMode == config.WrapModeOn {
-		wrapStr = "WRAP ON"
-	}
-	status := fmt.Sprintf(" [%d/%d] %s  │  %s  │  %s  │  %s  │  L:%d/%d  │  yankee --demo ",
-		t.demoPageIndex+1, len(t.demoPages), pageName, themeName, modeStr, wrapStr,
-		t.cursorLine+1, t.doc.LineCount())
-
-	// Apply Status palette colors and style
-	var codes []string
-	if t.palette.Status.FG != "" {
-		r, g, b, ok := parseStatusHex(string(t.palette.Status.FG))
-		if ok {
-			codes = append(codes, fmt.Sprintf("38;2;%d;%d;%d", r, g, b))
-		}
-	}
-	if t.palette.Status.BG != "" {
-		r, g, b, ok := parseStatusHex(string(t.palette.Status.BG))
-		if ok {
-			codes = append(codes, fmt.Sprintf("48;2;%d;%d;%d", r, g, b))
-		}
-	}
-	if t.palette.Status.Style.Bold {
-		codes = append(codes, "1")
-	}
-	if t.palette.Status.Style.Dim {
-		codes = append(codes, "2")
-	}
-	if t.palette.Status.Style.Italic {
-		codes = append(codes, "3")
-	}
-
-	var b strings.Builder
-	b.WriteString("\r\n")
-	if len(codes) > 0 {
-		b.WriteString("\x1b[")
-		b.WriteString(strings.Join(codes, ";"))
-		b.WriteString("m")
-	}
-
-	// Pad status to full width
-	runeCount := 0
-	for range status {
-		runeCount++
-	}
-	if runeCount < t.width {
-		status += strings.Repeat(" ", t.width-runeCount)
-	}
-	b.WriteString(status)
-
-	if len(codes) > 0 {
-		b.WriteString("\x1b[0m")
 	}
 
 	fmt.Print(b.String())

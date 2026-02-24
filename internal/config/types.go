@@ -33,6 +33,13 @@ const (
 	WrapModeOn  WrapMode = "on"
 )
 
+type StatusBarMode string
+
+const (
+	StatusBarOn  StatusBarMode = "on"
+	StatusBarOff StatusBarMode = "off"
+)
+
 // CLIOptions holds raw string values from CLI flags before validation.
 type CLIOptions struct {
 	PaneID          string
@@ -79,6 +86,7 @@ type CLIOptions struct {
 	ExitOnYank    string
 	StartPosition string
 	WrapMode      string
+	StatusBar     string
 }
 
 // Settings is the validated, typed settings passed into the TUI.
@@ -97,4 +105,5 @@ type Settings struct {
 	ExitOnYank    bool
 	StartPosition StartPosition
 	WrapMode      WrapMode
+	StatusBar     StatusBarMode
 }

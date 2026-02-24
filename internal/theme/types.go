@@ -52,11 +52,21 @@ type LineNumPalette struct {
 	RelativeStyle TextStyle
 }
 
-// StatusPalette holds colors for the status bar.
+// StatusPalette holds colors for the legacy status bar (demo mode fallback).
 type StatusPalette struct {
 	FG    HexColor
 	BG    HexColor
 	Style TextStyle
+}
+
+// StatusBarPalette holds per-mode colors for the powerline status bar.
+type StatusBarPalette struct {
+	ModeNormal     CellPalette // NORMAL mode segment
+	ModeVisualChar CellPalette // VISUAL mode segment
+	ModeVisualLine CellPalette // V-LINE mode segment
+	InfoPrimary    CellPalette // position/percentage segments
+	InfoSecondary  CellPalette // secondary info (wrap, line mode)
+	Fill           CellPalette // middle fill area
 }
 
 // Palette is the full set of colors used by the TUI.
@@ -66,6 +76,7 @@ type Palette struct {
 	Gutter    GutterPalette
 	LineNum   LineNumPalette
 	Status    StatusPalette
+	StatusBar StatusBarPalette
 }
 
 // ThemeOverrides holds per-field color overrides supplied via CLI flags.
