@@ -58,6 +58,11 @@ type TUI struct {
 	hasDisplayGoal bool // whether displayGoalCol is set
 	dirty          bool // true when visible state changed and render is needed
 
+	// Mouse drag state
+	mouseDragActive bool          // true while left button is held and dragging
+	mouseDragAnchor selection.Pos // document position where drag started
+	mouseDragEnd    selection.Pos // latest drag position (updated on drag events)
+
 	// Wrap chunk cache: avoids recomputing wordWrapChunks for the same line+width
 	wrapCache      map[int][]wrapChunk // line index → chunks
 	wrapCacheWidth int                 // contentWidth used to populate wrapCache
@@ -229,8 +234,8 @@ func (t *TUI) Run() error {
 	// Clear screen and hide cursor
 	fmt.Print("\x1b[2J\x1b[?25l")
 
-	// Enable SGR mouse wheel reporting
-	fmt.Print("\x1b[?1000h\x1b[?1006h")
+	// Enable mouse reporting: basic tracking + button-event (drag) + SGR extended format
+	fmt.Print("\x1b[?1000h\x1b[?1002h\x1b[?1006h")
 
 	// Initial render
 	t.render()
@@ -324,7 +329,7 @@ func (t *TUI) initTerminal() error {
 func (t *TUI) restoreTerminal() {
 	if t.oldState != nil {
 		// Disable mouse reporting
-		fmt.Print("\x1b[?1006l\x1b[?1000l")
+		fmt.Print("\x1b[?1006l\x1b[?1002l\x1b[?1000l")
 		// Show cursor and clear screen
 		fmt.Print("\x1b[?25h\x1b[2J\x1b[H")
 		// Leave alternate screen buffer
@@ -741,6 +746,15 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 	case input.CommandMouseScroll:
 		return t.handleMouseScroll(cmd.ScrollDirection)
 
+	case input.CommandMouseLeftPress:
+		t.handleMousePress(cmd.MouseRow, cmd.MouseCol)
+
+	case input.CommandMouseLeftDrag:
+		t.handleMouseDrag(cmd.MouseRow, cmd.MouseCol)
+
+	case input.CommandMouseRelease:
+		t.handleMouseRelease(cmd.MouseRow, cmd.MouseCol)
+
 	case input.CommandDisplayLineDown:
 		if t.cfg.WrapMode != config.WrapModeOn {
 			// Wrap off → delegate to regular j
@@ -820,6 +834,230 @@ func searchKindToDirection(sk input.SearchKind) motion.CharSearchDirection {
 	default:
 		return motion.CharSearchFindForward
 	}
+}
+
+// mouseToDocPos maps terminal coordinates (0-based row, col) to document position.
+// Accounts for gutter width, viewport offset, horizontal scroll offset, and wrap mode.
+// Returns the clamped document position and whether the click was valid.
+func (t *TUI) mouseToDocPos(termRow, termCol int) (selection.Pos, bool) {
+	lineCount := t.doc.LineCount()
+	if lineCount == 0 {
+		return selection.Pos{}, false
+	}
+
+	// Compute gutter width (same as render path)
+	sampleGutter := t.formatter.RenderGutter(1, 1)
+	gutterWidth := utf8.RuneCountInString(stripANSI(sampleGutter))
+
+	// Content column: subtract gutter, clamp to 0
+	contentCol := termCol - gutterWidth
+	if contentCol < 0 {
+		contentCol = 0 // clicking on gutter → column 0
+	}
+
+	if t.cfg.WrapMode == config.WrapModeOn {
+		return t.mouseToDocPosWrap(termRow, contentCol, gutterWidth)
+	}
+	return t.mouseToDocPosScroll(termRow, contentCol)
+}
+
+// mouseToDocPosScroll maps terminal position to document position in non-wrap mode.
+func (t *TUI) mouseToDocPosScroll(termRow, contentCol int) (selection.Pos, bool) {
+	lineCount := t.doc.LineCount()
+	docLine := t.viewportTop + termRow
+
+	// Clamp to valid line range
+	if docLine < 0 {
+		docLine = 0
+	}
+	if docLine >= lineCount {
+		docLine = lineCount - 1
+	}
+
+	// Map content column to rune index, accounting for horizontal scroll and wide chars
+	runeCol := t.displayColToRune(docLine, contentCol+t.hOffset)
+
+	return selection.Pos{Line: docLine, Col: runeCol}, true
+}
+
+// mouseToDocPosWrap maps terminal position to document position in wrap mode.
+func (t *TUI) mouseToDocPosWrap(termRow, contentCol, gutterWidth int) (selection.Pos, bool) {
+	lineCount := t.doc.LineCount()
+	contentWidth := t.width - gutterWidth
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+
+	// Walk display rows from viewportTop to find which logical line + chunk
+	// corresponds to termRow.
+	displayRow := 0
+	for lineIdx := t.viewportTop; lineIdx < lineCount; lineIdx++ {
+		cells := t.doc.Cells(lineIdx)
+		chunks := t.cachedWrapChunks(lineIdx, cells, contentWidth)
+		for chunkIdx, ch := range chunks {
+			if displayRow == termRow {
+				// Found the target display row — map contentCol to rune within chunk
+				runeCol := ch.start + t.displayColToRuneInChunk(lineIdx, ch, contentCol)
+				maxCol := t.doc.LineRuneCount(lineIdx) - 1
+				if maxCol < 0 {
+					maxCol = 0
+				}
+				if runeCol > maxCol {
+					runeCol = maxCol
+				}
+				return selection.Pos{Line: lineIdx, Col: runeCol}, true
+			}
+			displayRow++
+			_ = chunkIdx
+		}
+		if displayRow > termRow {
+			break
+		}
+	}
+
+	// Click below rendered content — clamp to last line, last column
+	lastLine := lineCount - 1
+	maxCol := t.doc.LineRuneCount(lastLine) - 1
+	if maxCol < 0 {
+		maxCol = 0
+	}
+	return selection.Pos{Line: lastLine, Col: maxCol}, true
+}
+
+// displayColToRune converts a 0-based display column to a rune index on a line,
+// accounting for wide characters (CJK, emoji).
+func (t *TUI) displayColToRune(lineIdx, displayCol int) int {
+	plain := t.doc.Line(lineIdx)
+	runes := []rune(plain)
+	col := 0
+	runeIdx := 0
+	for runeIdx < len(runes) {
+		w := runeDisplayWidth(runes[runeIdx])
+		if w == 0 {
+			w = 1
+		}
+		if col+w > displayCol {
+			break
+		}
+		col += w
+		runeIdx++
+	}
+	// Clamp to last valid position
+	maxCol := len(runes) - 1
+	if maxCol < 0 {
+		maxCol = 0
+	}
+	if runeIdx > maxCol {
+		runeIdx = maxCol
+	}
+	return runeIdx
+}
+
+// displayColToRuneInChunk converts a display column to a rune index within a wrap chunk.
+func (t *TUI) displayColToRuneInChunk(lineIdx int, ch wrapChunk, displayCol int) int {
+	plain := t.doc.Line(lineIdx)
+	runes := []rune(plain)
+	col := 0
+	offset := 0
+	for i := ch.start; i < ch.end && i < len(runes); i++ {
+		w := runeDisplayWidth(runes[i])
+		if w == 0 {
+			w = 1
+		}
+		if col+w > displayCol {
+			break
+		}
+		col += w
+		offset++
+	}
+	return offset
+}
+
+// handleMousePress handles a left mouse button press.
+func (t *TUI) handleMousePress(row, col int) {
+	pos, ok := t.mouseToDocPos(row, col)
+	if !ok {
+		return
+	}
+
+	// Cancel any existing visual selection
+	if t.modeMachine.Mode() != vmode.Normal {
+		t.modeMachine.Handle(vmode.EventEscape, pos)
+	}
+
+	// Move cursor to clicked position
+	t.cursorLine = pos.Line
+	t.cursorCol = pos.Col
+
+	// Start tracking drag
+	t.mouseDragActive = true
+	t.mouseDragAnchor = pos
+	t.mouseDragEnd = pos
+}
+
+// handleMouseDrag handles mouse motion with left button held.
+func (t *TUI) handleMouseDrag(row, col int) {
+	if !t.mouseDragActive {
+		return
+	}
+
+	pos, ok := t.mouseToDocPos(row, col)
+	if !ok {
+		return
+	}
+
+	t.mouseDragEnd = pos
+
+	// Update cursor to drag end for visual feedback
+	t.cursorLine = pos.Line
+	t.cursorCol = pos.Col
+
+	// Create/update live visual selection during drag
+	anchor := t.mouseDragAnchor
+	if anchor.Line != pos.Line || anchor.Col != pos.Col {
+		// Ensure we're in visual char mode with anchor as start
+		if t.modeMachine.Mode() == vmode.Normal {
+			t.modeMachine.Handle(vmode.EventToggleVisualChar, anchor)
+		}
+		t.modeMachine.OnCursorMoved(pos)
+	} else {
+		// Dragged back to anchor — cancel selection
+		if t.modeMachine.Mode() != vmode.Normal {
+			t.modeMachine.Handle(vmode.EventEscape, pos)
+		}
+	}
+}
+
+// handleMouseRelease handles mouse button release.
+func (t *TUI) handleMouseRelease(row, col int) {
+	if !t.mouseDragActive {
+		return
+	}
+	t.mouseDragActive = false
+
+	pos, ok := t.mouseToDocPos(row, col)
+	if !ok {
+		return
+	}
+
+	anchor := t.mouseDragAnchor
+
+	// If released at the same position as press (click, no drag) — just position cursor
+	if anchor.Line == pos.Line && anchor.Col == pos.Col {
+		// Cancel any selection that might have been started
+		if t.modeMachine.Mode() != vmode.Normal {
+			t.modeMachine.Handle(vmode.EventEscape, pos)
+		}
+		return
+	}
+
+	// Drag completed — finalize the visual selection
+	// The selection should already be active from handleMouseDrag,
+	// just update the final end position.
+	t.cursorLine = pos.Line
+	t.cursorCol = pos.Col
+	t.mouseDragEnd = pos
+	t.modeMachine.OnCursorMoved(pos)
 }
 
 // scrollStep is the number of viewport lines moved per mouse wheel event.

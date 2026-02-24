@@ -24,6 +24,9 @@ const (
 	CommandToggleWrapMode    // gw: toggle wrap on/off
 	CommandDisplayLineDown  // gj: move down one display row (wrap mode)
 	CommandDisplayLineUp    // gk: move up one display row (wrap mode)
+	CommandMouseLeftPress   // left mouse button pressed
+	CommandMouseLeftDrag    // left mouse button drag (motion with button held)
+	CommandMouseRelease     // mouse button released
 )
 
 // ScrollDirection indicates mouse wheel direction for CommandMouseScroll.
@@ -55,6 +58,8 @@ type Command struct {
 	ScrollDirection ScrollDirection  // set when Type == CommandMouseScroll
 	SearchKind      SearchKind      // valid when Type == CommandCharSearch
 	SearchChar      byte            // target character (0 for ;/,)
+	MouseRow        int             // 0-based terminal row (mouse events)
+	MouseCol        int             // 0-based terminal column (mouse events)
 }
 
 // Pending represents the parser's pending state for multi-key sequences.

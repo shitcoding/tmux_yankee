@@ -121,6 +121,12 @@ func extractCharWise(lines []string, start, end Pos) (string, error) {
 func extractSingleLine(line string, startCol, endCol int) (string, error) {
 	runes := []rune(line)
 
+	// Empty line: always return empty string regardless of column values.
+	// Mouse selection and visual mode can reference column 0 on empty lines.
+	if len(runes) == 0 {
+		return "", nil
+	}
+
 	if startCol < 0 || startCol > len(runes) {
 		return "", fmt.Errorf("start column out of bounds: %d (line length: %d)", startCol, len(runes))
 	}

@@ -607,7 +607,13 @@ func (p *Parser) finalizeCSI() Command {
 
 // finalizeMouse parses a complete SGR mouse sequence from p.mouseBuf.
 // Format: ESC [ < Btn ; Cx ; Cy M  (M=press, m=release)
-// Wheel-up = button 64, wheel-down = button 65.
+//
+// Button bitmask:
+//   - bits 0-1: base button (0=left, 1=middle, 2=right, 3=release/none)
+//   - bit 5 (32): motion/drag flag
+//   - bit 6 (64): wheel flag
+//
+// Coordinates are 1-based in SGR; returned as 0-based in Command.
 func (p *Parser) finalizeMouse() Command {
 	p.inMouse = false
 	buf := p.mouseBuf
@@ -618,21 +624,61 @@ func (p *Parser) finalizeMouse() Command {
 	if len(buf) < 6 {
 		return Command{Type: CommandNone}
 	}
-	inner := string(buf[3 : len(buf)-1]) // "64;1;1"
+	final := buf[len(buf)-1] // 'M' = press/drag, 'm' = release
+	inner := string(buf[3 : len(buf)-1])
 	parts := strings.SplitN(inner, ";", 3)
-	if len(parts) < 1 {
+	if len(parts) != 3 {
 		return Command{Type: CommandNone}
 	}
 	btn, err := strconv.Atoi(parts[0])
 	if err != nil {
 		return Command{Type: CommandNone}
 	}
-	switch btn {
-	case 64:
-		return Command{Type: CommandMouseScroll, ScrollDirection: ScrollUp}
-	case 65:
-		return Command{Type: CommandMouseScroll, ScrollDirection: ScrollDown}
-	default:
-		return Command{Type: CommandNone} // clicks, drags, etc.
+	col1, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return Command{Type: CommandNone}
 	}
+	row1, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return Command{Type: CommandNone}
+	}
+	if col1 < 1 || row1 < 1 {
+		return Command{Type: CommandNone}
+	}
+	col, row := col1-1, row1-1 // Convert to 0-based
+
+	// Clear any pending count/prefix so stale state doesn't leak.
+	p.clearPending()
+
+	isWheel := (btn & 64) != 0
+	isDrag := (btn & 32) != 0
+	base := btn & 3
+
+	// Wheel events (scroll up/down)
+	if isWheel && final == 'M' {
+		if base == 0 {
+			return Command{Type: CommandMouseScroll, ScrollDirection: ScrollUp}
+		}
+		if base == 1 {
+			return Command{Type: CommandMouseScroll, ScrollDirection: ScrollDown}
+		}
+		return Command{Type: CommandNone}
+	}
+
+	// Left button press (no drag, no wheel, base=0, final=M)
+	if final == 'M' && !isWheel && !isDrag && base == 0 {
+		return Command{Type: CommandMouseLeftPress, MouseRow: row, MouseCol: col}
+	}
+
+	// Left button drag (motion with button held, base=0, final=M)
+	if final == 'M' && !isWheel && isDrag && base == 0 {
+		return Command{Type: CommandMouseLeftDrag, MouseRow: row, MouseCol: col}
+	}
+
+	// Button release (final=m)
+	if final == 'm' {
+		return Command{Type: CommandMouseRelease, MouseRow: row, MouseCol: col}
+	}
+
+	return Command{Type: CommandNone}
 }
