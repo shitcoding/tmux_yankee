@@ -74,6 +74,11 @@ func (d *Document) LineRuneCount(index int) int {
 // stripANSI removes ANSI escape codes from a string.
 // This is a simple implementation that removes CSI sequences (ESC [ ... m).
 func stripANSI(s string) string {
+	// Fast path: no escape characters -> return as-is (no allocation).
+	if strings.IndexByte(s, 0x1b) < 0 {
+		return s
+	}
+
 	var result strings.Builder
 	inEscape := false
 	inCSI := false

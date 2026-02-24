@@ -36,20 +36,20 @@ type tmuxClient interface {
 
 // TUI represents the terminal UI
 type TUI struct {
-	cfg           config.Settings
-	paneID        string
-	doc           *Document // Document with color preservation
-	lineNumMode   string    // Line number mode (absolute/relative/hybrid)
-	formatter     *linenums.Formatter
-	palette       theme.Palette
-	modeMachine   *vmode.Machine
-	client        tmuxClient
-	clipboardFunc func(text string) error // injectable for testing; nil uses copyToClipboard
-	parser        *input.Parser
-	motionHandler motion.Handler
-	cursorLine    int
-	cursorCol     int
-	viewportTop   int
+	cfg            config.Settings
+	paneID         string
+	doc            *Document // Document with color preservation
+	lineNumMode    string    // Line number mode (absolute/relative/hybrid)
+	formatter      *linenums.Formatter
+	palette        theme.Palette
+	modeMachine    *vmode.Machine
+	client         tmuxClient
+	clipboardFunc  func(text string) error // injectable for testing; nil uses copyToClipboard
+	parser         *input.Parser
+	motionHandler  motion.Handler
+	cursorLine     int
+	cursorCol      int
+	viewportTop    int
 	hOffset        int // horizontal scroll offset (0-based column index of leftmost visible char)
 	width          int
 	height         int
@@ -67,13 +67,41 @@ type TUI struct {
 	wrapCache      map[int][]wrapChunk // line index → chunks
 	wrapCacheWidth int                 // contentWidth used to populate wrapCache
 
+	// Cached gutter values (invalidated on resize/theme/mode change)
+	cachedGutterWidth int    // cached gutter width (visual columns, strip ANSI)
+	cachedBlankGutter string // cached blank gutter string
+
 	// Demo mode fields
-	isDemo          bool
-	demoPages       [][]string
-	demoPageIndex   int
-	demoPageNames   []string
-	demoThemeIndex  int
-	demoThemeName   theme.ThemeName
+	isDemo         bool
+	demoPages      [][]string
+	demoPageIndex  int
+	demoPageNames  []string
+	demoThemeIndex int
+	demoThemeName  theme.ThemeName
+}
+
+// gutterWidth returns the cached gutter visual width.
+// It's recomputed when zero (after resize/theme/mode change).
+func (t *TUI) gutterWidth() int {
+	if t.cachedGutterWidth == 0 {
+		sample := t.formatter.RenderGutter(1, 1)
+		t.cachedGutterWidth = utf8.RuneCountInString(stripANSI(sample))
+	}
+	return t.cachedGutterWidth
+}
+
+// blankGutter returns the cached blank gutter string.
+func (t *TUI) blankGutter() string {
+	if t.cachedBlankGutter == "" {
+		t.cachedBlankGutter = t.formatter.RenderBlankGutter()
+	}
+	return t.cachedBlankGutter
+}
+
+// invalidateGutterCache clears cached gutter values (call on resize/theme/mode change).
+func (t *TUI) invalidateGutterCache() {
+	t.cachedGutterWidth = 0
+	t.cachedBlankGutter = ""
 }
 
 // NewTUI creates a new TUI instance from resolved settings.
@@ -347,6 +375,7 @@ func (t *TUI) updateSize() error {
 
 	t.width = width
 	t.height = height
+	t.invalidateGutterCache()
 	t.clampViewportAndCursor()
 	return nil
 }
@@ -1163,6 +1192,7 @@ func (t *TUI) SetViewportTop(top int) { t.viewportTop = top }
 // SetHeight sets the terminal height (exported for testing without a real terminal).
 func (t *TUI) SetHeight(h int) {
 	t.height = h
+	t.invalidateGutterCache()
 	t.clampViewportAndCursor()
 }
 
@@ -1172,6 +1202,7 @@ func (t *TUI) HandleCommand(cmd input.Command) bool { return t.handleCommand(cmd
 // toggleMode cycles through line number modes
 func (t *TUI) toggleMode() {
 	t.formatter.ToggleMode()
+	t.invalidateGutterCache()
 	// Update mode string for consistency
 	switch t.formatter.CurrentMode() {
 	case linenums.ModeAbsolute:
@@ -1217,6 +1248,7 @@ func (t *TUI) cycleDemoPage(delta int) {
 		lineNumMode = linenums.ModeHybrid
 	}
 	t.formatter = linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, t.palette.Gutter, t.palette.LineNum)
+	t.invalidateGutterCache()
 
 	// Reset cursor to middle
 	t.cursorLine = (maxLine - 1) / 2
@@ -1258,6 +1290,7 @@ func (t *TUI) cycleDemoTheme(delta int) {
 		maxLine = 1
 	}
 	t.formatter = linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, palette.Gutter, palette.LineNum)
+	t.invalidateGutterCache()
 	t.dirty = true
 }
 
@@ -1359,6 +1392,7 @@ func (t *TUI) render() {
 // renderScroll renders with horizontal scrolling (default mode).
 func (t *TUI) renderScroll() {
 	var b strings.Builder
+	b.Grow(t.width * t.height * 2)
 	b.WriteString("\x1b[H")
 
 	endLine := t.viewportTop + t.height
@@ -1368,8 +1402,7 @@ func (t *TUI) renderScroll() {
 
 	region := t.modeMachine.Region()
 
-	sampleGutter := t.formatter.RenderGutter(1, 1)
-	gutterWidth := utf8.RuneCountInString(stripANSI(sampleGutter))
+	gutterWidth := t.gutterWidth()
 	contentWidth := t.width - gutterWidth
 	if contentWidth < 0 {
 		contentWidth = 0
@@ -1511,6 +1544,7 @@ func wordWrapChunks(cells []Cell, contentWidth int) []wrapChunk {
 // Uses word-boundary wrapping so lines break at spaces when possible.
 func (t *TUI) renderWrap() {
 	var b strings.Builder
+	b.Grow(t.width * t.height * 2)
 	b.WriteString("\x1b[H")
 
 	// In wrap mode, horizontal offset is always 0.
@@ -1518,13 +1552,12 @@ func (t *TUI) renderWrap() {
 
 	region := t.modeMachine.Region()
 
-	sampleGutter := t.formatter.RenderGutter(1, 1)
-	gutterWidth := utf8.RuneCountInString(stripANSI(sampleGutter))
+	gutterWidth := t.gutterWidth()
 	contentWidth := t.width - gutterWidth
 	if contentWidth < 1 {
 		contentWidth = 1
 	}
-	blankGutter := t.formatter.RenderBlankGutter()
+	blankGutter := t.blankGutter()
 
 	// Adjust viewport so cursor is on-screen (wrap-aware).
 	t.ensureCursorVisibleWrap(contentWidth)
@@ -1645,14 +1678,8 @@ func (t *TUI) yank() bool {
 		return false
 	}
 
-	// Extract plain text lines for selection extraction
-	plainLines := make([]string, t.doc.LineCount())
-	for i := 0; i < t.doc.LineCount(); i++ {
-		plainLines[i] = t.doc.Line(i)
-	}
-
-	// Extract selected text using region-based extraction (no gutter stripping needed)
-	text, err := selection.ExtractRegion(plainLines, region)
+	// Extract selected text lazily (only accesses lines within the selection region).
+	text, err := selection.ExtractRegionFromProvider(t.doc, region)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "yank: ExtractRegion failed: %v\n", err)
 		return false
@@ -1699,7 +1726,6 @@ func (t *TUI) yank() bool {
 	}
 	return true
 }
-
 
 // yankLine yanks the full content of the current cursor line (yy binding).
 // Unlike yank(), it does not require an active visual selection.

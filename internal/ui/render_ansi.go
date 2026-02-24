@@ -16,15 +16,15 @@ type Cell struct {
 
 // Style represents ANSI SGR styling attributes.
 type Style struct {
-	FgColor   int  // Foreground color code (0 = default)
-	BgColor   int  // Background color code (0 = default)
+	FgColor       int  // Foreground color code (0 = default)
+	BgColor       int  // Background color code (0 = default)
 	FgR, FgG, FgB int  // 24-bit foreground (valid when FgColor == -1)
 	BgR, BgG, BgB int  // 24-bit background (valid when BgColor == -1)
-	Bold      bool // Bold text
-	Dim       bool // Dim text
-	Italic    bool // Italic text
-	Underline bool // Underline text
-	Reverse   bool // Reverse video (swap fg/bg)
+	Bold          bool // Bold text
+	Dim           bool // Dim text
+	Italic        bool // Italic text
+	Underline     bool // Underline text
+	Reverse       bool // Reverse video (swap fg/bg)
 }
 
 // DefaultStyle returns a style with no attributes.
@@ -35,6 +35,25 @@ func DefaultStyle() Style {
 // ParseANSILine parses a line with ANSI escape codes into styled cells.
 // Returns a slice of cells with their original styling.
 func ParseANSILine(line string) []Cell {
+	// Fast path: no ANSI escapes -> avoid full parser overhead.
+	if strings.IndexByte(line, 0x1b) < 0 {
+		runes := []rune(line)
+		cells := make([]Cell, 0, len(runes))
+		defStyle := DefaultStyle()
+		for _, r := range runes {
+			if r == '\t' {
+				tabWidth := 4
+				spacesNeeded := tabWidth - (len(cells) % tabWidth)
+				for j := 0; j < spacesNeeded; j++ {
+					cells = append(cells, Cell{Rune: ' ', Style: defStyle})
+				}
+			} else {
+				cells = append(cells, Cell{Rune: r, Style: defStyle})
+			}
+		}
+		return cells
+	}
+
 	var cells []Cell
 	currentStyle := DefaultStyle()
 
@@ -95,24 +114,40 @@ func isCSITerminator(r rune) bool {
 
 // applySGR applies SGR codes to a style.
 // SGR format: ESC[<n>;<n>;<n>m where <n> are numeric codes.
+// Uses a single-pass byte parser with a stack-allocated parameter array
+// to avoid heap allocations from strings.Split and strconv.Atoi.
 func applySGR(style Style, codes string) Style {
 	if codes == "" {
 		codes = "0" // Empty is treated as reset
 	}
 
-	// Split by semicolon
-	parts := strings.Split(codes, ";")
+	// Parse parameters into a stack-allocated array to avoid heap alloc.
+	var params [16]int
+	paramCount := 0
+	val := 0
+	hasVal := false
 
-	for i := 0; i < len(parts); i++ {
-		if parts[i] == "" {
-			continue
+	for i := 0; i <= len(codes); i++ {
+		if i == len(codes) || codes[i] == ';' {
+			if hasVal && paramCount < len(params) {
+				params[paramCount] = val
+				paramCount++
+			} else if !hasVal && paramCount < len(params) {
+				// Empty field (e.g. ";;" or leading ";") -> treat as 0
+				params[paramCount] = 0
+				paramCount++
+			}
+			val = 0
+			hasVal = false
+		} else if codes[i] >= '0' && codes[i] <= '9' {
+			val = val*10 + int(codes[i]-'0')
+			hasVal = true
 		}
+		// Non-digit, non-semicolon characters are ignored
+	}
 
-		code, err := strconv.Atoi(parts[i])
-		if err != nil {
-			continue
-		}
-
+	for i := 0; i < paramCount; i++ {
+		code := params[i]
 		switch code {
 		case 0: // Reset all attributes
 			style = DefaultStyle()
@@ -138,48 +173,34 @@ func applySGR(style Style, codes string) Style {
 		case 30, 31, 32, 33, 34, 35, 36, 37: // Foreground colors
 			style.FgColor = code
 		case 38: // Extended foreground color
-			if i+2 < len(parts) && parts[i+1] == "5" {
+			if i+2 < paramCount && params[i+1] == 5 {
 				// 256-color mode: 38;5;<n>
-				if n, err := strconv.Atoi(parts[i+2]); err == nil {
-					style.FgColor = 256 + n // Offset to distinguish from basic colors
-					i += 2
-				}
-			} else if i+4 < len(parts) && parts[i+1] == "2" {
+				style.FgColor = 256 + params[i+2]
+				i += 2
+			} else if i+4 < paramCount && params[i+1] == 2 {
 				// 24-bit truecolor mode: 38;2;<r>;<g>;<b>
-				r, errR := strconv.Atoi(parts[i+2])
-				g, errG := strconv.Atoi(parts[i+3])
-				b, errB := strconv.Atoi(parts[i+4])
-				if errR == nil && errG == nil && errB == nil {
-					style.FgColor = -1 // Sentinel: use FgR/FgG/FgB
-					style.FgR = r
-					style.FgG = g
-					style.FgB = b
-					i += 4
-				}
+				style.FgColor = -1 // Sentinel: use FgR/FgG/FgB
+				style.FgR = params[i+2]
+				style.FgG = params[i+3]
+				style.FgB = params[i+4]
+				i += 4
 			}
 		case 39: // Default foreground color
 			style.FgColor = 0
 		case 40, 41, 42, 43, 44, 45, 46, 47: // Background colors
 			style.BgColor = code
 		case 48: // Extended background color
-			if i+2 < len(parts) && parts[i+1] == "5" {
+			if i+2 < paramCount && params[i+1] == 5 {
 				// 256-color mode: 48;5;<n>
-				if n, err := strconv.Atoi(parts[i+2]); err == nil {
-					style.BgColor = 256 + n // Offset to distinguish from basic colors
-					i += 2
-				}
-			} else if i+4 < len(parts) && parts[i+1] == "2" {
+				style.BgColor = 256 + params[i+2]
+				i += 2
+			} else if i+4 < paramCount && params[i+1] == 2 {
 				// 24-bit truecolor mode: 48;2;<r>;<g>;<b>
-				r, errR := strconv.Atoi(parts[i+2])
-				g, errG := strconv.Atoi(parts[i+3])
-				b, errB := strconv.Atoi(parts[i+4])
-				if errR == nil && errG == nil && errB == nil {
-					style.BgColor = -1 // Sentinel: use BgR/BgG/BgB
-					style.BgR = r
-					style.BgG = g
-					style.BgB = b
-					i += 4
-				}
+				style.BgColor = -1 // Sentinel: use BgR/BgG/BgB
+				style.BgR = params[i+2]
+				style.BgG = params[i+3]
+				style.BgB = params[i+4]
+				i += 4
 			}
 		case 49: // Default background color
 			style.BgColor = 0

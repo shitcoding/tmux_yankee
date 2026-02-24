@@ -54,6 +54,24 @@ func NewFormatterWithFullPalette(mode Mode, maxLine int, gutterPal theme.GutterP
 	return f
 }
 
+// formatNum formats an integer right-aligned in the gutter width, without fmt.Sprintf.
+func (f *Formatter) formatNum(n int) string {
+	// strconv.AppendInt into a stack-friendly buffer
+	var buf [20]byte
+	numBytes := strconv.AppendInt(buf[:0], int64(n), 10)
+	padLen := f.gutterWidth - len(numBytes)
+	if padLen <= 0 {
+		return string(numBytes)
+	}
+	// Build padded string: spaces + digits
+	result := make([]byte, f.gutterWidth)
+	for i := 0; i < padLen; i++ {
+		result[i] = ' '
+	}
+	copy(result[padLen:], numBytes)
+	return string(result)
+}
+
 // RenderGutter renders the line number gutter for a given line.
 // Returns a formatted string with line number and separator.
 func (f *Formatter) RenderGutter(lineNum, cursorLine int) string {
@@ -72,24 +90,24 @@ func (f *Formatter) RenderGutter(lineNum, cursorLine int) string {
 
 	switch f.mode {
 	case ModeAbsolute:
-		numText = fmt.Sprintf("%*d", f.gutterWidth, lineNum)
+		numText = f.formatNum(lineNum)
 		numFG = f.lineNumPal.AbsoluteFG
 		numStyle = f.lineNumPal.AbsoluteStyle
 
 	case ModeRelative:
 		dist := abs(lineNum - cursorLine)
-		numText = fmt.Sprintf("%*d", f.gutterWidth, dist)
+		numText = f.formatNum(dist)
 		numFG = f.lineNumPal.RelativeFG
 		numStyle = f.lineNumPal.RelativeStyle
 
 	case ModeHybrid:
 		if lineNum == cursorLine {
-			numText = fmt.Sprintf("%*d", f.gutterWidth, lineNum)
+			numText = f.formatNum(lineNum)
 			numFG = f.lineNumPal.CursorFG
 			numStyle = f.lineNumPal.CursorStyle
 		} else {
 			dist := abs(lineNum - cursorLine)
-			numText = fmt.Sprintf("%*d", f.gutterWidth, dist)
+			numText = f.formatNum(dist)
 			numFG = f.lineNumPal.RelativeFG
 			numStyle = f.lineNumPal.RelativeStyle
 		}
@@ -277,7 +295,8 @@ func parseHex(hex string) (r, g, b int, ok bool) {
 // CalculateGutterWidth calculates the width needed for the gutter
 // based on the maximum line number.
 func (f *Formatter) CalculateGutterWidth(maxLine int) int {
-	return len(fmt.Sprintf("%d", maxLine))
+	var buf [20]byte
+	return len(strconv.AppendInt(buf[:0], int64(maxLine), 10))
 }
 
 // ToggleMode cycles through modes: hybrid → absolute → relative → hybrid

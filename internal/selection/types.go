@@ -148,3 +148,42 @@ func extractSingleLine(line string, startCol, endCol int) (string, error) {
 
 	return string(runes[startCol:endCol]), nil
 }
+
+// LineProvider provides access to individual lines by index without
+// requiring a full []string copy. Used for zero-copy yank extraction.
+type LineProvider interface {
+	Line(index int) string
+	LineCount() int
+}
+
+// ExtractRegionFromProvider extracts text using a LineProvider instead of []string.
+// Only accesses lines within the selection region (avoids O(N) copy for large scrollback).
+func ExtractRegionFromProvider(lp LineProvider, region Region) (string, error) {
+	if lp.LineCount() == 0 {
+		return "", fmt.Errorf("empty content")
+	}
+
+	// Normalize positions (ensure start <= end)
+	start, end := region.Start, region.End
+	if start.Line > end.Line || (start.Line == end.Line && start.Col > end.Col) {
+		start, end = end, start
+	}
+
+	// Validate line bounds
+	if start.Line < 0 || end.Line >= lp.LineCount() {
+		return "", fmt.Errorf("line out of bounds: start=%d, end=%d, len=%d", start.Line, end.Line, lp.LineCount())
+	}
+
+	// Build a minimal slice containing only the needed lines
+	needed := make([]string, end.Line-start.Line+1)
+	for i := start.Line; i <= end.Line; i++ {
+		needed[i-start.Line] = lp.Line(i)
+	}
+
+	// Adjust positions to be relative to the slice
+	adjStart := Pos{Line: 0, Col: start.Col}
+	adjEnd := Pos{Line: end.Line - start.Line, Col: end.Col}
+
+	adjRegion := Region{Kind: region.Kind, Start: adjStart, End: adjEnd, Active: region.Active}
+	return ExtractRegion(needed, adjRegion)
+}

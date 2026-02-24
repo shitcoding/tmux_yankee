@@ -181,12 +181,12 @@ _yankee_startup_sweep() {
 
 tmux_pane_exists() {
     local pane_id="${1:-}"
-    [ -n "$pane_id" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -Fxq -- "$pane_id"
+    [ -n "$pane_id" ] && tmux display-message -p -t "$pane_id" '#{pane_id}' >/dev/null 2>&1
 }
 
 tmux_window_exists() {
     local window_id="${1:-}"
-    [ -n "$window_id" ] && tmux list-windows -a -F '#{window_id}' 2>/dev/null | grep -Fxq -- "$window_id"
+    [ -n "$window_id" ] && tmux display-message -p -t "$window_id" '#{window_id}' >/dev/null 2>&1
 }
 
 tmux_session_exists() {
@@ -277,10 +277,14 @@ _yankee_cleanup_from_state() {
 _YANKEE_ARGS=()
 
 _get_yankee_opt_from_dump() {
-    local opt="$1" dump="$2" line
-    line=$(printf '%s\n' "$dump" | grep -m1 "^${opt} " || true)
-    if [[ -n "$line" ]]; then
-        printf '%s' "${line#"${opt} "}"
+    local opt="$1" dump="$2"
+    local pattern=$'\n'"${opt} "
+    if [[ "$dump" == *"$pattern"* ]]; then
+        local after="${dump#*"$pattern"}"
+        printf '%s' "${after%%$'\n'*}"
+    elif [[ "$dump" == "${opt} "* ]]; then
+        local after="${dump#"${opt} "}"
+        printf '%s' "${after%%$'\n'*}"
     fi
 }
 
@@ -398,12 +402,22 @@ launch_overlay() {
     local helper_window_id helper_pane_id wait_signal helper_cmd
 
     orig_pane_id="$PANE_ID"
-    orig_pane_path="$(tmux display-message -p -t "$orig_pane_id" '#{pane_current_path}' 2>/dev/null || true)"
-    orig_zoom_state="$(tmux display-message -p -t "$orig_pane_id" '#{window_zoomed_flag}' 2>/dev/null || true)"
-    orig_pane_width="$(tmux display-message -p -t "$orig_pane_id" '#{pane_width}' 2>/dev/null || true)"
-    orig_pane_height="$(tmux display-message -p -t "$orig_pane_id" '#{pane_height}' 2>/dev/null || true)"
-    orig_session_name="$(tmux display-message -p -t "$orig_pane_id" '#{session_name}' 2>/dev/null || true)"
-    orig_window_id="$(tmux display-message -p -t "$orig_pane_id" '#{window_id}' 2>/dev/null || true)"
+    # Batch all 6 tmux display-message calls into one (saves ~50-100ms).
+    local _batch_out
+    _batch_out="$(tmux display-message -p -t "$orig_pane_id" '#{pane_current_path}
+#{window_zoomed_flag}
+#{pane_width}
+#{pane_height}
+#{session_name}
+#{window_id}' 2>/dev/null || true)"
+    {
+        IFS= read -r orig_pane_path
+        IFS= read -r orig_zoom_state
+        IFS= read -r orig_pane_width
+        IFS= read -r orig_pane_height
+        IFS= read -r orig_session_name
+        IFS= read -r orig_window_id || true
+    } <<< "$_batch_out"
 
     # Bail if pane disappeared between guard check and here.
     if [ -z "$orig_pane_width" ] || [ -z "$orig_pane_height" ]; then
