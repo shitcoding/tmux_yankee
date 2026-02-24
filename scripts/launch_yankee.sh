@@ -9,17 +9,40 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${SCRIPT_DIR}/../bin"
 
-# Get current pane ID
-PANE_ID=$(tmux display-message -p '#{pane_id}')
+# Accept pane identity from the binding — avoids untargeted display-message -p
+# which can return the wrong pane in run-shell -b context.
+PANE_ID="${1:-}"
+ORIG_WINDOW_ID="${2:-}"
+ORIG_PANE_INDEX="${3:-}"
+
+# Bail if arguments are missing (backward compat: fall back to display-message).
+if [ -z "$PANE_ID" ]; then
+    PANE_ID=$(tmux display-message -p '#{pane_id}' 2>/dev/null) || exit 0
+fi
+if [ -z "$ORIG_WINDOW_ID" ]; then
+    ORIG_WINDOW_ID=$(tmux display-message -p -t "$PANE_ID" '#{window_id}' 2>/dev/null) || exit 0
+fi
+if [ -z "$ORIG_PANE_INDEX" ]; then
+    ORIG_PANE_INDEX=$(tmux display-message -p -t "$PANE_ID" '#{pane_index}' 2>/dev/null) || exit 0
+fi
+
+# Helper: clear @yankee_busy on one or more panes (idempotent).
+_yankee_clear_busy() {
+    local pane
+    for pane in "$@"; do
+        [ -n "$pane" ] && tmux set-option -pu -t "$pane" @yankee_busy 2>/dev/null || true
+    done
+}
 
 # Shell-routing decisions (not forwarded to binary)
-DISPLAY_MODE=$(tmux show-option -gqv @yankee_display_mode)
+DISPLAY_MODE=$(tmux show-option -gqv @yankee_display_mode 2>/dev/null || true)
 DISPLAY_MODE="${DISPLAY_MODE:-overlay}"
 
 # Check if binary exists
 if [ ! -f "${BIN_DIR}/tmux-yankee" ]; then
-    tmux display-message "Error: tmux-yankee binary not found. Run 'make build' first."
-    exit 1
+    _yankee_clear_busy "$PANE_ID"
+    tmux display-message "Error: tmux-yankee binary not found. Run 'make build' first." 2>/dev/null || true
+    exit 0
 fi
 
 # ---------------------------------------------------------------------------
@@ -62,7 +85,12 @@ yankee_lock_acquire() {
     # Lock dir exists — check if holder is still alive.
     local lock_pid
     lock_pid=$(cat "$pid_file" 2>/dev/null || true)
-    if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+    if [ -z "$lock_pid" ]; then
+        # PID file missing or empty: another process just created the lock dir
+        # but hasn't written its PID yet.  Treat as held (not stale).
+        return 1
+    fi
+    if kill -0 "$lock_pid" 2>/dev/null; then
         return 1  # Holder alive: genuinely locked, skip this launch.
     fi
     # Holder dead: steal the lock.
@@ -129,7 +157,10 @@ _yankee_startup_sweep() {
         if ! mkdir "$pane_lock" 2>/dev/null; then
             local existing_pid
             existing_pid=$(cat "${pane_lock}/pid" 2>/dev/null || true)
-            if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
+            if [ -z "$existing_pid" ]; then
+                continue  # PID file not yet written — owner is starting up, skip.
+            fi
+            if kill -0 "$existing_pid" 2>/dev/null; then
                 continue  # Active overlay, skip.
             fi
             # Dead owner — steal lock for recovery.
@@ -138,7 +169,7 @@ _yankee_startup_sweep() {
             echo $$ > "${pane_lock}/pid"
         fi
 
-        # Run cleanup for this orphaned state.
+        # Run cleanup for this orphaned state (also clears @yankee_busy).
         _yankee_cleanup_from_state "$state_file"
         yankee_lock_release "$pane_lock"
     done
@@ -169,28 +200,60 @@ _yankee_cleanup_from_state() {
     local state_file="$1"
     [ -f "$state_file" ] || return 0
 
-    local orig_pane_id orig_zoom_state helper_session_name helper_window_id helper_pane_id swapback_confirmed
+    local orig_pane_id orig_zoom_state helper_session_name helper_window_id helper_pane_id
+    local swap_performed swapback_confirmed orig_session_name orig_window_id
 
     orig_pane_id=$(_yankee_state_read_val "$state_file" orig_pane_id)
     orig_zoom_state=$(_yankee_state_read_val "$state_file" orig_zoom_state)
     helper_session_name=$(_yankee_state_read_val "$state_file" helper_session_name)
     helper_window_id=$(_yankee_state_read_val "$state_file" helper_window_id)
     helper_pane_id=$(_yankee_state_read_val "$state_file" helper_pane_id)
+    swap_performed=$(_yankee_state_read_val "$state_file" swap_performed)
+    swap_performed="${swap_performed:-0}"
     swapback_confirmed=$(_yankee_state_read_val "$state_file" swapback_confirmed)
     swapback_confirmed="${swapback_confirmed:-0}"
+    orig_session_name=$(_yankee_state_read_val "$state_file" orig_session_name)
+    orig_window_id=$(_yankee_state_read_val "$state_file" orig_window_id)
 
-    # Fallback swap-back if helper did not confirm completion.
-    if [ "$swapback_confirmed" != "1" ] && [ -n "$helper_pane_id" ] && [ -n "$orig_pane_id" ]; then
+    # Fallback swap-back: only attempt if the initial swap was performed but
+    # the helper did not confirm a successful swap-back.
+    if [ "$swap_performed" = "1" ] && [ "$swapback_confirmed" != "1" ] \
+        && [ -n "$helper_pane_id" ] && [ -n "$orig_pane_id" ]; then
         if tmux_pane_exists "$helper_pane_id" && tmux_pane_exists "$orig_pane_id"; then
             tmux swap-pane -d -s "$helper_pane_id" -t "$orig_pane_id" -Z 2>/dev/null || true
         fi
     fi
 
-    # Kill helper session (takes window and pane with it).
-    if [ -n "$helper_session_name" ] && tmux_session_exists "$helper_session_name"; then
-        tmux kill-session -t "$helper_session_name" 2>/dev/null || true
-    elif [ -n "$helper_window_id" ] && tmux_window_exists "$helper_window_id"; then
-        tmux kill-window -t "$helper_window_id" 2>/dev/null || true
+    # SAFETY: Before killing the helper session, verify the user's original pane
+    # is NOT inside it.  After a failed swap-back the original pane still sits in
+    # the helper session — killing it would destroy the user's pane.
+    local safe_to_kill=1
+    if [ -n "$helper_session_name" ] && tmux_session_exists "$helper_session_name" \
+        && [ -n "$orig_pane_id" ] && tmux_pane_exists "$orig_pane_id"; then
+        local current_session
+        current_session="$(tmux display-message -t "$orig_pane_id" -p '#{session_name}' 2>/dev/null || true)"
+        if [ "$current_session" = "$helper_session_name" ]; then
+            # Original pane is still trapped in the helper session.
+            safe_to_kill=0
+            # Rescue: move the pane back to the original window or session.
+            if [ -n "$orig_window_id" ] && tmux_window_exists "$orig_window_id"; then
+                if tmux move-pane -s "$orig_pane_id" -t "$orig_window_id" 2>/dev/null; then
+                    safe_to_kill=1
+                fi
+            elif [ -n "$orig_session_name" ] && tmux_session_exists "$orig_session_name"; then
+                if tmux move-pane -s "$orig_pane_id" -t "$orig_session_name" 2>/dev/null; then
+                    safe_to_kill=1
+                fi
+            fi
+        fi
+    fi
+
+    if [ "$safe_to_kill" = "1" ]; then
+        if [ -n "$helper_session_name" ] && tmux_session_exists "$helper_session_name"; then
+            tmux kill-session -t "$helper_session_name" 2>/dev/null || true
+        elif [ -n "$helper_window_id" ] && tmux_window_exists "$helper_window_id"; then
+            tmux kill-window -t "$helper_window_id" 2>/dev/null || true
+        fi
     fi
 
     # Restore original zoom state.
@@ -201,6 +264,9 @@ _yankee_cleanup_from_state() {
             tmux resize-pane -Z -t "$orig_pane_id" 2>/dev/null || true
         fi
     fi
+
+    # Clear @yankee_busy on both panes so the binding gate reopens.
+    _yankee_clear_busy "$orig_pane_id" "$helper_pane_id"
 
     _yankee_state_remove "$state_file"
 }
@@ -317,17 +383,31 @@ launch_overlay() {
     state_file="$(_yankee_state_file "$PANE_ID")"
 
     if ! yankee_lock_acquire "$pane_lock_dir"; then return 0; fi
+
+    # Run stale-state sweep only after winning the lock (avoids sweep overhead
+    # for the hundreds of blocked processes from rapid scroll events).
+    _yankee_startup_sweep
+
     # CRITICAL: cleanup runs BEFORE lock release so the lock is held during restore.
-    trap '_yankee_cleanup_from_state "'"$state_file"'"; yankee_lock_release "'"$pane_lock_dir"'"' EXIT INT TERM HUP
+    # Always clear @yankee_busy on the original pane (even if state file not yet written).
+    trap '_yankee_cleanup_from_state "'"$state_file"'"; _yankee_clear_busy "'"$PANE_ID"'"; yankee_lock_release "'"$pane_lock_dir"'"' EXIT INT TERM HUP
 
     local orig_pane_id orig_pane_path orig_zoom_state orig_pane_width orig_pane_height
+    local orig_session_name orig_window_id
     local helper_window_id helper_pane_id wait_signal helper_cmd
 
     orig_pane_id="$PANE_ID"
-    orig_pane_path="$(tmux display-message -p -t "$orig_pane_id" '#{pane_current_path}')"
-    orig_zoom_state="$(tmux display-message -p -t "$orig_pane_id" '#{window_zoomed_flag}')"
-    orig_pane_width="$(tmux display-message -p -t "$orig_pane_id" '#{pane_width}')"
-    orig_pane_height="$(tmux display-message -p -t "$orig_pane_id" '#{pane_height}')"
+    orig_pane_path="$(tmux display-message -p -t "$orig_pane_id" '#{pane_current_path}' 2>/dev/null || true)"
+    orig_zoom_state="$(tmux display-message -p -t "$orig_pane_id" '#{window_zoomed_flag}' 2>/dev/null || true)"
+    orig_pane_width="$(tmux display-message -p -t "$orig_pane_id" '#{pane_width}' 2>/dev/null || true)"
+    orig_pane_height="$(tmux display-message -p -t "$orig_pane_id" '#{pane_height}' 2>/dev/null || true)"
+    orig_session_name="$(tmux display-message -p -t "$orig_pane_id" '#{session_name}' 2>/dev/null || true)"
+    orig_window_id="$(tmux display-message -p -t "$orig_pane_id" '#{window_id}' 2>/dev/null || true)"
+
+    # Bail if pane disappeared between guard check and here.
+    if [ -z "$orig_pane_width" ] || [ -z "$orig_pane_height" ]; then
+        return 0
+    fi
 
     wait_signal="yankee-finished-${$}-$(date +%s)-${RANDOM}"
 
@@ -339,14 +419,17 @@ launch_overlay() {
 
     # Write initial state for crash recovery.
     _yankee_state_write "$state_file" \
-        "version=1" \
+        "version=2" \
         "owner_pid=$$" \
         "orig_pane_id=$orig_pane_id" \
         "orig_zoom_state=$orig_zoom_state" \
+        "orig_session_name=$orig_session_name" \
+        "orig_window_id=$orig_window_id" \
         "helper_session_name=$helper_session_name" \
         "helper_window_id=" \
         "helper_pane_id=" \
         "wait_signal=$wait_signal" \
+        "swap_performed=0" \
         "swapback_confirmed=0"
 
     # Build yankee args
@@ -355,9 +438,9 @@ launch_overlay() {
     local yankee_args_quoted
     yankee_args_quoted=$(printf '%q ' "${yankee_args[@]}")
 
-    # Helper command: run TUI → swap back → signal launcher.
-    printf -v helper_cmd '%q %s; tmux swap-pane -d -s "$TMUX_PANE" -t %q -Z 2>/dev/null || true; tmux wait-for -S %q' \
-        "${BIN_DIR}/tmux-yankee" "$yankee_args_quoted" "$orig_pane_id" "$wait_signal"
+    # Helper command: run TUI → swap back → clear busy → signal launcher.
+    printf -v helper_cmd '%q %s; tmux swap-pane -d -s "$TMUX_PANE" -t %q -Z 2>/dev/null || true; tmux set-option -pu -t "$TMUX_PANE" @yankee_busy 2>/dev/null; tmux set-option -pu -t %q @yankee_busy 2>/dev/null; tmux wait-for -S %q' \
+        "${BIN_DIR}/tmux-yankee" "$yankee_args_quoted" "$orig_pane_id" "$orig_pane_id" "$wait_signal"
 
     # Kill any leftover helper session from a previous crash before creating a new one.
     if tmux_session_exists "$helper_session_name"; then
@@ -366,63 +449,108 @@ launch_overlay() {
 
     # Create detached helper session with matching dimensions (prevents SIGWINCH on swap).
     if ! helper_window_id="$(tmux new-session -d -s "$helper_session_name" -x "$orig_pane_width" -y "$orig_pane_height" -P -F '#{window_id}' -c "$orig_pane_path" "$helper_cmd")"; then
-        tmux display-message "Error: tmux-yankee failed to create helper session"
-        _yankee_state_remove "$state_file"
-        return 1
+        tmux display-message "Error: tmux-yankee failed to create helper session" 2>/dev/null || true
+        return 0
     fi
     if [ -z "$helper_window_id" ]; then
-        tmux display-message "Error: tmux-yankee failed to create helper session"
-        _yankee_state_remove "$state_file"
-        return 1
+        tmux display-message "Error: tmux-yankee failed to create helper session" 2>/dev/null || true
+        return 0
     fi
 
-    helper_pane_id="$(tmux list-panes -t "$helper_window_id" -F '#{pane_id}' | head -1)"
+    helper_pane_id="$(tmux list-panes -t "$helper_window_id" -F '#{pane_id}' 2>/dev/null | head -1)"
     if [ -z "$helper_pane_id" ]; then
-        tmux display-message "Error: tmux-yankee failed to get helper pane ID"
-        _yankee_state_remove "$state_file"
-        return 1
+        tmux display-message "Error: tmux-yankee failed to get helper pane ID" 2>/dev/null || true
+        return 0
     fi
 
     # Update state with helper identifiers.
     _yankee_state_write "$state_file" \
-        "version=1" \
+        "version=2" \
         "owner_pid=$$" \
         "orig_pane_id=$orig_pane_id" \
         "orig_zoom_state=$orig_zoom_state" \
+        "orig_session_name=$orig_session_name" \
+        "orig_window_id=$orig_window_id" \
         "helper_session_name=$helper_session_name" \
         "helper_window_id=$helper_window_id" \
         "helper_pane_id=$helper_pane_id" \
         "wait_signal=$wait_signal" \
+        "swap_performed=0" \
         "swapback_confirmed=0"
+
+    # Keep helper pane alive even if the TUI process crashes.  Without this,
+    # a crashed TUI destroys the helper pane (the one visible in the user's
+    # window after swap), and the cleanup can no longer swap back — leaving the
+    # user's original pane trapped in the helper session which then gets killed.
+    tmux set-option -w -t "$helper_window_id" remain-on-exit on 2>/dev/null || true
 
     # Force helper window to match original pane dimensions (tmux 3.5a bug workaround).
     tmux resize-window -t "$helper_window_id" -x "$orig_pane_width" -y "$orig_pane_height" 2>/dev/null || true
 
+    # Lock the HELPER pane BEFORE the swap.  After swap-pane the helper pane
+    # sits in the user's window with a different pane ID than the one we
+    # originally locked.  Without this second lock, WheelUpPane events on the
+    # (now visible) helper pane find no lock and launch a second overlay.
+    local helper_pane_lock_dir
+    helper_pane_lock_dir="$(_yankee_lock_dir "$helper_pane_id")"
+    yankee_lock_acquire "$helper_pane_lock_dir" 2>/dev/null || true
+
+    # Set @yankee_busy on the helper pane too.  After swap, this pane is visible
+    # in the user's window.  The atomic gate in the binding will reject scroll
+    # events targeting it because @yankee_busy already exists.
+    tmux set-option -pq -t "$helper_pane_id" @yankee_busy 1 2>/dev/null || true
+
+    # Update trap to also release the helper pane lock and clear busy flags.
+    trap '_yankee_cleanup_from_state "'"$state_file"'"; _yankee_clear_busy "'"$PANE_ID"'" "'"$helper_pane_id"'"; yankee_lock_release "'"$helper_pane_lock_dir"'"; yankee_lock_release "'"$pane_lock_dir"'"' EXIT INT TERM HUP
+
     # Swap helper into original pane position.
+    # No pre-swap wait needed: the atomic @yankee_busy gate in the tmux binding
+    # prevents reentry before the TUI sets alternate_on and mouse_any_flag.
     if ! tmux swap-pane -d -s "$orig_pane_id" -t "$helper_pane_id" -Z; then
-        tmux display-message "Error: tmux-yankee swap-pane failed"
-        _yankee_state_remove "$state_file"
-        return 1
+        yankee_lock_release "$helper_pane_lock_dir"
+        tmux display-message "Error: tmux-yankee swap-pane failed" 2>/dev/null || true
+        return 0
     fi
+
+    # Record that the swap was performed — cleanup needs this to decide
+    # whether a fallback swap-back is appropriate.
+    _yankee_state_write "$state_file" \
+        "version=2" \
+        "owner_pid=$$" \
+        "orig_pane_id=$orig_pane_id" \
+        "orig_zoom_state=$orig_zoom_state" \
+        "orig_session_name=$orig_session_name" \
+        "orig_window_id=$orig_window_id" \
+        "helper_session_name=$helper_session_name" \
+        "helper_window_id=$helper_window_id" \
+        "helper_pane_id=$helper_pane_id" \
+        "wait_signal=$wait_signal" \
+        "swap_performed=1" \
+        "swapback_confirmed=0"
 
     # Wait for helper's "swap-back done" signal.
     if wait_for_helper_completion "$wait_signal" "$helper_pane_id"; then
         # Update state: swap-back confirmed so cleanup won't force swap-back again.
         _yankee_state_write "$state_file" \
-            "version=1" \
+            "version=2" \
             "owner_pid=$$" \
             "orig_pane_id=$orig_pane_id" \
             "orig_zoom_state=$orig_zoom_state" \
+            "orig_session_name=$orig_session_name" \
+            "orig_window_id=$orig_window_id" \
             "helper_session_name=$helper_session_name" \
             "helper_window_id=$helper_window_id" \
             "helper_pane_id=$helper_pane_id" \
             "wait_signal=$wait_signal" \
+            "swap_performed=1" \
             "swapback_confirmed=1"
     else
-        tmux display-message "tmux-yankee: helper completion signal missing; forcing fallback cleanup"
+        tmux display-message "tmux-yankee: helper completion signal missing; forcing fallback cleanup" 2>/dev/null || true
     fi
 
     _yankee_cleanup_from_state "$state_file"
+    _yankee_clear_busy "$PANE_ID" "$helper_pane_id"
+    yankee_lock_release "$helper_pane_lock_dir"
     yankee_lock_release "$pane_lock_dir"
     trap - EXIT INT TERM HUP
 }
@@ -431,11 +559,12 @@ launch_popup() {
     local pane_lock_dir
     pane_lock_dir="$(_yankee_lock_dir "$PANE_ID")"
     if ! yankee_lock_acquire "$pane_lock_dir"; then return 0; fi
-    trap 'yankee_lock_release "'"$pane_lock_dir"'"' EXIT INT TERM HUP
+    trap '_yankee_clear_busy "'"$PANE_ID"'"; yankee_lock_release "'"$pane_lock_dir"'"' EXIT INT TERM HUP
     local yankee_args=()
     while IFS= read -r -d '' arg; do yankee_args+=("$arg"); done < <(build_yankee_args)
     tmux display-popup -E -w 90% -h 90% \
         "${BIN_DIR}/tmux-yankee" "${yankee_args[@]}"
+    _yankee_clear_busy "$PANE_ID"
     yankee_lock_release "$pane_lock_dir"
     trap - EXIT INT TERM HUP
 }
@@ -444,18 +573,17 @@ launch_split() {
     local pane_lock_dir
     pane_lock_dir="$(_yankee_lock_dir "$PANE_ID")"
     if ! yankee_lock_acquire "$pane_lock_dir"; then return 0; fi
-    trap 'yankee_lock_release "'"$pane_lock_dir"'"' EXIT INT TERM HUP
+    trap '_yankee_clear_busy "'"$PANE_ID"'"; yankee_lock_release "'"$pane_lock_dir"'"' EXIT INT TERM HUP
     local yankee_args=()
     while IFS= read -r -d '' arg; do yankee_args+=("$arg"); done < <(build_yankee_args)
     tmux split-window -h \
         "${BIN_DIR}/tmux-yankee" "${yankee_args[@]}"
+    _yankee_clear_busy "$PANE_ID"
     yankee_lock_release "$pane_lock_dir"
     trap - EXIT INT TERM HUP
 }
 
-# --- Run startup sweep then dispatch to display mode -----------------------
-
-_yankee_startup_sweep
+# --- Dispatch to display mode (sweep runs inside overlay after lock) -------
 
 case "$DISPLAY_MODE" in
     overlay)

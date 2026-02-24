@@ -304,13 +304,19 @@ func (t *TUI) Run() error {
 	}
 }
 
-// initTerminal switches to raw mode
+// initTerminal switches to raw mode and enables the alternate screen buffer.
+// The alternate screen is critical: tmux sets #{alternate_on}=1 for the pane,
+// which prevents the WheelUpPane binding from re-launching yankee while the
+// TUI is starting up (before mouse reporting is enabled).
 func (t *TUI) initTerminal() error {
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		return err
 	}
 	t.oldState = oldState
+	// Enter alternate screen buffer immediately — before any rendering or
+	// mouse setup — so tmux sees alternate_on=1 as early as possible.
+	fmt.Print("\x1b[?1049h")
 	return nil
 }
 
@@ -321,6 +327,8 @@ func (t *TUI) restoreTerminal() {
 		fmt.Print("\x1b[?1006l\x1b[?1000l")
 		// Show cursor and clear screen
 		fmt.Print("\x1b[?25h\x1b[2J\x1b[H")
+		// Leave alternate screen buffer
+		fmt.Print("\x1b[?1049l")
 		term.Restore(int(os.Stdin.Fd()), t.oldState)
 	}
 }
