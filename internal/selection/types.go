@@ -15,6 +15,8 @@ const (
 	KindChar
 	// KindLine represents line-wise selection (vim 'V')
 	KindLine
+	// KindBlock represents block-wise (rectangular) selection (vim Ctrl-V)
+	KindBlock
 )
 
 // Pos represents a position in the buffer (0-based line and column)
@@ -68,6 +70,8 @@ func ExtractRegion(lines []string, region Region) (string, error) {
 		return extractLineWise(lines, start, end)
 	case KindChar:
 		return extractCharWise(lines, start, end)
+	case KindBlock:
+		return extractBlockWise(lines, start, end)
 	default:
 		return "", fmt.Errorf("invalid selection kind: %v", region.Kind)
 	}
@@ -78,6 +82,32 @@ func extractLineWise(lines []string, start, end Pos) (string, error) {
 	var result []string
 	for i := start.Line; i <= end.Line; i++ {
 		result = append(result, lines[i])
+	}
+	return strings.Join(result, "\n"), nil
+}
+
+// extractBlockWise extracts a rectangular column selection
+// For each line in [start.Line, end.Line]: extract runes [minCol, maxCol] (inclusive)
+func extractBlockWise(lines []string, start, end Pos) (string, error) {
+	minCol := start.Col
+	maxCol := end.Col
+	if minCol > maxCol {
+		minCol, maxCol = maxCol, minCol
+	}
+
+	var result []string
+	for i := start.Line; i <= end.Line; i++ {
+		runes := []rune(lines[i])
+		if minCol >= len(runes) {
+			// Line is shorter than minCol: emit empty string
+			result = append(result, "")
+		} else if maxCol >= len(runes) {
+			// Line is shorter than maxCol: extract up to end of line
+			result = append(result, string(runes[minCol:]))
+		} else {
+			// maxCol is inclusive
+			result = append(result, string(runes[minCol:maxCol+1]))
+		}
 	}
 	return strings.Join(result, "\n"), nil
 }

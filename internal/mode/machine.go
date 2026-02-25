@@ -35,6 +35,8 @@ func (m *Machine) Handle(event Event, cursor selection.Pos) bool {
 		return m.handleToggleVisualChar(cursor)
 	case EventToggleVisualLine:
 		return m.handleToggleVisualLine(cursor)
+	case EventToggleVisualBlock:
+		return m.handleToggleVisualBlock(cursor)
 	case EventEscape:
 		return m.handleEscape()
 	default:
@@ -51,6 +53,36 @@ func (m *Machine) OnCursorMoved(cursor selection.Pos) {
 
 	// Update the end position of the region
 	m.region.End = cursor
+}
+
+// SwapEnd swaps the cursor to the opposite end of the selection.
+// In all visual modes, Start and End are exchanged so the cursor
+// (always at End) jumps to what was previously the anchor.
+// Returns the new cursor position and true if a swap occurred.
+func (m *Machine) SwapEnd() (selection.Pos, bool) {
+	if m.value == Normal {
+		return selection.Pos{}, false
+	}
+	m.region.Start, m.region.End = m.region.End, m.region.Start
+	return m.region.End, true
+}
+
+// SwapCorner swaps the cursor to the other corner on the same line.
+// In block mode: only column components are swapped (cursor stays on same line).
+// In char/line modes: behaves like SwapEnd (full swap).
+// Returns the new cursor position and true if a swap occurred.
+func (m *Machine) SwapCorner() (selection.Pos, bool) {
+	if m.value == Normal {
+		return selection.Pos{}, false
+	}
+	if m.value == VisualBlock {
+		// Swap columns only — cursor stays on same line
+		m.region.Start.Col, m.region.End.Col = m.region.End.Col, m.region.Start.Col
+		return m.region.End, true
+	}
+	// Non-block: same as SwapEnd
+	m.region.Start, m.region.End = m.region.End, m.region.Start
+	return m.region.End, true
 }
 
 // handleToggleVisualChar handles the 'v' key press
@@ -74,6 +106,13 @@ func (m *Machine) handleToggleVisualChar(cursor selection.Pos) bool {
 
 	case VisualLine:
 		// VisualLine -> VisualChar: switch to character-wise
+		m.value = VisualChar
+		m.region.Kind = selection.KindChar
+		// Preserve Start and End positions
+		return true
+
+	case VisualBlock:
+		// VisualBlock -> VisualChar: switch to character-wise
 		m.value = VisualChar
 		m.region.Kind = selection.KindChar
 		// Preserve Start and End positions
@@ -107,6 +146,51 @@ func (m *Machine) handleToggleVisualLine(cursor selection.Pos) bool {
 		// VisualChar -> VisualLine: switch to line-wise
 		m.value = VisualLine
 		m.region.Kind = selection.KindLine
+		// Preserve Start and End positions
+		return true
+
+	case VisualBlock:
+		// VisualBlock -> VisualLine: switch to line-wise
+		m.value = VisualLine
+		m.region.Kind = selection.KindLine
+		// Preserve Start and End positions
+		return true
+
+	default:
+		return false
+	}
+}
+
+// handleToggleVisualBlock handles the Ctrl-V key press
+func (m *Machine) handleToggleVisualBlock(cursor selection.Pos) bool {
+	switch m.value {
+	case Normal:
+		// Normal -> VisualBlock: start block-wise selection
+		m.value = VisualBlock
+		m.region = selection.Region{
+			Kind:  selection.KindBlock,
+			Start: cursor,
+			End:   cursor,
+		}
+		return true
+
+	case VisualBlock:
+		// VisualBlock -> Normal: cancel selection
+		m.value = Normal
+		m.region = selection.EmptyRegion()
+		return true
+
+	case VisualChar:
+		// VisualChar -> VisualBlock: switch to block-wise
+		m.value = VisualBlock
+		m.region.Kind = selection.KindBlock
+		// Preserve Start and End positions
+		return true
+
+	case VisualLine:
+		// VisualLine -> VisualBlock: switch to block-wise
+		m.value = VisualBlock
+		m.region.Kind = selection.KindBlock
 		// Preserve Start and End positions
 		return true
 

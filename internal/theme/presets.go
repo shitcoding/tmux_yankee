@@ -19,10 +19,11 @@ var Presets = map[ThemeName]Palette{
 			// Gruvbox airline: Normal=bright_green, Visual=bright_purple, Insert=bright_blue
 			ModeNormal:     CellPalette{FG: "#3c3836", BG: "#b8bb26", Style: TextStyle{Bold: true}}, // dark1 on bright_green
 			ModeVisualChar: CellPalette{FG: "#3c3836", BG: "#d3869b", Style: TextStyle{Bold: true}}, // dark1 on bright_purple
-			ModeVisualLine: CellPalette{FG: "#3c3836", BG: "#83a598", Style: TextStyle{Bold: true}}, // dark1 on bright_blue
-			InfoPrimary:    CellPalette{FG: "#ebdbb2", BG: "#504945"},                               // light1 on dark2
-			InfoSecondary:  CellPalette{FG: "#fe8019", BG: "#3c3836"},                               // bright_orange on dark1
-			Fill:           CellPalette{FG: "#fe8019", BG: "#3c3836"},                               // bright_orange on dark1
+			ModeVisualLine:  CellPalette{FG: "#3c3836", BG: "#83a598", Style: TextStyle{Bold: true}}, // dark1 on bright_blue
+			ModeVisualBlock: CellPalette{FG: "#3c3836", BG: "#fe8019", Style: TextStyle{Bold: true}}, // dark1 on bright_orange
+			InfoPrimary:     CellPalette{FG: "#ebdbb2", BG: "#504945"},                               // light1 on dark2
+			InfoSecondary:   CellPalette{FG: "#fe8019", BG: "#3c3836"},                               // bright_orange on dark1
+			Fill:            CellPalette{FG: "#fe8019", BG: "#3c3836"},                               // bright_orange on dark1
 		},
 	},
 	ThemeDracula: {
@@ -35,10 +36,11 @@ var Presets = map[ThemeName]Palette{
 			// Dracula airline: Normal=purple, Visual=yellow, Insert=green
 			ModeNormal:     CellPalette{FG: "#282a36", BG: "#bd93f9", Style: TextStyle{Bold: true}}, // bg on purple
 			ModeVisualChar: CellPalette{FG: "#282a36", BG: "#f1fa8c", Style: TextStyle{Bold: true}}, // bg on yellow
-			ModeVisualLine: CellPalette{FG: "#282a36", BG: "#50fa7b", Style: TextStyle{Bold: true}}, // bg on green
-			InfoPrimary:    CellPalette{FG: "#f8f8f2", BG: "#6272a4"},                               // fg on comment
-			InfoSecondary:  CellPalette{FG: "#f8f8f2", BG: "#44475a"},                               // fg on selection
-			Fill:           CellPalette{FG: "#f8f8f2", BG: "#44475a"},                               // fg on selection
+			ModeVisualLine:  CellPalette{FG: "#282a36", BG: "#50fa7b", Style: TextStyle{Bold: true}}, // bg on green
+			ModeVisualBlock: CellPalette{FG: "#282a36", BG: "#ffb86c", Style: TextStyle{Bold: true}}, // bg on orange
+			InfoPrimary:     CellPalette{FG: "#f8f8f2", BG: "#6272a4"},                               // fg on comment
+			InfoSecondary:   CellPalette{FG: "#f8f8f2", BG: "#44475a"},                               // fg on selection
+			Fill:            CellPalette{FG: "#f8f8f2", BG: "#44475a"},                               // fg on selection
 		},
 	},
 	// Gruvbox airline: Normal=bright_green, Visual=bright_purple, Insert=bright_blue
@@ -51,10 +53,11 @@ var Presets = map[ThemeName]Palette{
 		StatusBar: StatusBarPalette{
 			ModeNormal:     CellPalette{FG: "#3c3836", BG: "#b8bb26", Style: TextStyle{Bold: true}}, // dark1 on bright_green
 			ModeVisualChar: CellPalette{FG: "#3c3836", BG: "#d3869b", Style: TextStyle{Bold: true}}, // dark1 on bright_purple
-			ModeVisualLine: CellPalette{FG: "#3c3836", BG: "#83a598", Style: TextStyle{Bold: true}}, // dark1 on bright_blue
-			InfoPrimary:    CellPalette{FG: "#ebdbb2", BG: "#504945"},                               // light1 on dark2
-			InfoSecondary:  CellPalette{FG: "#fe8019", BG: "#3c3836"},                               // bright_orange on dark1
-			Fill:           CellPalette{FG: "#fe8019", BG: "#3c3836"},                               // bright_orange on dark1
+			ModeVisualLine:  CellPalette{FG: "#3c3836", BG: "#83a598", Style: TextStyle{Bold: true}}, // dark1 on bright_blue
+			ModeVisualBlock: CellPalette{FG: "#3c3836", BG: "#fe8019", Style: TextStyle{Bold: true}}, // dark1 on bright_orange
+			InfoPrimary:     CellPalette{FG: "#ebdbb2", BG: "#504945"},                               // light1 on dark2
+			InfoSecondary:   CellPalette{FG: "#fe8019", BG: "#3c3836"},                               // bright_orange on dark1
+			Fill:            CellPalette{FG: "#fe8019", BG: "#3c3836"},                               // bright_orange on dark1
 		},
 	},
 	// Nord airline: Normal=nord8(cyan), Visual=nord7(teal), Insert=nord14(green)
@@ -67,10 +70,11 @@ var Presets = map[ThemeName]Palette{
 		StatusBar: StatusBarPalette{
 			ModeNormal:     CellPalette{FG: "#3b4252", BG: "#88c0d0", Style: TextStyle{Bold: true}}, // nord1 on nord8 (cyan)
 			ModeVisualChar: CellPalette{FG: "#3b4252", BG: "#8fbcbb", Style: TextStyle{Bold: true}}, // nord1 on nord7 (teal)
-			ModeVisualLine: CellPalette{FG: "#3b4252", BG: "#a3be8c", Style: TextStyle{Bold: true}}, // nord1 on nord14 (green)
-			InfoPrimary:    CellPalette{FG: "#e5e9f0", BG: "#81a1c1"},                               // nord5 on nord9 (blue)
-			InfoSecondary:  CellPalette{FG: "#e5e9f0", BG: "#4c566a"},                               // nord5 on nord3
-			Fill:           CellPalette{FG: "#e5e9f0", BG: "#4c566a"},                               // nord5 on nord3
+			ModeVisualLine:  CellPalette{FG: "#3b4252", BG: "#a3be8c", Style: TextStyle{Bold: true}}, // nord1 on nord14 (green)
+			ModeVisualBlock: CellPalette{FG: "#3b4252", BG: "#d08770", Style: TextStyle{Bold: true}}, // nord1 on nord12 (orange)
+			InfoPrimary:     CellPalette{FG: "#e5e9f0", BG: "#81a1c1"},                               // nord5 on nord9 (blue)
+			InfoSecondary:   CellPalette{FG: "#e5e9f0", BG: "#4c566a"},                               // nord5 on nord3
+			Fill:            CellPalette{FG: "#e5e9f0", BG: "#4c566a"},                               // nord5 on nord3
 		},
 	},
 	// Solarized airline: Normal=green, Visual=magenta, Insert=yellow
@@ -83,10 +87,11 @@ var Presets = map[ThemeName]Palette{
 		StatusBar: StatusBarPalette{
 			ModeNormal:     CellPalette{FG: "#fdf6e3", BG: "#859900", Style: TextStyle{Bold: true}}, // base3 on green
 			ModeVisualChar: CellPalette{FG: "#fdf6e3", BG: "#d33682", Style: TextStyle{Bold: true}}, // base3 on magenta
-			ModeVisualLine: CellPalette{FG: "#fdf6e3", BG: "#b58900", Style: TextStyle{Bold: true}}, // base3 on yellow
-			InfoPrimary:    CellPalette{FG: "#eee8d5", BG: "#586e75"},                               // base2 on base01
-			InfoSecondary:  CellPalette{FG: "#586e75", BG: "#073642"},                               // base01 on base02
-			Fill:           CellPalette{FG: "#586e75", BG: "#073642"},                               // base01 on base02
+			ModeVisualLine:  CellPalette{FG: "#fdf6e3", BG: "#b58900", Style: TextStyle{Bold: true}}, // base3 on yellow
+			ModeVisualBlock: CellPalette{FG: "#fdf6e3", BG: "#cb4b16", Style: TextStyle{Bold: true}}, // base3 on orange
+			InfoPrimary:     CellPalette{FG: "#eee8d5", BG: "#586e75"},                               // base2 on base01
+			InfoSecondary:   CellPalette{FG: "#586e75", BG: "#073642"},                               // base01 on base02
+			Fill:            CellPalette{FG: "#586e75", BG: "#073642"},                               // base01 on base02
 		},
 	},
 }

@@ -10,6 +10,8 @@ const (
 	VisualChar
 	// VisualLine is line-wise visual mode (vim 'V')
 	VisualLine
+	// VisualBlock is block-wise visual mode (vim Ctrl-V)
+	VisualBlock
 )
 
 // String returns the string representation of the mode
@@ -21,6 +23,8 @@ func (v Value) String() string {
 		return "VisualChar"
 	case VisualLine:
 		return "VisualLine"
+	case VisualBlock:
+		return "VisualBlock"
 	default:
 		return "Unknown"
 	}
@@ -34,6 +38,8 @@ const (
 	EventToggleVisualChar Event = iota
 	// EventToggleVisualLine toggles line-wise visual mode (vim 'V')
 	EventToggleVisualLine
+	// EventToggleVisualBlock toggles block-wise visual mode (vim Ctrl-V)
+	EventToggleVisualBlock
 	// EventEscape exits any visual mode back to Normal (vim 'Esc')
 	EventEscape
 )
@@ -45,6 +51,8 @@ func (e Event) String() string {
 		return "ToggleVisualChar"
 	case EventToggleVisualLine:
 		return "ToggleVisualLine"
+	case EventToggleVisualBlock:
+		return "ToggleVisualBlock"
 	case EventEscape:
 		return "Escape"
 	default:

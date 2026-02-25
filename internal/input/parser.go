@@ -414,6 +414,14 @@ func (p *Parser) parseCommand(b byte) Command {
 		return Command{Type: CommandVisual}
 	case 'V':
 		return Command{Type: CommandVisualLine}
+	case 22: // Ctrl-V
+		return Command{Type: CommandVisualBlock}
+
+	// Visual mode cursor swap
+	case 'o':
+		return Command{Type: CommandSwapEnd}
+	case 'O':
+		return Command{Type: CommandSwapCorner}
 
 	// Yank command (Enter confirms selection yank; 'y' is handled as a prefix above)
 	case 13: // Enter

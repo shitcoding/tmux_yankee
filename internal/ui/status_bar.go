@@ -42,6 +42,9 @@ func (t *TUI) renderStatusBar() {
 	case vmode.VisualLine:
 		modePal = pal.ModeVisualLine
 		modeLabel = " V-LINE "
+	case vmode.VisualBlock:
+		modePal = pal.ModeVisualBlock
+		modeLabel = " V-BLOCK "
 	default:
 		modePal = pal.ModeNormal
 		modeLabel = " NORMAL "
@@ -147,6 +150,8 @@ func (t *TUI) renderStatusBar() {
 			leftSegs[0].text = " V "
 		case vmode.VisualLine:
 			leftSegs[0].text = "VL "
+		case vmode.VisualBlock:
+			leftSegs[0].text = "VB "
 		default:
 			leftSegs[0].text = " N "
 		}
@@ -223,6 +228,31 @@ func (t *TUI) selectionStats(region selection.Region) (lines, chars int) {
 	lines = end.Line - start.Line + 1
 	if region.Kind == selection.KindLine {
 		return lines, 0
+	}
+	if region.Kind == selection.KindBlock {
+		// Count characters in block-wise selection
+		minCol := region.Start.Col
+		maxCol := region.End.Col
+		if minCol > maxCol {
+			minCol, maxCol = maxCol, minCol
+		}
+		chars = 0
+		for i := start.Line; i <= end.Line && i < t.doc.LineCount(); i++ {
+			lineLen := t.doc.LineRuneCount(i)
+			if minCol >= lineLen {
+				// Line shorter than block start
+				continue
+			}
+			colEnd := maxCol
+			if colEnd >= lineLen {
+				colEnd = lineLen - 1
+			}
+			chars += colEnd - minCol + 1
+		}
+		if chars < 0 {
+			chars = 0
+		}
+		return lines, chars
 	}
 	// Count characters in char-wise selection
 	chars = 0

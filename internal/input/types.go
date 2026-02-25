@@ -11,6 +11,9 @@ const (
 	CommandYank
 	CommandVisual
 	CommandVisualLine
+	CommandVisualBlock
+	CommandSwapEnd    // o: swap cursor to opposite end of selection
+	CommandSwapCorner // O: swap cursor to other corner (block: same line, else: same as o)
 	CommandEscape
 	CommandQuit
 	CommandToggleLineMode

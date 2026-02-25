@@ -63,8 +63,9 @@ type StatusPalette struct {
 type StatusBarPalette struct {
 	ModeNormal     CellPalette // NORMAL mode segment
 	ModeVisualChar CellPalette // VISUAL mode segment
-	ModeVisualLine CellPalette // V-LINE mode segment
-	InfoPrimary    CellPalette // position/percentage segments
+	ModeVisualLine  CellPalette // V-LINE mode segment
+	ModeVisualBlock CellPalette // V-BLOCK mode segment
+	InfoPrimary     CellPalette // position/percentage segments
 	InfoSecondary  CellPalette // secondary info (wrap, line mode)
 	Fill           CellPalette // middle fill area
 }

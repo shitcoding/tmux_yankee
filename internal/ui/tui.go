@@ -791,6 +791,25 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 		t.modeMachine.Handle(vmode.EventToggleVisualLine, pos)
 
+	case input.CommandVisualBlock:
+		// Toggle block-wise visual mode
+		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
+		t.modeMachine.Handle(vmode.EventToggleVisualBlock, pos)
+
+	case input.CommandSwapEnd:
+		// Swap cursor to opposite end of selection (o)
+		if newPos, ok := t.modeMachine.SwapEnd(); ok {
+			t.cursorLine = newPos.Line
+			t.cursorCol = newPos.Col
+		}
+
+	case input.CommandSwapCorner:
+		// Swap cursor to other corner (O — column-only in block mode)
+		if newPos, ok := t.modeMachine.SwapCorner(); ok {
+			t.cursorLine = newPos.Line
+			t.cursorCol = newPos.Col
+		}
+
 	case input.CommandEscape:
 		// Exit visual mode back to normal
 		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
@@ -1397,6 +1416,17 @@ func (t *TUI) lineSelection(lineIdx int, region selection.Region) (cursorCol, se
 		if lineIdx >= start.Line && lineIdx <= end.Line {
 			selStart = 0
 			selEnd = lastCol
+		}
+	} else if region.Kind == selection.KindBlock {
+		if lineIdx >= start.Line && lineIdx <= end.Line {
+			// Block mode: use column range from raw (un-normalized) positions
+			minCol := region.Start.Col
+			maxCol := region.End.Col
+			if minCol > maxCol {
+				minCol, maxCol = maxCol, minCol
+			}
+			selStart = minCol
+			selEnd = maxCol
 		}
 	}
 	return
