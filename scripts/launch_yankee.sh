@@ -571,13 +571,32 @@ launch_overlay() {
 }
 
 launch_popup() {
+    # Optional args: --borderless  → seamless, matches zoomed pane exactly
+    #                (default)     → -w 90% -h 90% (standard popup with border)
+    local popup_flags="-w 90% -h 90%"
+    if [ "${1:-}" = "--borderless" ]; then
+        # Use the actual pane dimensions (excludes status bar) and anchor at
+        # top-left so the popup covers exactly the zoomed pane area without
+        # hiding the tmux status bar.
+        local _pw _ph
+        _pw="$(tmux display-message -p -t "$PANE_ID" '#{pane_width}' 2>/dev/null)"
+        _ph="$(tmux display-message -p -t "$PANE_ID" '#{pane_height}' 2>/dev/null)"
+        popup_flags="-B -x 0 -y 0 -w ${_pw} -h ${_ph}"
+    fi
+    # -K (tmux 3.3+): enable tmux key binding processing inside the popup,
+    # so prefix bindings (pane switching) and root-table bindings (Alt+hjkl
+    # window switching, Alt+z zoom, etc.) still work while yankee is open.
+    if tmux display-popup -K -E -w 1 -h 1 "true" >/dev/null 2>&1; then
+        popup_flags="-K $popup_flags"
+    fi
     local pane_lock_dir
     pane_lock_dir="$(_yankee_lock_dir "$PANE_ID")"
     if ! yankee_lock_acquire "$pane_lock_dir"; then return 0; fi
     trap '_yankee_clear_busy "'"$PANE_ID"'"; yankee_lock_release "'"$pane_lock_dir"'"' EXIT INT TERM HUP
     local yankee_args=()
     while IFS= read -r -d '' arg; do yankee_args+=("$arg"); done < <(build_yankee_args)
-    tmux display-popup -E -w 90% -h 90% \
+    # shellcheck disable=SC2086
+    tmux display-popup -E $popup_flags \
         "${BIN_DIR}/tmux-yankee" "${yankee_args[@]}"
     _yankee_clear_busy "$PANE_ID"
     yankee_lock_release "$pane_lock_dir"
@@ -600,9 +619,20 @@ launch_split() {
 
 # --- Dispatch to display mode (sweep runs inside overlay after lock) -------
 
+# When the pane is zoomed, swap-pane (used by overlay mode) triggers an internal
+# unzoom→swap→rezoom cycle that causes tmux to reflow the entire scrollback
+# buffer twice.  On panes with long history (50K+ lines) this produces a visible
+# rapid-scroll artifact.  Popup mode avoids this entirely because it overlays a
+# temporary window without moving or resizing any existing panes.
+_yankee_zoom_flag="$(tmux display-message -p -t "$PANE_ID" '#{window_zoomed_flag}' 2>/dev/null || true)"
+
 case "$DISPLAY_MODE" in
     overlay)
-        launch_overlay
+        if [ "$_yankee_zoom_flag" = "1" ] && popup_supported; then
+            launch_popup --borderless
+        else
+            launch_overlay
+        fi
         ;;
     popup)
         if popup_supported; then

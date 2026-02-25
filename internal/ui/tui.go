@@ -245,17 +245,36 @@ func (t *TUI) Run() error {
 		return fmt.Errorf("get terminal size failed: %w", err)
 	}
 
-	// Center cursor in viewport on startup (like vim's zz).
-	// clampViewportAndCursor only ensures the cursor is barely visible
-	// (at the edge); we want the initial view centered on the cursor.
+	// Position viewport based on StartPosition:
+	//   bottom → cursor at bottom of viewport (like zb) — matches actual pane
+	//   middle → cursor centered (like zz)
+	//   top    → cursor at top (viewportTop = 0, already default)
+	// Account for the status bar which steals a row from content area.
 	if t.height > 0 && t.doc.LineCount() > 0 {
-		if t.cfg.WrapMode == config.WrapModeOn {
-			t.centerViewportWrap(t.wrapContentWidth())
-		} else {
-			t.viewportTop = t.cursorLine - t.height/2
-			if t.viewportTop < 0 {
-				t.viewportTop = 0
+		visibleRows := t.height
+		if t.shouldShowStatusBar() {
+			visibleRows--
+		}
+		switch t.cfg.StartPosition {
+		case config.StartPositionMiddle:
+			if t.cfg.WrapMode == config.WrapModeOn {
+				t.centerViewportWrap(t.wrapContentWidth())
+			} else {
+				t.viewportTop = t.cursorLine - visibleRows/2
+				if t.viewportTop < 0 {
+					t.viewportTop = 0
+				}
 			}
+		case config.StartPositionBottom:
+			if t.cfg.WrapMode == config.WrapModeOn {
+				t.bottomViewportWrap(t.wrapContentWidth(), visibleRows)
+			} else {
+				t.viewportTop = t.cursorLine - visibleRows + 1
+				if t.viewportTop < 0 {
+					t.viewportTop = 0
+				}
+			}
+		// StartPositionTop: viewportTop = 0 (already default)
 		}
 	}
 
@@ -380,6 +399,15 @@ func (t *TUI) updateSize() error {
 	return nil
 }
 
+// contentHeight returns the number of rows available for content, accounting
+// for the status bar which occupies the last row when visible.
+func (t *TUI) contentHeight() int {
+	if t.shouldShowStatusBar() {
+		return t.height - 1
+	}
+	return t.height
+}
+
 // clampViewportAndCursor keeps cursor/viewport valid after resize
 func (t *TUI) clampViewportAndCursor() {
 	lineCount := t.doc.LineCount()
@@ -426,8 +454,11 @@ func (t *TUI) clampViewportAndCursor() {
 		return
 	}
 
+	// Use content height (excludes status bar) for viewport calculations.
+	ch := t.contentHeight()
+
 	// Keep viewport in valid range
-	maxTop := lineCount - t.height
+	maxTop := lineCount - ch
 	if maxTop < 0 {
 		maxTop = 0
 	}
@@ -438,12 +469,12 @@ func (t *TUI) clampViewportAndCursor() {
 		t.viewportTop = maxTop
 	}
 
-	// Keep cursor visible after resize
+	// Keep cursor visible within content area (not behind status bar)
 	if t.cursorLine < t.viewportTop {
 		t.viewportTop = t.cursorLine
 	}
-	if t.cursorLine >= t.viewportTop+t.height {
-		t.viewportTop = t.cursorLine - t.height + 1
+	if t.cursorLine >= t.viewportTop+ch {
+		t.viewportTop = t.cursorLine - ch + 1
 	}
 	if t.viewportTop < 0 {
 		t.viewportTop = 0
@@ -491,6 +522,34 @@ func (t *TUI) centerViewportWrap(contentWidth int) {
 		return
 	}
 	targetRowsAbove := t.height / 2
+	rowsAbove := 0
+	vt := t.cursorLine
+	for vt > 0 {
+		chunks := t.cachedWrapChunks(vt-1, t.doc.Cells(vt-1), contentWidth)
+		if rowsAbove+len(chunks) > targetRowsAbove {
+			break
+		}
+		rowsAbove += len(chunks)
+		vt--
+	}
+	t.viewportTop = vt
+}
+
+// bottomViewportWrap sets viewportTop so the cursor line appears at the bottom
+// of the viewport, accounting for wrapped display rows. Used on startup when
+// StartPosition=bottom to match the actual pane appearance.
+// visibleRows is the number of content rows (excluding status bar).
+func (t *TUI) bottomViewportWrap(contentWidth, visibleRows int) {
+	if visibleRows <= 0 || contentWidth <= 0 {
+		return
+	}
+	// Count rows for the cursor line itself
+	cursorChunks := t.cachedWrapChunks(t.cursorLine, t.doc.Cells(t.cursorLine), contentWidth)
+	targetRowsAbove := visibleRows - len(cursorChunks)
+	if targetRowsAbove <= 0 {
+		t.viewportTop = t.cursorLine
+		return
+	}
 	rowsAbove := 0
 	vt := t.cursorLine
 	for vt > 0 {
@@ -695,7 +754,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 	case input.CommandMotion:
 		// Execute motion via motion handler
 		cursor := motion.Cursor{Line: t.cursorLine, Col: t.cursorCol}
-		viewport := motion.Viewport{Top: t.viewportTop, Height: t.height}
+		viewport := motion.Viewport{Top: t.viewportTop, Height: t.contentHeight()}
 		result := t.motionHandler.Apply(t, cursor, viewport, cmd.Motion, cmd.Count)
 
 		// Update cursor and viewport
@@ -1122,8 +1181,9 @@ func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
 	}
 
 	// Viewport-scroll path: content is taller than the terminal window.
-	if t.height > 0 && lineCount > t.height {
-		maxViewportTop := lastLine - t.height + 1
+	ch := t.contentHeight()
+	if ch > 0 && lineCount > ch {
+		maxViewportTop := lastLine - ch + 1
 		switch dir {
 		case input.ScrollUp:
 			t.viewportTop -= step
@@ -1131,7 +1191,7 @@ func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
 				t.viewportTop = 0
 			}
 			// Cursor must stay within the (now higher) viewport window.
-			if newBottom := t.viewportTop + t.height - 1; t.cursorLine > newBottom {
+			if newBottom := t.viewportTop + ch - 1; t.cursorLine > newBottom {
 				t.cursorLine = newBottom
 			}
 			t.clampViewportAndCursor()
