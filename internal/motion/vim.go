@@ -60,6 +60,8 @@ func (h *VimHandler) Apply(doc Document, cursor Cursor, viewport Viewport, motio
 		result.Cursor = h.moveWordEnd(doc, cursor, effectiveCount)
 	case MotionFirstNonBlank:
 		result.Cursor = h.moveFirstNonBlank(doc, cursor)
+	case MotionWORDForward:
+		result.Cursor = h.moveWORDForward(doc, cursor, effectiveCount)
 	case MotionWORDEnd:
 		result.Cursor = h.moveWORDEnd(doc, cursor, effectiveCount)
 	case MotionWORDBackward:
@@ -690,6 +692,82 @@ func (h *VimHandler) moveFirstNonBlank(doc Document, cursor Cursor) Cursor {
 // WORD in vim is any sequence of non-whitespace characters.
 func isWORDChar(r rune) bool {
 	return r != ' ' && r != '\t' && r != '\n' && r != '\r'
+}
+
+// moveWORDForward moves to the start of the next WORD (W motion).
+// WORD is whitespace-separated (unlike word which considers punctuation).
+func (h *VimHandler) moveWORDForward(doc Document, cursor Cursor, count int) Cursor {
+	line := cursor.Line
+	col := cursor.Col
+
+	for i := 0; i < count; i++ {
+		runes := []rune(doc.Line(line))
+		lineLen := len(runes)
+
+		// If at or past end of line, wrap to next line
+		if col >= lineLen {
+			if line+1 >= doc.LineCount() {
+				break
+			}
+			line++
+			col = 0
+			runes = []rune(doc.Line(line))
+			lineLen = len(runes)
+
+			// Skip leading whitespace on new line
+			for col < lineLen && !isWORDChar(runes[col]) {
+				col++
+			}
+			if col < lineLen {
+				continue
+			}
+		}
+
+		// Skip current WORD (non-whitespace)
+		for col < lineLen && isWORDChar(runes[col]) {
+			col++
+		}
+
+		// Skip whitespace after current WORD
+		for col < lineLen && !isWORDChar(runes[col]) {
+			col++
+		}
+
+		// If at end of line after skipping, wrap to next line
+		if col >= lineLen {
+			if line+1 >= doc.LineCount() {
+				break
+			}
+			line++
+			col = 0
+			runes = []rune(doc.Line(line))
+			lineLen = len(runes)
+
+			// Skip leading whitespace on new line
+			for col < lineLen && !isWORDChar(runes[col]) {
+				col++
+			}
+		}
+	}
+
+	// Clamp to document bounds
+	if line >= doc.LineCount() {
+		line = doc.LineCount() - 1
+	}
+	if line < 0 {
+		line = 0
+	}
+	lineLen := doc.LineRuneCount(line)
+	if col > lineLen {
+		col = lineLen
+	}
+	if col < 0 {
+		col = 0
+	}
+
+	h.goalCol = col
+	h.hasGoal = true
+	return Cursor{Line: line, Col: col}
 }
 
 // moveWORDEnd moves to the end of the current/next WORD (E motion).

@@ -18,6 +18,7 @@ const (
 	MotionWordBackward    // b - previous word start
 	MotionWordEnd         // e - current/next word end
 	MotionFirstNonBlank   // ^ - first non-blank character
+	MotionWORDForward     // W - next WORD start (whitespace-separated)
 	MotionWORDEnd         // E - current/next WORD end (whitespace-separated)
 	MotionWORDBackward    // B - previous WORD start (whitespace-separated)
 	MotionViewportTop     // zt - position cursor line at top of viewport

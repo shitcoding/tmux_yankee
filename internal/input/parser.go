@@ -390,6 +390,12 @@ func (p *Parser) parseCommand(b byte) Command {
 			Motion: motion.MotionFirstNonBlank,
 			Count:  count,
 		}
+	case 'W':
+		return Command{
+			Type:   CommandMotion,
+			Motion: motion.MotionWORDForward,
+			Count:  count,
+		}
 	case 'E':
 		return Command{
 			Type:   CommandMotion,
