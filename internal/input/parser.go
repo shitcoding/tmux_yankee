@@ -408,6 +408,18 @@ func (p *Parser) parseCommand(b byte) Command {
 			Motion: motion.MotionWORDBackward,
 			Count:  count,
 		}
+	case '}':
+		return Command{
+			Type:   CommandMotion,
+			Motion: motion.MotionParagraphForward,
+			Count:  count,
+		}
+	case '{':
+		return Command{
+			Type:   CommandMotion,
+			Motion: motion.MotionParagraphBackward,
+			Count:  count,
+		}
 
 	// Visual mode commands
 	case 'v':

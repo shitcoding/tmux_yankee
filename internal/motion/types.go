@@ -21,9 +21,11 @@ const (
 	MotionWORDForward     // W - next WORD start (whitespace-separated)
 	MotionWORDEnd         // E - current/next WORD end (whitespace-separated)
 	MotionWORDBackward    // B - previous WORD start (whitespace-separated)
-	MotionViewportTop     // zt - position cursor line at top of viewport
-	MotionViewportCenter  // zz - position cursor line at center of viewport
-	MotionViewportBottom  // zb - position cursor line at bottom of viewport
+	MotionParagraphForward  // } - next empty line
+	MotionParagraphBackward // { - previous empty line
+	MotionViewportTop       // zt - position cursor line at top of viewport
+	MotionViewportCenter    // zz - position cursor line at center of viewport
+	MotionViewportBottom    // zb - position cursor line at bottom of viewport
 )
 
 // Cursor represents the cursor position in the document.

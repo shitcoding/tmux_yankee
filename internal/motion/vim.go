@@ -66,6 +66,10 @@ func (h *VimHandler) Apply(doc Document, cursor Cursor, viewport Viewport, motio
 		result.Cursor = h.moveWORDEnd(doc, cursor, effectiveCount)
 	case MotionWORDBackward:
 		result.Cursor = h.moveWORDBackward(doc, cursor, effectiveCount)
+	case MotionParagraphForward:
+		result.Cursor = h.moveParagraphForward(doc, cursor, effectiveCount)
+	case MotionParagraphBackward:
+		result.Cursor = h.moveParagraphBackward(doc, cursor, effectiveCount)
 	case MotionViewportTop:
 		result.Viewport = h.positionViewportTop(doc, cursor, viewport)
 	case MotionViewportCenter:
@@ -952,6 +956,55 @@ func (h *VimHandler) moveWORDBackward(doc Document, cursor Cursor, count int) Cu
 	h.hasGoal = true
 
 	return Cursor{Line: line, Col: col}
+}
+
+// isEmptyLine returns true if the line is empty or contains only whitespace.
+// Vim considers a line a paragraph boundary if it is completely empty (zero length).
+func isEmptyLine(doc Document, line int) bool {
+	return doc.LineRuneCount(line) == 0
+}
+
+// moveParagraphForward moves the cursor to the next empty line (} motion).
+// If already on an empty line, skips consecutive empty lines first.
+func (h *VimHandler) moveParagraphForward(doc Document, cursor Cursor, count int) Cursor {
+	lineCount := doc.LineCount()
+	line := cursor.Line
+
+	for i := 0; i < count; i++ {
+		// Skip current empty lines
+		for line < lineCount-1 && isEmptyLine(doc, line) {
+			line++
+		}
+		// Find next empty line
+		for line < lineCount-1 && !isEmptyLine(doc, line) {
+			line++
+		}
+	}
+
+	h.goalCol = 0
+	h.hasGoal = true
+	return Cursor{Line: line, Col: 0}
+}
+
+// moveParagraphBackward moves the cursor to the previous empty line ({ motion).
+// If already on an empty line, skips consecutive empty lines first.
+func (h *VimHandler) moveParagraphBackward(doc Document, cursor Cursor, count int) Cursor {
+	line := cursor.Line
+
+	for i := 0; i < count; i++ {
+		// Skip current empty lines
+		for line > 0 && isEmptyLine(doc, line) {
+			line--
+		}
+		// Find previous empty line
+		for line > 0 && !isEmptyLine(doc, line) {
+			line--
+		}
+	}
+
+	h.goalCol = 0
+	h.hasGoal = true
+	return Cursor{Line: line, Col: 0}
 }
 
 // positionViewportTop positions the cursor line at the top of the viewport (zt motion).
