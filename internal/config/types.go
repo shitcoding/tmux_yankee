@@ -1,6 +1,9 @@
 package config
 
-import "github.com/shitcoding/tmux_yankee/internal/theme"
+import (
+	"github.com/shitcoding/tmux_yankee/internal/keymap"
+	"github.com/shitcoding/tmux_yankee/internal/theme"
+)
 
 type LineNumberMode string
 
@@ -87,6 +90,7 @@ type CLIOptions struct {
 	StartPosition string
 	WrapMode      string
 	StatusBar     string
+	Bindings      string
 }
 
 // Settings is the validated, typed settings passed into the TUI.
@@ -106,4 +110,5 @@ type Settings struct {
 	StartPosition StartPosition
 	WrapMode      WrapMode
 	StatusBar     StatusBarMode
+	Keymap        keymap.Keymap
 }

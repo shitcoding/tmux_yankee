@@ -335,6 +335,37 @@ build_yankee_args() {
         fi
     done
 
+    # Collect @yankee_bind_* and @yankee_unbind_* options into --bindings flag.
+    # @yankee_bind_C-d half_page_down  →  "C-d=half_page_down"
+    # @yankee_unbind_H ""              →  "!H"
+    local bindings_str=""
+    local line key_notation action
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        # Match @yankee_bind_<key> <action>
+        if [[ "$line" =~ ^@yankee_bind_(.+)" "(.+)$ ]]; then
+            key_notation="${BASH_REMATCH[1]}"
+            action="${BASH_REMATCH[2]}"
+            if [ -n "$bindings_str" ]; then
+                bindings_str="${bindings_str},${key_notation}=${action}"
+            else
+                bindings_str="${key_notation}=${action}"
+            fi
+        # Match @yankee_unbind_<key> (value is ignored)
+        elif [[ "$line" =~ ^@yankee_unbind_(.+)" " ]]; then
+            key_notation="${BASH_REMATCH[1]}"
+            if [ -n "$bindings_str" ]; then
+                bindings_str="${bindings_str},!${key_notation}"
+            else
+                bindings_str="!${key_notation}"
+            fi
+        fi
+    done <<< "$(printf '%s' "$opts_dump" | grep -E '^@yankee_(bind|unbind)_' || true)"
+
+    if [ -n "$bindings_str" ]; then
+        _YANKEE_ARGS+=("--bindings" "$bindings_str")
+    fi
+
     printf '%s\0' "${_YANKEE_ARGS[@]}"
 }
 

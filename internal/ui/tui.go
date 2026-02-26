@@ -158,6 +158,12 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 		wrapKey = 'w'
 	}
 
+	// Use configured keymap if present, otherwise default.
+	parser := input.NewParserWithKeys(toggleKey, wrapKey)
+	if cfg.Keymap.Direct != nil {
+		parser = input.NewParserWithKeymap(toggleKey, wrapKey, cfg.Keymap)
+	}
+
 	return &TUI{
 		cfg:           cfg,
 		paneID:        cfg.PaneID,
@@ -167,7 +173,7 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 		palette:       cfg.Palette,
 		modeMachine:   vmode.NewMachine(),
 		client:        tmux.NewClient(),
-		parser:        input.NewParserWithKeys(toggleKey, wrapKey),
+		parser:        parser,
 		motionHandler: motion.NewVimHandler(),
 		cursorLine:    initialCursorLine,
 		cursorCol:     0,
@@ -219,6 +225,12 @@ func NewDemoTUI(cfg config.Settings, pages [][]string, pageNames []string) *TUI 
 		}
 	}
 
+	// Use configured keymap if present, otherwise default.
+	parser := input.NewParserWithKeys(toggleKey, wrapKey)
+	if cfg.Keymap.Direct != nil {
+		parser = input.NewParserWithKeymap(toggleKey, wrapKey, cfg.Keymap)
+	}
+
 	return &TUI{
 		cfg:            cfg,
 		doc:            doc,
@@ -226,7 +238,7 @@ func NewDemoTUI(cfg config.Settings, pages [][]string, pageNames []string) *TUI 
 		formatter:      linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, cfg.Palette.Gutter, cfg.Palette.LineNum),
 		palette:        cfg.Palette,
 		modeMachine:    vmode.NewMachine(),
-		parser:         input.NewParserWithKeys(toggleKey, wrapKey),
+		parser:         parser,
 		motionHandler:  motion.NewVimHandler(),
 		cursorLine:     initialCursorLine,
 		cursorCol:      0,

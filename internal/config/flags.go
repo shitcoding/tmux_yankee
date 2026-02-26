@@ -48,4 +48,5 @@ func RegisterFlags(fs *flag.FlagSet, opts *CLIOptions) {
 	fs.StringVar(&opts.StartPosition, "start-position", DefaultStartPosition, "Initial cursor position (top, middle, bottom)")
 	fs.StringVar(&opts.WrapMode, "wrap-mode", DefaultWrapMode, "Long line wrapping (on, off)")
 	fs.StringVar(&opts.StatusBar, "status-bar", DefaultStatusBar, "Powerline status bar (on, off)")
+	fs.StringVar(&opts.Bindings, "bindings", "", "Key binding overrides (comma-separated key=action, !key to unbind)")
 }

@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shitcoding/tmux_yankee/internal/keymap"
 	"github.com/shitcoding/tmux_yankee/internal/motion"
 )
 
@@ -13,6 +14,7 @@ type Parser struct {
 	pending      Pending
 	toggleKey    byte
 	wrapKey      byte
+	km           keymap.Keymap
 	mouseBuf     []byte  // accumulates bytes of an in-progress SGR mouse or CSI sequence
 	inMouse      bool    // true while accumulating \x1b[< ... M/m
 	inCSI        bool    // true while accumulating a non-mouse CSI param sequence
@@ -23,19 +25,24 @@ type Parser struct {
 	searchDir    byte    // '/' or '?'
 }
 
-// NewParser creates a new input parser with the default toggle key ('L').
+// NewParser creates a new input parser with the default toggle key ('L') and default keymap.
 func NewParser() *Parser {
-	return &Parser{toggleKey: 'L', wrapKey: 'w'}
+	return &Parser{toggleKey: 'L', wrapKey: 'w', km: keymap.DefaultKeymap()}
 }
 
 // NewParserWithToggleKey creates a new input parser with a configurable toggle key.
 func NewParserWithToggleKey(toggleKey byte) *Parser {
-	return &Parser{toggleKey: toggleKey, wrapKey: 'w'}
+	return &Parser{toggleKey: toggleKey, wrapKey: 'w', km: keymap.DefaultKeymap()}
 }
 
 // NewParserWithKeys creates a parser with custom toggle and wrap keys.
 func NewParserWithKeys(toggleKey, wrapKey byte) *Parser {
-	return &Parser{toggleKey: toggleKey, wrapKey: wrapKey}
+	return &Parser{toggleKey: toggleKey, wrapKey: wrapKey, km: keymap.DefaultKeymap()}
+}
+
+// NewParserWithKeymap creates a parser with custom keys and a user-configured keymap.
+func NewParserWithKeymap(toggleKey, wrapKey byte, km keymap.Keymap) *Parser {
+	return &Parser{toggleKey: toggleKey, wrapKey: wrapKey, km: km}
 }
 
 // Parse processes a single byte of input and returns a command if complete.
@@ -134,9 +141,28 @@ func (p *Parser) parseInner(b byte) Command {
 			// Hold ESC [ — wait to see if '<' follows. Emit nothing yet.
 			return Command{Type: CommandNone}
 		}
-		// Not '[' — ESC was standalone. Clear pending state and emit ESC.
+		// Not '[' — ESC was followed by another byte.
 		p.mouseBuf = nil
 		p.clearPending()
+
+		// Alt+key detection: tmux sends Alt+key as ESC followed by printable byte.
+		// Check keymap for Alt binding. If unbound, discard both bytes (CommandNone)
+		// so the bare key doesn't accidentally trigger a normal binding.
+		if b >= 0x20 && b <= 0x7e {
+			altKey := keymap.Alt(b)
+			if action, ok := p.km.Lookup(altKey); ok {
+				if p.inSearch {
+					p.inSearch = false
+					p.searchBuf = p.searchBuf[:0]
+					return Command{Type: CommandSearchCancel}
+				}
+				return ActionToCommand(action, 0, 0)
+			}
+			// Unbound Alt+key — discard silently.
+			return Command{Type: CommandNone}
+		}
+
+		// Non-printable byte after ESC: treat ESC as standalone escape.
 		if p.inSearch {
 			// Cancel search on standalone ESC; defer the follow-up byte as search input.
 			p.inSearch = false
@@ -170,9 +196,8 @@ func (p *Parser) parseInner(b byte) Command {
 		return Command{Type: CommandNone}
 	}
 
-	// Handle pending 'g', 'z', 'y', or char-search (f/t/F/T) prefix first
-	if p.pending.Prefix == 'g' || p.pending.Prefix == 'z' || p.pending.Prefix == 'y' ||
-		p.pending.Prefix == 'f' || p.pending.Prefix == 't' || p.pending.Prefix == 'F' || p.pending.Prefix == 'T' {
+	// Handle pending prefix (keymap-driven)
+	if p.pending.Prefix != 0 {
 		cmd := p.parsePrefixedKey(b)
 		p.clearPending()
 		return cmd
@@ -202,26 +227,14 @@ func (p *Parser) parseInner(b byte) Command {
 		return cmd
 	}
 
-	// Handle 'g' prefix (wait for next key)
-	if b == 'g' {
-		p.pending.Prefix = 'g'
+	// Check if this key starts a prefix sequence (keymap-driven)
+	if p.km.IsPrefix(b) {
+		p.pending.Prefix = b
 		return Command{Type: CommandNone}
 	}
 
-	// Handle 'z' prefix (wait for next key)
-	if b == 'z' {
-		p.pending.Prefix = 'z'
-		return Command{Type: CommandNone}
-	}
-
-	// Handle 'y' prefix: 'yy' = yank current line (wait for second key)
-	if b == 'y' {
-		p.pending.Prefix = 'y'
-		return Command{Type: CommandNone}
-	}
-
-	// Handle f/t/F/T prefix: character search (wait for target char)
-	if b == 'f' || b == 'F' || b == 't' || b == 'T' {
+	// Check if this key starts a char-capture sequence (keymap-driven)
+	if p.km.IsCharCapture(b) {
 		p.pending.Prefix = b
 		return Command{Type: CommandNone}
 	}
@@ -232,287 +245,68 @@ func (p *Parser) parseInner(b byte) Command {
 	return cmd
 }
 
-// parsePrefixedKey handles keys following a 'g' or 'z' prefix.
+// parsePrefixedKey handles keys following a prefix key (g, z, y, f/t/F/T, m, etc.).
+// Uses the keymap for lookup.
 func (p *Parser) parsePrefixedKey(b byte) Command {
-	if p.pending.Prefix == 'g' {
-		switch b {
-		case 'g':
-			// gg → first line
-			return Command{
-				Type:   CommandMotion,
-				Motion: motion.MotionFirstLine,
-				Count:  p.pending.Count,
-			}
-		case 'j':
-			// gj → display line down
-			return Command{Type: CommandDisplayLineDown, Count: p.pending.Count}
-		case 'k':
-			// gk → display line up
-			return Command{Type: CommandDisplayLineUp, Count: p.pending.Count}
-		case p.wrapKey:
-			// gw → toggle wrap mode
-			return Command{Type: CommandToggleWrapMode}
-		default:
-			// Invalid sequence, clear pending
-			return Command{Type: CommandNone}
-		}
+	prefix := p.pending.Prefix
+	count := p.pending.Count
+
+	// Special case: wrap key after 'g' prefix (backward compat)
+	if prefix == 'g' && b == p.wrapKey {
+		return Command{Type: CommandToggleWrapMode}
 	}
 
-	if p.pending.Prefix == 'z' {
-		switch b {
-		case 't':
-			// zt → position cursor line at top of viewport
-			return Command{
-				Type:   CommandMotion,
-				Motion: motion.MotionViewportTop,
-				Count:  0,
-			}
-		case 'z':
-			// zz → position cursor line at center of viewport
-			return Command{
-				Type:   CommandMotion,
-				Motion: motion.MotionViewportCenter,
-				Count:  0,
-			}
-		case 'b':
-			// zb → position cursor line at bottom of viewport
-			return Command{
-				Type:   CommandMotion,
-				Motion: motion.MotionViewportBottom,
-				Count:  0,
-			}
-		default:
-			// Invalid sequence, clear pending
-			return Command{Type: CommandNone}
-		}
+	// Char-capture prefix: the second byte is captured as a parameter
+	if action, ok := p.km.LookupCharCapture(prefix); ok {
+		return ActionToCommand(action, count, b)
 	}
 
-	if p.pending.Prefix == 'y' {
-		switch b {
-		case 'y':
-			// yy → yank current line
-			return Command{Type: CommandYankLine}
-		default:
-			// Invalid sequence, clear pending
-			return Command{Type: CommandNone}
-		}
+	// Standard prefix lookup
+	if action, ok := p.km.LookupPrefix(prefix, b); ok {
+		return ActionToCommand(action, count, 0)
 	}
 
-	if p.pending.Prefix == 'f' || p.pending.Prefix == 't' || p.pending.Prefix == 'F' || p.pending.Prefix == 'T' {
-		var kind SearchKind
-		switch p.pending.Prefix {
-		case 'f':
-			kind = SearchFindForward
-		case 't':
-			kind = SearchTillForward
-		case 'F':
-			kind = SearchFindBackward
-		case 'T':
-			kind = SearchTillBackward
-		}
-		return Command{
-			Type:       CommandCharSearch,
-			SearchKind: kind,
-			SearchChar: b,
-			Count:      p.pending.Count,
-		}
-	}
-
-	// No valid prefix
+	// Invalid sequence
 	return Command{Type: CommandNone}
 }
 
-// parseCommand parses a complete command from a single key.
+// parseCommand parses a complete command from a single key using keymap lookup.
 func (p *Parser) parseCommand(b byte) Command {
-	// Pass count as-is: 0 means "no count typed", >0 means explicit count.
-	// Motion handlers are responsible for treating count=0 as 1 repetition
-	// (or as special meaning for G/gg where 0 = last/first line).
 	count := p.pending.Count
 
-	// Check configurable toggle key before entering the switch
+	// Check configurable toggle key first (backward compat, takes priority)
 	if b == p.toggleKey {
 		return Command{Type: CommandToggleLineMode}
 	}
 
-	switch b {
-	// Motion commands
-	case 'j':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionDown,
-			Count:  count,
-		}
-	case 'k':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionUp,
-			Count:  count,
-		}
-	case 'h':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionLeft,
-			Count:  count,
-		}
-	case 'l':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionRight,
-			Count:  count,
-		}
-	case '$':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionLineEnd,
-			Count:  count,
-		}
-	case 'G':
-		// G needs raw count: 0 = last line, N = line N
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionLastLine,
-			Count:  p.pending.Count,
-		}
-	case 4: // Ctrl-D
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionHalfPageDown,
-			Count:  count,
-		}
-	case 21: // Ctrl-U
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionHalfPageUp,
-			Count:  count,
-		}
-	case 'w':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionWordForward,
-			Count:  count,
-		}
-	case 'b':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionWordBackward,
-			Count:  count,
-		}
-	case 'e':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionWordEnd,
-			Count:  count,
-		}
-	case '^':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionFirstNonBlank,
-			Count:  count,
-		}
-	case 'W':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionWORDForward,
-			Count:  count,
-		}
-	case 'E':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionWORDEnd,
-			Count:  count,
-		}
-	case 'B':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionWORDBackward,
-			Count:  count,
-		}
-	case '}':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionParagraphForward,
-			Count:  count,
-		}
-	case '{':
-		return Command{
-			Type:   CommandMotion,
-			Motion: motion.MotionParagraphBackward,
-			Count:  count,
-		}
+	// Build KeySpec from byte.
+	// For bytes 1-26 (Ctrl+A through Ctrl+Z), try plain Key(b) first
+	// (handles Enter=13, Tab=9 etc.), then fall back to Ctrl notation.
+	key := keymap.Key(b)
+	action, ok := p.km.Lookup(key)
+	if !ok && b >= 1 && b <= 26 {
+		key = keymap.Ctrl(byte('a' + b - 1))
+		action, ok = p.km.Lookup(key)
+	}
+	if !ok {
+		return Command{Type: CommandNone}
+	}
 
-	// Visual mode commands
-	case 'v':
-		return Command{Type: CommandVisual}
-	case 'V':
-		return Command{Type: CommandVisualLine}
-	case 22: // Ctrl-V
-		return Command{Type: CommandVisualBlock}
-
-	// Visual mode cursor swap
-	case 'o':
-		return Command{Type: CommandSwapEnd}
-	case 'O':
-		return Command{Type: CommandSwapCorner}
-
-	// Yank command (Enter confirms selection yank; 'y' is handled as a prefix above)
-	case 13: // Enter
-		return Command{Type: CommandYank}
-
-	// Mode control
-	case 27: // Escape
-		return Command{Type: CommandEscape}
-
-	// Character search repeat
-	case ';':
-		return Command{
-			Type:       CommandCharSearch,
-			SearchKind: SearchRepeat,
-			Count:      count,
-		}
-	case ',':
-		return Command{
-			Type:       CommandCharSearch,
-			SearchKind: SearchRepeatReverse,
-			Count:      count,
-		}
-
-	// Tab: next demo page
-	case 9: // Tab
-		return Command{Type: CommandDemoNext}
-
-	// Bracket keys: demo theme cycling
-	case ']':
-		return Command{Type: CommandDemoThemeNext}
-	case '[':
-		return Command{Type: CommandDemoThemePrev}
-
-	// Search commands
-	case '/':
+	// Special handling for search commands that need to set parser state
+	switch action {
+	case keymap.ActionSearchForward:
 		p.inSearch = true
 		p.searchDir = '/'
 		p.searchBuf = p.searchBuf[:0]
 		return Command{Type: CommandSearchForward}
-	case '?':
+	case keymap.ActionSearchBackward:
 		p.inSearch = true
 		p.searchDir = '?'
 		p.searchBuf = p.searchBuf[:0]
 		return Command{Type: CommandSearchBackward}
-	case 'n':
-		return Command{Type: CommandSearchNext, Count: count}
-	case 'N':
-		return Command{Type: CommandSearchPrev, Count: count}
-	case '*':
-		return Command{Type: CommandSearchWordForward}
-	case '#':
-		return Command{Type: CommandSearchWordBackward}
-
-	// Quit
-	case 'q', 3: // 'q' or Ctrl-C
-		return Command{Type: CommandQuit}
-
-	default:
-		return Command{Type: CommandNone}
 	}
+
+	return ActionToCommand(action, count, 0)
 }
 
 // clearPending resets the pending state.
@@ -618,9 +412,8 @@ func (p *Parser) CancelSearch() {
 // parseNormalByte processes a single byte through the normal (non-mouse) parse path.
 // This is used to handle a byte that follows an abandoned mouse prefix.
 func (p *Parser) parseNormalByte(b byte) Command {
-	// Handle pending 'g', 'z', 'y', or char-search (f/t/F/T) prefix first
-	if p.pending.Prefix == 'g' || p.pending.Prefix == 'z' || p.pending.Prefix == 'y' ||
-		p.pending.Prefix == 'f' || p.pending.Prefix == 't' || p.pending.Prefix == 'F' || p.pending.Prefix == 'T' {
+	// Handle pending prefix first
+	if p.pending.Prefix != 0 {
 		cmd := p.parsePrefixedKey(b)
 		p.clearPending()
 		return cmd
@@ -644,26 +437,14 @@ func (p *Parser) parseNormalByte(b byte) Command {
 		return cmd
 	}
 
-	// Handle 'g' prefix (wait for next key)
-	if b == 'g' {
-		p.pending.Prefix = 'g'
+	// Check if this key starts a prefix sequence
+	if p.km.IsPrefix(b) {
+		p.pending.Prefix = b
 		return Command{Type: CommandNone}
 	}
 
-	// Handle 'z' prefix (wait for next key)
-	if b == 'z' {
-		p.pending.Prefix = 'z'
-		return Command{Type: CommandNone}
-	}
-
-	// Handle 'y' prefix: 'yy' = yank current line (wait for second key)
-	if b == 'y' {
-		p.pending.Prefix = 'y'
-		return Command{Type: CommandNone}
-	}
-
-	// Handle f/t/F/T prefix: character search (wait for target char)
-	if b == 'f' || b == 'F' || b == 't' || b == 'T' {
+	// Check if this key starts a char-capture sequence
+	if p.km.IsCharCapture(b) {
 		p.pending.Prefix = b
 		return Command{Type: CommandNone}
 	}

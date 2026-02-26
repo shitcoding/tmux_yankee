@@ -1,6 +1,8 @@
 package input
 
-import "github.com/shitcoding/tmux_yankee/internal/motion"
+import (
+	"github.com/shitcoding/tmux_yankee/internal/motion"
+)
 
 // CommandType represents the type of command parsed from input.
 type CommandType int
@@ -39,6 +41,16 @@ const (
 	CommandSearchPrev           // 'N' — previous match
 	CommandSearchWordForward    // '*' — search word under cursor forward
 	CommandSearchWordBackward   // '#' — search word under cursor backward
+	CommandScrollLineUp         // Ctrl-Y — viewport scroll up without cursor move
+	CommandScrollLineDown       // Ctrl-E — viewport scroll down without cursor move
+	CommandJumpBack             // `` or '' — jump to previous position
+	CommandJumpListBack         // Ctrl-O — jump list backward
+	CommandJumpListForward      // Ctrl-I — jump list forward
+	CommandSetMark              // m{char} — set mark at cursor
+	CommandGoToMark             // `{char} or '{char} — go to mark
+	CommandTextObject           // iw, aw, etc. — text object (visual mode)
+	CommandSearchSelect         // gn — search and select next match
+	CommandSearchSelectBack     // gN — search and select previous match
 )
 
 // ScrollDirection indicates mouse wheel direction for CommandMouseScroll.
@@ -73,6 +85,8 @@ type Command struct {
 	MouseRow        int             // 0-based terminal row (mouse events)
 	MouseCol        int             // 0-based terminal column (mouse events)
 	SearchPattern   string          // search text (for SearchConfirm/SearchUpdate)
+	MarkChar        byte            // mark character for set/goto mark (m{char}/`{char})
+	TextObject      string          // text object action name (for CommandTextObject)
 }
 
 // Pending represents the parser's pending state for multi-key sequences.

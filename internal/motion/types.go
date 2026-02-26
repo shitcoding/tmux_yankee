@@ -26,6 +26,17 @@ const (
 	MotionViewportTop       // zt - position cursor line at top of viewport
 	MotionViewportCenter    // zz - position cursor line at center of viewport
 	MotionViewportBottom    // zb - position cursor line at bottom of viewport
+	MotionScreenTop         // H - cursor to top of visible screen
+	MotionScreenMiddle      // M - cursor to middle of visible screen
+	MotionScreenBottom      // L - cursor to bottom of visible screen
+	MotionPageUp            // Ctrl-B - full page up
+	MotionPageDown          // Ctrl-F - full page down
+	MotionScrollLineUp      // Ctrl-Y - scroll viewport up 1 line
+	MotionScrollLineDown    // Ctrl-E - scroll viewport down 1 line
+	MotionWordEndBackward   // ge - end of previous word
+	MotionWORDEndBackward   // gE - end of previous WORD
+	MotionLastNonBlank      // g_ - last non-blank char on line
+	MotionMatchBracket      // % - jump to matching bracket
 )
 
 // Cursor represents the cursor position in the document.

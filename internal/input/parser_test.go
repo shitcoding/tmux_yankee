@@ -288,28 +288,29 @@ func TestParser_OtherCommands(t *testing.T) {
 		})
 	}
 
-	// Escape is deferred: ESC is held until the next byte confirms it is not a
-	// mouse prefix. Feed ESC followed by a non-'[' byte; the first non-None
-	// result must be CommandEscape.
+	// Alt+key detection: ESC followed by a printable byte is treated as Alt+key.
+	// With no Alt binding, both bytes are discarded (CommandNone).
+	// Standalone ESC (via Flush) still produces CommandEscape.
 	t.Run("Escape resolves on next non-bracket byte", func(t *testing.T) {
 		p := NewParser()
-		// First call: ESC is buffered — returns CommandNone (waiting for '[').
+		// ESC is buffered.
 		cmd := p.Parse(27)
 		if cmd.Type != CommandNone {
 			t.Errorf("ESC alone: Type = %v, want CommandNone (deferred)", cmd.Type)
 		}
-		// Second call: 'q' — not '[', so the deferred ESC fires first.
+		// 'q' is printable → treated as Alt+q (unbound → discarded).
 		cmd = p.Parse('q')
-		if cmd.Type != CommandEscape {
-			t.Errorf("ESC+q first result: Type = %v, want CommandEscape", cmd.Type)
+		if cmd.Type != CommandNone {
+			t.Errorf("ESC+q (Alt+q unbound): Type = %v, want CommandNone", cmd.Type)
 		}
-		// Third call: deferred 'q' command is emitted.
-		cmd = p.Parse('j') // trigger any remaining deferred
-		if cmd.Type != CommandQuit {
-			// 'q' was deferred; check it resolves now
-			// (the 'j' call may emit 'q' deferred or 'j' motion depending on order)
-			// Actually 'q' should have been stored as deferred and emitted on this call.
-			t.Errorf("deferred 'q' result: Type = %v, want CommandQuit", cmd.Type)
+		// Standalone ESC via Flush still works.
+		cmd = p.Parse(27)
+		if cmd.Type != CommandNone {
+			t.Errorf("ESC alone: Type = %v, want CommandNone (buffered)", cmd.Type)
+		}
+		cmd = p.Flush()
+		if cmd.Type != CommandEscape {
+			t.Errorf("Flush standalone ESC: Type = %v, want CommandEscape", cmd.Type)
 		}
 	})
 }
@@ -605,17 +606,22 @@ func TestParser_Flush_ClearsPendingPrefix(t *testing.T) {
 
 func TestParser_ESC_ClearsPendingCount_InlineResolution(t *testing.T) {
 	p := NewParser()
-	// "5 ESC q" where ESC and q arrive in same read
+	// "5 ESC q" where ESC and q arrive in same read.
+	// Alt+key detection: ESC+'q' is treated as Alt+q (unbound → discarded).
+	// The pending count must be cleared so it doesn't leak to the next key.
 	p.Parse('5')
 	p.Parse(0x1b)
-	cmd := p.Parse('q') // ESC resolves immediately (not '[')
-	if cmd.Type != CommandEscape {
-		t.Fatalf("5+ESC+q first result: got type %d, want CommandEscape", cmd.Type)
+	cmd := p.Parse('q') // Alt+q: unbound, discarded
+	if cmd.Type != CommandNone {
+		t.Fatalf("5+ESC+q: got type %d, want CommandNone (Alt+q discarded)", cmd.Type)
 	}
-	// Deferred 'q' should fire next, as CommandQuit with no stale count
-	cmd = p.Parse('j') // trigger deferred
+	// Count was cleared by ESC handler. Next 'q' should be CommandQuit with count=0.
+	cmd = p.Parse('q')
 	if cmd.Type != CommandQuit {
-		t.Fatalf("deferred q: got type %d, want CommandQuit", cmd.Type)
+		t.Fatalf("q after Alt: got type %d, want CommandQuit", cmd.Type)
+	}
+	if cmd.Count != 0 {
+		t.Fatalf("q after Alt: count=%d, want 0 (count should be cleared)", cmd.Count)
 	}
 }
 
@@ -749,27 +755,26 @@ func TestParser_Flush_MouseSequenceNotFlushed(t *testing.T) {
 }
 
 func TestParser_Flush_ReturnsDeferredCommand(t *testing.T) {
-	// When ESC is followed by a non-'[' byte, Parse returns CommandEscape
-	// and defers the byte's command. If Flush() is called instead of Parse(),
-	// it must return the deferred command rather than losing it.
+	// ESC followed by a non-printable byte (Ctrl code) defers the byte's
+	// command. Flush must return the deferred command.
+	// Note: ESC + printable is now treated as Alt+key (discarded if unbound).
 	p := NewParser()
-	// ESC held in mouseBuf
 	cmd := p.Parse(0x1b)
 	if cmd.Type != CommandNone {
 		t.Fatalf("ESC byte: got type %d, want CommandNone", cmd.Type)
 	}
-	// 'j' resolves ESC → CommandEscape returned, 'j' motion deferred.
-	cmd = p.Parse('j')
+	// Ctrl-D (byte 4) is non-printable, triggers ESC fallthrough + deferred.
+	cmd = p.Parse(0x04)
 	if cmd.Type != CommandEscape {
-		t.Fatalf("ESC+j: got type %d, want CommandEscape", cmd.Type)
+		t.Fatalf("ESC+Ctrl-D: got type %d, want CommandEscape", cmd.Type)
 	}
-	// Now the deferred 'j' motion is pending. Flush must return it.
+	// Deferred Ctrl-D (half page down) must be returned by Flush.
 	cmd = p.Flush()
 	if cmd.Type != CommandMotion {
 		t.Errorf("Flush deferred: got type %d, want CommandMotion", cmd.Type)
 	}
-	if cmd.Motion != motion.MotionDown {
-		t.Errorf("Flush deferred motion: got %v, want MotionDown", cmd.Motion)
+	if cmd.Motion != motion.MotionHalfPageDown {
+		t.Errorf("Flush deferred motion: got %v, want MotionHalfPageDown", cmd.Motion)
 	}
 }
 

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 
+	"github.com/shitcoding/tmux_yankee/internal/keymap"
 	"github.com/shitcoding/tmux_yankee/internal/theme"
 )
 
@@ -76,6 +77,16 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		statusBar = StatusBarOn
 	}
 
+	// Build keymap: defaults + user overrides from --bindings flag
+	km := keymap.DefaultKeymap()
+	if opts.Bindings != "" {
+		overrides, err := keymap.ParseBindings(opts.Bindings)
+		if err != nil {
+			return Settings{}, fmt.Errorf("bindings: %w", err)
+		}
+		km = km.Merge(overrides)
+	}
+
 	return Settings{
 		PaneID:          opts.PaneID,
 		Mode:            LineNumberMode(opts.Mode),
@@ -90,5 +101,6 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		StartPosition:   StartPosition(opts.StartPosition),
 		WrapMode:        wrapMode,
 		StatusBar:       statusBar,
+		Keymap:          km,
 	}, nil
 }
