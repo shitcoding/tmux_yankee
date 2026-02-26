@@ -18,7 +18,7 @@ func makeCells(s string) []Cell {
 }
 
 func renderedText(cells []Cell, cursorCol, selStart, selEnd, startCol, maxWidth int) string {
-	raw := RenderCellsWithPalette(cells, cursorCol, selStart, selEnd, startCol, maxWidth, theme.Palette{})
+	raw := RenderCellsWithPalette(cells, cursorCol, selStart, selEnd, nil, [2]int{-1, -1}, startCol, maxWidth, theme.Palette{})
 	return stripANSI(raw)
 }
 
@@ -84,7 +84,7 @@ func TestRenderCells_CursorWithOffset(t *testing.T) {
 	cells := makeCells("abcdefghij")
 	pal := testPalette()
 	// startCol=3, maxWidth=5, cursor at col 5 (visible as position 2 in viewport)
-	raw := RenderCellsWithPalette(cells, 5, -1, -1, 3, 5, pal)
+	raw := RenderCellsWithPalette(cells, 5, -1, -1, nil, [2]int{-1, -1}, 3, 5, pal)
 	// The cursor cell ('f') should have cursor BG color (#0000ff = 0,0,255)
 	if !strings.Contains(raw, "48;2;0;0;255") {
 		t.Errorf("cursor at col 5 (visible with startCol=3) should have cursor BG, got: %q", raw)
@@ -95,7 +95,7 @@ func TestRenderCells_CursorOutOfViewport(t *testing.T) {
 	cells := makeCells("abcdefghij")
 	pal := testPalette()
 	// startCol=5, maxWidth=5, cursor at col 2 (before viewport)
-	raw := RenderCellsWithPalette(cells, 2, -1, -1, 5, 5, pal)
+	raw := RenderCellsWithPalette(cells, 2, -1, -1, nil, [2]int{-1, -1}, 5, 5, pal)
 	// Cursor is before viewport, should NOT have cursor BG
 	if strings.Contains(raw, "48;2;0;0;255") {
 		t.Error("cursor at col 2 should not be visible with startCol=5")
@@ -106,7 +106,7 @@ func TestRenderCells_SelectionWithOffset(t *testing.T) {
 	cells := makeCells("abcdefghij")
 	pal := testPalette()
 	// startCol=2, maxWidth=6, selection from col 3 to col 6 (absolute)
-	raw := RenderCellsWithPalette(cells, -1, 3, 6, 2, 6, pal)
+	raw := RenderCellsWithPalette(cells, -1, 3, 6, nil, [2]int{-1, -1}, 2, 6, pal)
 	stripped := stripANSI(raw)
 	// Visible content: "cdefgh" (cols 2-7)
 	// Selection covers cols 3-6 within that range

@@ -8,7 +8,10 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
+	"unicode"
 	"syscall"
 	"unicode/utf8"
 
@@ -70,6 +73,16 @@ type TUI struct {
 	// Cached gutter values (invalidated on resize/theme/mode change)
 	cachedGutterWidth int    // cached gutter width (visual columns, strip ANSI)
 	cachedBlankGutter string // cached blank gutter string
+
+	// Search state
+	searchPattern   string         // confirmed search pattern
+	searchRegex     *regexp.Regexp // compiled (nil if empty/invalid)
+	searchMatches   []searchMatch  // all matches, sorted by (Line, ColStart)
+	searchMatchIdx  int            // current match index (-1 = none)
+	searchDirection int            // 1=forward, -1=backward
+	searchActive    bool           // highlights shown (persists until cleared)
+	searchSavedLine int            // cursor line before search started
+	searchSavedCol  int            // cursor col before search started
 
 	// Demo mode fields
 	isDemo         bool
@@ -747,6 +760,18 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 	prevRegion := t.modeMachine.Region()
 	prevWrapMode := t.cfg.WrapMode
 
+	// While in search input mode, only allow search-related commands.
+	if t.parser.InSearchMode() {
+		switch cmd.Type {
+		case input.CommandSearchForward, input.CommandSearchBackward,
+			input.CommandSearchUpdate, input.CommandSearchConfirm, input.CommandSearchCancel:
+			// Allow these through.
+		default:
+			// Ignore non-search commands during search input.
+			return false
+		}
+	}
+
 	switch cmd.Type {
 	case input.CommandNone:
 		return false
@@ -811,9 +836,17 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		}
 
 	case input.CommandEscape:
-		// Exit visual mode back to normal
-		pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
-		t.modeMachine.Handle(vmode.EventEscape, pos)
+		if t.modeMachine.Mode() != vmode.Normal {
+			// First ESC: exit visual mode back to normal.
+			pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
+			t.modeMachine.Handle(vmode.EventEscape, pos)
+		} else if t.searchActive {
+			// Second ESC (already normal mode): clear search highlights.
+			t.searchActive = false
+			t.searchMatches = t.searchMatches[:0]
+			t.searchMatchIdx = -1
+			t.dirty = true
+		}
 
 	case input.CommandYank:
 		return t.yank()
@@ -885,6 +918,85 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		}
 		t.moveDisplayLine(-count)
 		t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+
+	case input.CommandSearchForward:
+		t.searchSavedLine = t.cursorLine
+		t.searchSavedCol = t.cursorCol
+		t.searchDirection = 1
+		t.dirty = true
+
+	case input.CommandSearchBackward:
+		t.searchSavedLine = t.cursorLine
+		t.searchSavedCol = t.cursorCol
+		t.searchDirection = -1
+		t.dirty = true
+
+	case input.CommandSearchUpdate:
+		t.incrementalSearch(cmd.SearchPattern)
+		t.dirty = true
+
+	case input.CommandSearchConfirm:
+		t.searchPattern = cmd.SearchPattern
+		t.searchActive = true
+		if len(t.searchMatches) > 0 && t.searchMatchIdx >= 0 {
+			t.jumpToMatch(t.searchMatchIdx)
+		}
+		t.dirty = true
+
+	case input.CommandSearchCancel:
+		// Restore cursor to saved position.
+		t.cursorLine = t.searchSavedLine
+		t.cursorCol = t.searchSavedCol
+		// Keep searchActive for n/N if a previous confirmed pattern exists.
+		t.dirty = true
+
+	case input.CommandSearchNext:
+		if t.searchActive && len(t.searchMatches) > 0 {
+			// Vim behavior: search from cursor position in the original search direction.
+			var idx int
+			if t.searchDirection > 0 {
+				idx = t.nearestMatch(t.cursorLine, t.cursorCol+1, 1)
+			} else {
+				idx = t.nearestMatch(t.cursorLine, t.cursorCol, -1)
+			}
+			t.jumpToMatch(idx)
+		}
+
+	case input.CommandSearchPrev:
+		if t.searchActive && len(t.searchMatches) > 0 {
+			// Vim behavior: search from cursor position in the opposite direction.
+			if t.searchDirection > 0 {
+				idx := t.nearestMatch(t.cursorLine, t.cursorCol, -1)
+				t.jumpToMatch(idx)
+			} else {
+				idx := t.nearestMatch(t.cursorLine, t.cursorCol+1, 1)
+				t.jumpToMatch(idx)
+			}
+		}
+
+	case input.CommandSearchWordForward:
+		word := t.wordAtCursor()
+		if word != "" {
+			t.searchPattern = `\b` + regexp.QuoteMeta(word) + `\b`
+			t.searchDirection = 1
+			t.searchActive = true
+			t.computeSearchMatches(t.searchPattern)
+			// Jump to next match after cursor.
+			idx := t.nearestMatch(t.cursorLine, t.cursorCol+1, 1)
+			t.jumpToMatch(idx)
+		}
+
+	case input.CommandSearchWordBackward:
+		word := t.wordAtCursor()
+		if word != "" {
+			t.searchPattern = `\b` + regexp.QuoteMeta(word) + `\b`
+			t.searchDirection = -1
+			t.searchActive = true
+			t.computeSearchMatches(t.searchPattern)
+			// Jump to previous match before cursor.
+			idx := t.nearestMatch(t.cursorLine, t.cursorCol, -1)
+			t.jumpToMatch(idx)
+		}
 
 	case input.CommandCharSearch:
 		if cs, ok := t.motionHandler.(motion.CharSearcher); ok {
@@ -1432,6 +1544,192 @@ func (t *TUI) lineSelection(lineIdx int, region selection.Region) (cursorCol, se
 	return
 }
 
+// computeSearchMatches compiles the pattern and finds all matches in the document.
+func (t *TUI) computeSearchMatches(pattern string) {
+	t.searchMatches = t.searchMatches[:0]
+	t.searchMatchIdx = -1
+	if pattern == "" {
+		t.searchRegex = nil
+		return
+	}
+
+	// Smart case: if pattern has any uppercase letter, case-sensitive; else case-insensitive.
+	hasUpper := false
+	for _, r := range pattern {
+		if unicode.IsUpper(r) {
+			hasUpper = true
+			break
+		}
+	}
+	regexPattern := pattern
+	if !hasUpper {
+		regexPattern = "(?i)" + pattern
+	}
+
+	re, err := regexp.Compile(regexPattern)
+	if err != nil {
+		// Invalid regex — fall back to literal
+		re, err = regexp.Compile(regexp.QuoteMeta(pattern))
+		if err != nil {
+			t.searchRegex = nil
+			return
+		}
+	}
+	t.searchRegex = re
+
+	lineCount := t.doc.LineCount()
+	for i := 0; i < lineCount; i++ {
+		line := t.doc.Line(i)
+		locs := re.FindAllStringIndex(line, -1)
+		for _, loc := range locs {
+			// Convert byte offsets to rune offsets.
+			colStart := byteOffsetToRuneOffset(line, loc[0])
+			colEnd := byteOffsetToRuneOffset(line, loc[1]) - 1
+			if colEnd < colStart {
+				colEnd = colStart
+			}
+			t.searchMatches = append(t.searchMatches, searchMatch{
+				Line:     i,
+				ColStart: colStart,
+				ColEnd:   colEnd,
+			})
+		}
+	}
+}
+
+// byteOffsetToRuneOffset converts a byte offset in a string to a rune offset.
+func byteOffsetToRuneOffset(s string, byteOff int) int {
+	runeIdx := 0
+	for i := range s {
+		if i >= byteOff {
+			return runeIdx
+		}
+		runeIdx++
+	}
+	return runeIdx
+}
+
+// nearestMatch finds the nearest match index from position in the given direction.
+// Returns -1 if no matches exist. Wraps around.
+func (t *TUI) nearestMatch(fromLine, fromCol, direction int) int {
+	n := len(t.searchMatches)
+	if n == 0 {
+		return -1
+	}
+	// Binary search for the first match at or after (fromLine, fromCol).
+	idx := sort.Search(n, func(i int) bool {
+		m := t.searchMatches[i]
+		return m.Line > fromLine || (m.Line == fromLine && m.ColStart >= fromCol)
+	})
+	if direction > 0 {
+		// Forward: use idx, wrapping to 0 if past end.
+		if idx >= n {
+			return 0
+		}
+		return idx
+	}
+	// Backward: use idx-1, wrapping to n-1 if before start.
+	idx--
+	if idx < 0 {
+		return n - 1
+	}
+	return idx
+}
+
+// jumpToMatch moves the cursor to the specified match and updates the viewport.
+func (t *TUI) jumpToMatch(idx int) {
+	if idx < 0 || idx >= len(t.searchMatches) {
+		return
+	}
+	m := t.searchMatches[idx]
+	t.searchMatchIdx = idx
+	t.cursorLine = m.Line
+	t.cursorCol = m.ColStart
+
+	// Scroll viewport to make the match visible.
+	t.clampViewportAndCursor()
+
+	// Notify mode machine of cursor movement (extends selection if in visual mode).
+	pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
+	t.modeMachine.OnCursorMoved(pos)
+}
+
+// incrementalSearch recomputes matches and jumps to the nearest match from the saved position.
+func (t *TUI) incrementalSearch(pattern string) {
+	t.computeSearchMatches(pattern)
+	t.searchActive = len(t.searchMatches) > 0
+	if t.searchActive {
+		idx := t.nearestMatch(t.searchSavedLine, t.searchSavedCol, t.searchDirection)
+		t.jumpToMatch(idx)
+	}
+}
+
+// wordAtCursor extracts the word under the cursor (similar to vim's * word boundary).
+func (t *TUI) wordAtCursor() string {
+	if t.doc.LineCount() == 0 {
+		return ""
+	}
+	cells := t.doc.Cells(t.cursorLine)
+	if len(cells) == 0 {
+		return ""
+	}
+	col := t.cursorCol
+	if col >= len(cells) {
+		col = len(cells) - 1
+	}
+
+	// Check if cursor is on a word character.
+	isWord := func(r rune) bool {
+		return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_'
+	}
+
+	if !isWord(cells[col].Rune) {
+		return ""
+	}
+
+	// Expand left.
+	start := col
+	for start > 0 && isWord(cells[start-1].Rune) {
+		start--
+	}
+	// Expand right.
+	end := col
+	for end < len(cells)-1 && isWord(cells[end+1].Rune) {
+		end++
+	}
+
+	var buf strings.Builder
+	for i := start; i <= end; i++ {
+		buf.WriteRune(cells[i].Rune)
+	}
+	return buf.String()
+}
+
+// lineSearchRanges returns all search match ranges on a given line,
+// plus the current match range (or {-1,-1} if not on this line).
+func (t *TUI) lineSearchRanges(lineIdx int) (ranges [][2]int, currentRange [2]int) {
+	currentRange = [2]int{-1, -1}
+	if !t.searchActive || len(t.searchMatches) == 0 {
+		return
+	}
+
+	// Binary search for the first match on this line.
+	n := len(t.searchMatches)
+	lo := sort.Search(n, func(i int) bool {
+		return t.searchMatches[i].Line >= lineIdx
+	})
+
+	for i := lo; i < n && t.searchMatches[i].Line == lineIdx; i++ {
+		m := t.searchMatches[i]
+		ranges = append(ranges, [2]int{m.ColStart, m.ColEnd})
+		if i == t.searchMatchIdx {
+			currentRange = [2]int{m.ColStart, m.ColEnd}
+		}
+	}
+	return
+}
+
 // bgEscape returns the ANSI escape sequence to set the background color from
 // a cell's Style. Returns empty string if the style has default background.
 func bgEscape(s Style) string {
@@ -1506,7 +1804,8 @@ func (t *TUI) renderScroll() {
 
 		cursorCol, selStart, selEnd := t.lineSelection(i, region)
 
-		renderedLine := RenderCellsWithPalette(t.doc.Cells(i), cursorCol, selStart, selEnd, t.hOffset, contentWidth, t.palette)
+		searchRanges, currentMatch := t.lineSearchRanges(i)
+		renderedLine := RenderCellsWithPalette(t.doc.Cells(i), cursorCol, selStart, selEnd, searchRanges, currentMatch, t.hOffset, contentWidth, t.palette)
 		b.WriteString(renderedLine)
 		b.WriteString("\x1b[K")
 
@@ -1526,6 +1825,13 @@ func (t *TUI) renderScroll() {
 // Indices are cell positions [start, end) within the parent line's cell array.
 type wrapChunk struct {
 	start, end int
+}
+
+// searchMatch represents a single search result in the document.
+type searchMatch struct {
+	Line     int
+	ColStart int // rune index, inclusive
+	ColEnd   int // rune index, inclusive
 }
 
 // trimTrailingSpaceCells returns the effective length of cells after stripping
@@ -1687,7 +1993,8 @@ func (t *TUI) renderWrap() {
 				maxWidth = contentWidth
 			}
 
-			renderedLine := RenderCellsWithPalette(cells, cursorCol, selStart, selEnd, chunk.start, maxWidth, t.palette)
+			searchRanges, currentMatch := t.lineSearchRanges(i)
+			renderedLine := RenderCellsWithPalette(cells, cursorCol, selStart, selEnd, searchRanges, currentMatch, chunk.start, maxWidth, t.palette)
 			b.WriteString(renderedLine)
 			// Extend the last cell's background through \x1b[K so that
 			// full-width highlights (e.g. git diff) don't break on wrapped rows.

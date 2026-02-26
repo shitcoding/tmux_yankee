@@ -27,9 +27,18 @@ const (
 	CommandToggleWrapMode    // gw: toggle wrap on/off
 	CommandDisplayLineDown  // gj: move down one display row (wrap mode)
 	CommandDisplayLineUp    // gk: move up one display row (wrap mode)
-	CommandMouseLeftPress   // left mouse button pressed
-	CommandMouseLeftDrag    // left mouse button drag (motion with button held)
-	CommandMouseRelease     // mouse button released
+	CommandMouseLeftPress       // left mouse button pressed
+	CommandMouseLeftDrag        // left mouse button drag (motion with button held)
+	CommandMouseRelease         // mouse button released
+	CommandSearchForward        // '/' — enter search input mode (forward)
+	CommandSearchBackward       // '?' — enter search input mode (backward)
+	CommandSearchConfirm        // Enter during search input
+	CommandSearchCancel         // Escape during search input
+	CommandSearchUpdate         // char typed/deleted during search — incremental update
+	CommandSearchNext           // 'n' — next match
+	CommandSearchPrev           // 'N' — previous match
+	CommandSearchWordForward    // '*' — search word under cursor forward
+	CommandSearchWordBackward   // '#' — search word under cursor backward
 )
 
 // ScrollDirection indicates mouse wheel direction for CommandMouseScroll.
@@ -63,6 +72,7 @@ type Command struct {
 	SearchChar      byte            // target character (0 for ;/,)
 	MouseRow        int             // 0-based terminal row (mouse events)
 	MouseCol        int             // 0-based terminal column (mouse events)
+	SearchPattern   string          // search text (for SearchConfirm/SearchUpdate)
 }
 
 // Pending represents the parser's pending state for multi-key sequences.

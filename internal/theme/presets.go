@@ -10,8 +10,10 @@ package theme
 var Presets = map[ThemeName]Palette{
 	// Default theme uses Gruvbox airline colors.
 	ThemeDefault: {
-		Cursor:    CellPalette{FG: "#ebdbb2", BG: "#FF8700"},
-		Selection: CellPalette{FG: "", BG: "#FF8700"},
+		Cursor:        CellPalette{FG: "#ebdbb2", BG: "#FF8700"},
+		Selection:     CellPalette{FG: "", BG: "#FF8700"},
+		SearchMatch:   CellPalette{FG: "#3c3836", BG: "#fabd2f"}, // dark on bright_yellow
+		SearchCurrent: CellPalette{FG: "#3c3836", BG: "#fe8019"}, // dark on bright_orange
 		Gutter:    GutterPalette{FG: "#665c54", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#7c6f64", RelativeFG: "#7c6f64", CursorFG: "#FF8700", CursorStyle: TextStyle{Bold: true}},
 		Status:    StatusPalette{FG: "#a89984", BG: "#3c3836"},
@@ -27,8 +29,10 @@ var Presets = map[ThemeName]Palette{
 		},
 	},
 	ThemeDracula: {
-		Cursor:    CellPalette{FG: "#282a36", BG: "#ffb86c"},
-		Selection: CellPalette{FG: "#f8f8f2", BG: "#44475a"},
+		Cursor:        CellPalette{FG: "#282a36", BG: "#ffb86c"},
+		Selection:     CellPalette{FG: "#f8f8f2", BG: "#44475a"},
+		SearchMatch:   CellPalette{FG: "#282a36", BG: "#f1fa8c"}, // bg on yellow
+		SearchCurrent: CellPalette{FG: "#282a36", BG: "#ff79c6"}, // bg on pink
 		Gutter:    GutterPalette{FG: "#6272a4", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#bd93f9", RelativeFG: "#6272a4", CursorFG: "#50fa7b", CursorStyle: TextStyle{Bold: true}},
 		Status:    StatusPalette{FG: "#f8f8f2", BG: "#44475a"},
@@ -45,8 +49,10 @@ var Presets = map[ThemeName]Palette{
 	},
 	// Gruvbox airline: Normal=bright_green, Visual=bright_purple, Insert=bright_blue
 	ThemeGruvbox: {
-		Cursor:    CellPalette{FG: "#ebdbb2", BG: "#3c3836"},
-		Selection: CellPalette{FG: "", BG: "#665c54"},
+		Cursor:        CellPalette{FG: "#ebdbb2", BG: "#3c3836"},
+		Selection:     CellPalette{FG: "", BG: "#665c54"},
+		SearchMatch:   CellPalette{FG: "#3c3836", BG: "#fabd2f"}, // dark on bright_yellow
+		SearchCurrent: CellPalette{FG: "#3c3836", BG: "#fe8019"}, // dark on bright_orange
 		Gutter:    GutterPalette{FG: "#665c54", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#7c6f64", RelativeFG: "#7c6f64", CursorFG: "#fabd2f", CursorStyle: TextStyle{Bold: true}},
 		Status:    StatusPalette{FG: "#a89984", BG: "#3c3836"},
@@ -62,8 +68,10 @@ var Presets = map[ThemeName]Palette{
 	},
 	// Nord airline: Normal=nord8(cyan), Visual=nord7(teal), Insert=nord14(green)
 	ThemeNord: {
-		Cursor:    CellPalette{FG: "#2e3440", BG: "#88c0d0"},
-		Selection: CellPalette{FG: "#eceff4", BG: "#5e81ac"},
+		Cursor:        CellPalette{FG: "#2e3440", BG: "#88c0d0"},
+		Selection:     CellPalette{FG: "#eceff4", BG: "#5e81ac"},
+		SearchMatch:   CellPalette{FG: "#2e3440", BG: "#ebcb8b"}, // nord0 on nord13 (yellow)
+		SearchCurrent: CellPalette{FG: "#2e3440", BG: "#d08770"}, // nord0 on nord12 (orange)
 		Gutter:    GutterPalette{FG: "#4c566a", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#d8dee9", RelativeFG: "#81a1c1", CursorFG: "#a3be8c", CursorStyle: TextStyle{Bold: true}},
 		Status:    StatusPalette{FG: "#eceff4", BG: "#3b4252"},
@@ -79,8 +87,10 @@ var Presets = map[ThemeName]Palette{
 	},
 	// Solarized airline: Normal=green, Visual=magenta, Insert=yellow
 	ThemeSolarized: {
-		Cursor:    CellPalette{FG: "#002b36", BG: "#cb4b16"},
-		Selection: CellPalette{FG: "#eee8d5", BG: "#073642"},
+		Cursor:        CellPalette{FG: "#002b36", BG: "#cb4b16"},
+		Selection:     CellPalette{FG: "#eee8d5", BG: "#073642"},
+		SearchMatch:   CellPalette{FG: "#002b36", BG: "#b58900"}, // base03 on yellow
+		SearchCurrent: CellPalette{FG: "#002b36", BG: "#dc322f"}, // base03 on red
 		Gutter:    GutterPalette{FG: "#586e75", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#93a1a1", RelativeFG: "#b58900", CursorFG: "#2aa198", CursorStyle: TextStyle{Bold: true}},
 		Status:    StatusPalette{FG: "#eee8d5", BG: "#073642"},

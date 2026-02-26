@@ -18,6 +18,9 @@ type Parser struct {
 	inCSI        bool    // true while accumulating a non-mouse CSI param sequence
 	deferredCmd  Command // command to emit on next Parse call (used when ESC is held)
 	hasDeferred  bool    // true if a deferred command is waiting
+	searchBuf    []rune  // accumulates search pattern text (rune-aware for UTF-8)
+	inSearch     bool    // true while collecting search input
+	searchDir    byte    // '/' or '?'
 }
 
 // NewParser creates a new input parser with the default toggle key ('L').
@@ -104,6 +107,14 @@ func (p *Parser) parseInner(b byte) Command {
 		return Command{Type: CommandNone}
 	}
 
+	// Search input mode: intercept resolved bytes before normal key processing.
+	// ESC (0x1b) falls through to the mouse/CSI state machine so that
+	// ESC sequences (arrow keys, CSI) are properly detected. Bytes that are
+	// part of an in-progress escape sequence also fall through.
+	if p.inSearch && !p.inMouse && !p.inCSI && len(p.mouseBuf) == 0 && b != 0x1b {
+		return p.parseSearchByte(b)
+	}
+
 	// Detect 3-byte prefix: ESC [ <
 	// We speculatively buffer ESC and ESC+[ to detect SGR mouse sequences.
 	// ESC is held (deferred) until we know whether '[' follows.
@@ -126,6 +137,14 @@ func (p *Parser) parseInner(b byte) Command {
 		// Not '[' — ESC was standalone. Clear pending state and emit ESC.
 		p.mouseBuf = nil
 		p.clearPending()
+		if p.inSearch {
+			// Cancel search on standalone ESC; defer the follow-up byte as search input.
+			p.inSearch = false
+			p.searchBuf = p.searchBuf[:0]
+			p.deferredCmd = p.parseNormalByte(b)
+			p.hasDeferred = true
+			return Command{Type: CommandSearchCancel}
+		}
 		p.deferredCmd = p.parseNormalByte(b)
 		p.hasDeferred = true
 		return Command{Type: CommandEscape}
@@ -467,6 +486,26 @@ func (p *Parser) parseCommand(b byte) Command {
 	case '[':
 		return Command{Type: CommandDemoThemePrev}
 
+	// Search commands
+	case '/':
+		p.inSearch = true
+		p.searchDir = '/'
+		p.searchBuf = p.searchBuf[:0]
+		return Command{Type: CommandSearchForward}
+	case '?':
+		p.inSearch = true
+		p.searchDir = '?'
+		p.searchBuf = p.searchBuf[:0]
+		return Command{Type: CommandSearchBackward}
+	case 'n':
+		return Command{Type: CommandSearchNext, Count: count}
+	case 'N':
+		return Command{Type: CommandSearchPrev, Count: count}
+	case '*':
+		return Command{Type: CommandSearchWordForward}
+	case '#':
+		return Command{Type: CommandSearchWordBackward}
+
 	// Quit
 	case 'q', 3: // 'q' or Ctrl-C
 		return Command{Type: CommandQuit}
@@ -522,9 +561,58 @@ func (p *Parser) Flush() Command {
 		// so stale state doesn't leak into subsequent commands.
 		p.mouseBuf = nil
 		p.clearPending()
+		if p.inSearch {
+			p.inSearch = false
+			p.searchBuf = p.searchBuf[:0]
+			return Command{Type: CommandSearchCancel}
+		}
 		return Command{Type: CommandEscape}
 	}
 	return Command{Type: CommandNone}
+}
+
+// parseSearchByte handles a single byte while in search input mode.
+func (p *Parser) parseSearchByte(b byte) Command {
+	switch b {
+	case 13: // Enter → confirm search
+		pattern := string(p.searchBuf)
+		p.inSearch = false
+		return Command{Type: CommandSearchConfirm, SearchPattern: pattern}
+	case 127, 8: // Backspace (DEL or BS) → pop last rune
+		if len(p.searchBuf) > 0 {
+			p.searchBuf = p.searchBuf[:len(p.searchBuf)-1]
+		}
+		return Command{Type: CommandSearchUpdate, SearchPattern: string(p.searchBuf)}
+	default:
+		if b >= 32 && b < 127 {
+			// Printable ASCII → append to search buffer
+			p.searchBuf = append(p.searchBuf, rune(b))
+			return Command{Type: CommandSearchUpdate, SearchPattern: string(p.searchBuf)}
+		}
+		// Non-printable (Ctrl-codes, etc.) → ignore
+		return Command{Type: CommandNone}
+	}
+}
+
+// SearchBuffer returns the current search input buffer as a string.
+func (p *Parser) SearchBuffer() string {
+	return string(p.searchBuf)
+}
+
+// InSearchMode returns true if the parser is currently collecting search input.
+func (p *Parser) InSearchMode() bool {
+	return p.inSearch
+}
+
+// SearchDir returns the search direction character ('/' or '?').
+func (p *Parser) SearchDir() byte {
+	return p.searchDir
+}
+
+// CancelSearch clears the parser's search input state.
+func (p *Parser) CancelSearch() {
+	p.inSearch = false
+	p.searchBuf = p.searchBuf[:0]
 }
 
 // parseNormalByte processes a single byte through the normal (non-mouse) parse path.

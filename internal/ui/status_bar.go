@@ -28,6 +28,12 @@ func (t *TUI) renderStatusBar() {
 		return
 	}
 
+	// Search input prompt: replace entire status bar.
+	if t.parser.InSearchMode() {
+		t.renderSearchPrompt(width)
+		return
+	}
+
 	pal := t.palette.StatusBar
 	mode := t.modeMachine.Mode()
 	region := t.modeMachine.Region()
@@ -98,9 +104,24 @@ func (t *TUI) renderStatusBar() {
 		demoText = fmt.Sprintf(" %s │ %s ", pageName, themeName)
 	}
 
+	// Search match count
+	searchText := ""
+	if t.searchActive && len(t.searchMatches) > 0 {
+		current := t.searchMatchIdx + 1
+		if current < 1 {
+			current = 0
+		}
+		searchText = fmt.Sprintf(" [%d/%d] ", current, len(t.searchMatches))
+	} else if t.searchActive {
+		searchText = " [0/0] "
+	}
+
 	// Build left and right segment lists
 	leftSegs := []statusSegment{
 		{text: modeLabel, pal: modePal},
+	}
+	if searchText != "" {
+		leftSegs = append(leftSegs, statusSegment{text: searchText, pal: pal.InfoPrimary})
 	}
 	if selText != "" {
 		leftSegs = append(leftSegs, statusSegment{text: selText, pal: pal.InfoPrimary})
@@ -216,6 +237,34 @@ func (t *TUI) renderStatusBar() {
 
 	b.WriteString("\x1b[0m")
 
+	fmt.Print(b.String())
+}
+
+// renderSearchPrompt renders the search input prompt as the status bar.
+func (t *TUI) renderSearchPrompt(width int) {
+	pal := t.palette.StatusBar.Fill
+	dir := t.parser.SearchDir()
+	buf := t.parser.SearchBuffer()
+
+	// Format: /{pattern}▏ or ?{pattern}▏
+	prompt := string(dir) + buf + "▏"
+
+	// Truncate if too wide.
+	runes := []rune(prompt)
+	if len(runes) > width {
+		runes = runes[len(runes)-width:]
+	}
+
+	var b strings.Builder
+	b.WriteString("\r\n")
+	b.WriteString(cellPaletteSGR(pal))
+	b.WriteString(string(runes))
+	// Fill remaining width.
+	remaining := width - len(runes)
+	if remaining > 0 {
+		b.WriteString(strings.Repeat(" ", remaining))
+	}
+	b.WriteString("\x1b[0m")
 	fmt.Print(b.String())
 }
 

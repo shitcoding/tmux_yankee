@@ -72,12 +72,14 @@ type StatusBarPalette struct {
 
 // Palette is the full set of colors used by the TUI.
 type Palette struct {
-	Cursor    CellPalette
-	Selection CellPalette
-	Gutter    GutterPalette
-	LineNum   LineNumPalette
-	Status    StatusPalette
-	StatusBar StatusBarPalette
+	Cursor        CellPalette
+	Selection     CellPalette
+	SearchMatch   CellPalette // all search matches (yellow bg)
+	SearchCurrent CellPalette // current/active search match (orange/pink bg)
+	Gutter        GutterPalette
+	LineNum       LineNumPalette
+	Status        StatusPalette
+	StatusBar     StatusBarPalette
 }
 
 // ThemeOverrides holds per-field color overrides supplied via CLI flags.

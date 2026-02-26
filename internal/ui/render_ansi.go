@@ -456,9 +456,11 @@ func runeDisplayWidth(r rune) int {
 type cellMode byte
 
 const (
-	cellModeNormal    cellMode = 0
-	cellModeCursor    cellMode = 1
-	cellModeSelection cellMode = 2
+	cellModeNormal        cellMode = 0
+	cellModeCursor        cellMode = 1
+	cellModeSelection     cellMode = 2
+	cellModeSearchMatch   cellMode = 3
+	cellModeSearchCurrent cellMode = 4
 )
 
 // cellStyleKey is a compact representation of a cell's visual style for run tracking.
@@ -546,7 +548,9 @@ func writeSGRNormal(b *strings.Builder, s Style) {
 //
 // Uses style-run optimization: SGR sequences are only emitted when the effective
 // style changes from the previous cell, reducing output size and allocations.
-func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, startCol, maxWidth int, pal theme.Palette) string {
+func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int,
+	searchRanges [][2]int, currentSearch [2]int,
+	startCol, maxWidth int, pal theme.Palette) string {
 	// Clamp startCol to valid range
 	if startCol < 0 {
 		startCol = 0
@@ -558,14 +562,19 @@ func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, start
 	var b strings.Builder
 	displayCols := 0
 
-	// Precompute cursor and selection SGR strings once (constant for whole line).
+	// Precompute overlay SGR strings once (constant for whole line).
 	cursorSGR := buildOverlaySGR(pal.Cursor)
 	selectionSGR := buildOverlaySGR(pal.Selection)
+	searchMatchSGR := buildOverlaySGR(pal.SearchMatch)
+	searchCurrentSGR := buildOverlaySGR(pal.SearchCurrent)
 
 	// Track current style to avoid redundant SGR emission.
 	var prevKey cellStyleKey
 	prevKey.mode = 255 // sentinel: force first cell to emit SGR
 	styled := false    // whether we have emitted any SGR (need reset at end)
+
+	// Interval pointer for search ranges (sorted, walk left-to-right).
+	srIdx := 0
 
 	for vi := 0; startCol+vi < len(cells); vi++ {
 		cell := cells[startCol+vi]
@@ -576,11 +585,25 @@ func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, start
 		absIdx := startCol + vi
 		inSelection := selStart >= 0 && absIdx >= selStart && absIdx <= selEnd
 
+		// Advance search range pointer past ranges that end before absIdx.
+		for srIdx < len(searchRanges) && searchRanges[srIdx][1] < absIdx {
+			srIdx++
+		}
+		inSearchMatch := srIdx < len(searchRanges) &&
+			absIdx >= searchRanges[srIdx][0] && absIdx <= searchRanges[srIdx][1]
+		inCurrentSearch := currentSearch[0] >= 0 &&
+			absIdx >= currentSearch[0] && absIdx <= currentSearch[1]
+
+		// Priority: selection > cursor > searchCurrent > searchMatch > normal
 		var key cellStyleKey
 		if inSelection {
 			key.mode = cellModeSelection
 		} else if absIdx == cursorCol {
 			key.mode = cellModeCursor
+		} else if inCurrentSearch {
+			key.mode = cellModeSearchCurrent
+		} else if inSearchMatch {
+			key.mode = cellModeSearchMatch
 		} else {
 			key.mode = cellModeNormal
 			key.style = cell.Style
@@ -593,6 +616,10 @@ func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int, start
 				b.WriteString(cursorSGR)
 			case cellModeSelection:
 				b.WriteString(selectionSGR)
+			case cellModeSearchCurrent:
+				b.WriteString(searchCurrentSGR)
+			case cellModeSearchMatch:
+				b.WriteString(searchMatchSGR)
 			default:
 				if key.style == (Style{}) {
 					// Default style — just reset.
