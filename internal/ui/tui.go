@@ -84,6 +84,18 @@ type TUI struct {
 	searchSavedLine int            // cursor line before search started
 	searchSavedCol  int            // cursor col before search started
 
+	// Jump back state (`` / '' — saved position before a jump)
+	prevCursorLine int
+	prevCursorCol  int
+	hasPrevCursor  bool // false until first jump saves a position
+
+	// Jump list (Ctrl-O/Ctrl-I)
+	jumpList    [][2]int // circular list of [line, col] positions
+	jumpListIdx int      // current position in jump list (-1 = at tip)
+
+	// Marks (m{a-z} / `{a-z})
+	marks map[byte][2]int // char → [line, col]
+
 	// Demo mode fields
 	isDemo         bool
 	demoPages      [][]string
@@ -789,6 +801,14 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		return false
 
 	case input.CommandMotion:
+		// Save cursor for jump-back on jump motions (G, gg, H, M, L, %)
+		switch cmd.Motion {
+		case motion.MotionFirstLine, motion.MotionLastLine,
+			motion.MotionScreenTop, motion.MotionScreenMiddle, motion.MotionScreenBottom,
+			motion.MotionMatchBracket:
+			t.savePrevCursor()
+		}
+
 		// Execute motion via motion handler
 		cursor := motion.Cursor{Line: t.cursorLine, Col: t.cursorCol}
 		viewport := motion.Viewport{Top: t.viewportTop, Height: t.contentHeight()}
@@ -807,6 +827,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 				// zz: wrap-aware centering (the motion handler assumes 1 line = 1 row)
 				t.centerViewportWrap(t.wrapContentWidth())
 			case motion.MotionHalfPageUp, motion.MotionHalfPageDown,
+				motion.MotionPageUp, motion.MotionPageDown,
 				motion.MotionViewportTop, motion.MotionViewportBottom:
 				t.viewportTop = result.Viewport.Top
 			}
@@ -964,6 +985,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 
 	case input.CommandSearchNext:
 		if t.searchActive && len(t.searchMatches) > 0 {
+			t.savePrevCursor()
 			// Vim behavior: search from cursor position in the original search direction.
 			var idx int
 			if t.searchDirection > 0 {
@@ -976,6 +998,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 
 	case input.CommandSearchPrev:
 		if t.searchActive && len(t.searchMatches) > 0 {
+			t.savePrevCursor()
 			// Vim behavior: search from cursor position in the opposite direction.
 			if t.searchDirection > 0 {
 				idx := t.nearestMatch(t.cursorLine, t.cursorCol, -1)
@@ -989,6 +1012,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 	case input.CommandSearchWordForward:
 		word := t.wordAtCursor()
 		if word != "" {
+			t.savePrevCursor()
 			t.searchPattern = `\b` + regexp.QuoteMeta(word) + `\b`
 			t.searchDirection = 1
 			t.searchActive = true
@@ -1001,6 +1025,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 	case input.CommandSearchWordBackward:
 		word := t.wordAtCursor()
 		if word != "" {
+			t.savePrevCursor()
 			t.searchPattern = `\b` + regexp.QuoteMeta(word) + `\b`
 			t.searchDirection = -1
 			t.searchActive = true
@@ -1008,6 +1033,121 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 			// Jump to previous match before cursor.
 			idx := t.nearestMatch(t.cursorLine, t.cursorCol, -1)
 			t.jumpToMatch(idx)
+		}
+
+	case input.CommandScrollLineUp:
+		// Ctrl-Y: scroll viewport up one line, cursor stays (clamp if off-screen)
+		if t.viewportTop > 0 {
+			t.viewportTop--
+			// If cursor is below viewport, pull it up
+			maxVisible := t.viewportTop + t.contentHeight() - 1
+			if t.cursorLine > maxVisible {
+				t.cursorLine = maxVisible
+				t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+			}
+		}
+
+	case input.CommandScrollLineDown:
+		// Ctrl-E: scroll viewport down one line, cursor stays (clamp if off-screen)
+		lineCount := t.doc.LineCount()
+		maxTop := lineCount - t.contentHeight()
+		if maxTop < 0 {
+			maxTop = 0
+		}
+		if t.viewportTop < maxTop {
+			t.viewportTop++
+			// If cursor is above viewport, pull it down
+			if t.cursorLine < t.viewportTop {
+				t.cursorLine = t.viewportTop
+				t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+			}
+		}
+
+	case input.CommandJumpBack:
+		// `` or '': swap cursor with previous position
+		if t.hasPrevCursor {
+			oldLine, oldCol := t.cursorLine, t.cursorCol
+			t.cursorLine = t.prevCursorLine
+			t.cursorCol = t.prevCursorCol
+			t.prevCursorLine = oldLine
+			t.prevCursorCol = oldCol
+			t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+		}
+
+	case input.CommandJumpListBack:
+		// Ctrl-O: jump backward in jump list
+		if len(t.jumpList) > 0 && t.jumpListIdx > 0 {
+			count := cmd.Count
+			if count == 0 {
+				count = 1
+			}
+			t.jumpListIdx -= count
+			if t.jumpListIdx < 0 {
+				t.jumpListIdx = 0
+			}
+			pos := t.jumpList[t.jumpListIdx]
+			t.cursorLine = pos[0]
+			t.cursorCol = pos[1]
+			// Clamp to document bounds
+			if t.cursorLine >= t.doc.LineCount() {
+				t.cursorLine = t.doc.LineCount() - 1
+			}
+			if t.cursorLine < 0 {
+				t.cursorLine = 0
+			}
+			t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+		}
+
+	case input.CommandJumpListForward:
+		// Ctrl-I: jump forward in jump list
+		if len(t.jumpList) > 0 && t.jumpListIdx < len(t.jumpList)-1 {
+			count := cmd.Count
+			if count == 0 {
+				count = 1
+			}
+			t.jumpListIdx += count
+			if t.jumpListIdx >= len(t.jumpList) {
+				t.jumpListIdx = len(t.jumpList) - 1
+			}
+			pos := t.jumpList[t.jumpListIdx]
+			t.cursorLine = pos[0]
+			t.cursorCol = pos[1]
+			if t.cursorLine >= t.doc.LineCount() {
+				t.cursorLine = t.doc.LineCount() - 1
+			}
+			if t.cursorLine < 0 {
+				t.cursorLine = 0
+			}
+			t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+		}
+
+	case input.CommandSetMark:
+		// m{char}: save cursor position as mark
+		if cmd.MarkChar >= 'a' && cmd.MarkChar <= 'z' {
+			if t.marks == nil {
+				t.marks = make(map[byte][2]int)
+			}
+			t.marks[cmd.MarkChar] = [2]int{t.cursorLine, t.cursorCol}
+		}
+
+	case input.CommandGoToMark:
+		// `{char} or '{char}: jump to mark position
+		if pos, ok := t.marks[cmd.MarkChar]; ok {
+			t.savePrevCursor()
+			t.cursorLine = pos[0]
+			t.cursorCol = pos[1]
+			// Clamp to document bounds
+			if t.cursorLine >= t.doc.LineCount() {
+				t.cursorLine = t.doc.LineCount() - 1
+			}
+			if t.cursorLine < 0 {
+				t.cursorLine = 0
+			}
+			lineLen := t.doc.LineRuneCount(t.cursorLine)
+			if t.cursorCol > lineLen {
+				t.cursorCol = lineLen
+			}
+			t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
 		}
 
 	case input.CommandCharSearch:
@@ -1674,6 +1814,25 @@ func (t *TUI) incrementalSearch(pattern string) {
 		idx := t.nearestMatch(t.searchSavedLine, t.searchSavedCol, t.searchDirection)
 		t.jumpToMatch(idx)
 	}
+}
+
+// savePrevCursor saves the current cursor position for jump-back (``/'')
+// and pushes it onto the jump list.
+func (t *TUI) savePrevCursor() {
+	t.prevCursorLine = t.cursorLine
+	t.prevCursorCol = t.cursorCol
+	t.hasPrevCursor = true
+
+	// Push to jump list: truncate any forward entries (if we navigated back)
+	if t.jumpListIdx >= 0 && t.jumpListIdx < len(t.jumpList)-1 {
+		t.jumpList = t.jumpList[:t.jumpListIdx+1]
+	}
+	t.jumpList = append(t.jumpList, [2]int{t.cursorLine, t.cursorCol})
+	const maxJumpList = 100
+	if len(t.jumpList) > maxJumpList {
+		t.jumpList = t.jumpList[len(t.jumpList)-maxJumpList:]
+	}
+	t.jumpListIdx = len(t.jumpList) - 1
 }
 
 // wordAtCursor extracts the word under the cursor (similar to vim's * word boundary).

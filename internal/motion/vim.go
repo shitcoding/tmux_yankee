@@ -76,6 +76,24 @@ func (h *VimHandler) Apply(doc Document, cursor Cursor, viewport Viewport, motio
 		result.Viewport = h.positionViewportCenter(doc, cursor, viewport)
 	case MotionViewportBottom:
 		result.Viewport = h.positionViewportBottom(doc, cursor, viewport)
+	case MotionScreenTop:
+		result.Cursor = h.moveScreenTop(doc, cursor, viewport, count)
+	case MotionScreenMiddle:
+		result.Cursor = h.moveScreenMiddle(doc, cursor, viewport)
+	case MotionScreenBottom:
+		result.Cursor = h.moveScreenBottom(doc, cursor, viewport, count)
+	case MotionPageUp:
+		result = h.movePageUp(doc, cursor, viewport)
+	case MotionPageDown:
+		result = h.movePageDown(doc, cursor, viewport)
+	case MotionWordEndBackward:
+		result.Cursor = h.moveWordEndBackward(doc, cursor, effectiveCount)
+	case MotionWORDEndBackward:
+		result.Cursor = h.moveWORDEndBackward(doc, cursor, effectiveCount)
+	case MotionLastNonBlank:
+		result.Cursor = h.moveLastNonBlank(doc, cursor)
+	case MotionMatchBracket:
+		result.Cursor = h.moveMatchBracket(doc, cursor)
 	}
 
 	// Ensure cursor is within viewport
@@ -1055,12 +1073,12 @@ func (h *VimHandler) positionViewportCenter(doc Document, cursor Cursor, viewpor
 // positionViewportBottom positions the cursor line at the bottom of the viewport (zb motion).
 func (h *VimHandler) positionViewportBottom(doc Document, cursor Cursor, viewport Viewport) Viewport {
 	newTop := cursor.Line - viewport.Height + 1
-	
+
 	// Ensure viewport doesn't go negative
 	if newTop < 0 {
 		newTop = 0
 	}
-	
+
 	// Ensure viewport doesn't go past document end
 	lineCount := doc.LineCount()
 	maxTop := lineCount - viewport.Height
@@ -1070,6 +1088,407 @@ func (h *VimHandler) positionViewportBottom(doc Document, cursor Cursor, viewpor
 	if newTop > maxTop {
 		newTop = maxTop
 	}
-	
+
 	return Viewport{Top: newTop, Height: viewport.Height}
+}
+
+// moveScreenTop moves cursor to the top of the visible screen (H).
+// count=0 → first visible line, count=N → Nth line from top (1-indexed).
+func (h *VimHandler) moveScreenTop(doc Document, cursor Cursor, viewport Viewport, count int) Cursor {
+	h.hasGoal = false
+
+	targetLine := viewport.Top
+	if count > 0 {
+		targetLine = viewport.Top + count - 1
+	}
+
+	maxLine := viewport.Top + viewport.Height - 1
+	lineCount := doc.LineCount()
+	if maxLine >= lineCount {
+		maxLine = lineCount - 1
+	}
+	if targetLine > maxLine {
+		targetLine = maxLine
+	}
+	if targetLine < 0 {
+		targetLine = 0
+	}
+
+	col := firstNonBlankCol(doc, targetLine)
+	return Cursor{Line: targetLine, Col: col}
+}
+
+// moveScreenMiddle moves cursor to the middle of the visible screen (M).
+func (h *VimHandler) moveScreenMiddle(doc Document, cursor Cursor, viewport Viewport) Cursor {
+	h.hasGoal = false
+
+	midLine := viewport.Top + viewport.Height/2
+	lineCount := doc.LineCount()
+	if midLine >= lineCount {
+		midLine = lineCount - 1
+	}
+	if midLine < 0 {
+		midLine = 0
+	}
+
+	col := firstNonBlankCol(doc, midLine)
+	return Cursor{Line: midLine, Col: col}
+}
+
+// moveScreenBottom moves cursor to the bottom of the visible screen (L).
+// count=0 → last visible line, count=N → Nth line from bottom (1-indexed).
+func (h *VimHandler) moveScreenBottom(doc Document, cursor Cursor, viewport Viewport, count int) Cursor {
+	h.hasGoal = false
+
+	maxLine := viewport.Top + viewport.Height - 1
+	lineCount := doc.LineCount()
+	if maxLine >= lineCount {
+		maxLine = lineCount - 1
+	}
+
+	targetLine := maxLine
+	if count > 0 {
+		targetLine = maxLine - count + 1
+	}
+	if targetLine < viewport.Top {
+		targetLine = viewport.Top
+	}
+	if targetLine < 0 {
+		targetLine = 0
+	}
+
+	col := firstNonBlankCol(doc, targetLine)
+	return Cursor{Line: targetLine, Col: col}
+}
+
+// movePageUp scrolls viewport and cursor up by one full page (Ctrl-B).
+func (h *VimHandler) movePageUp(doc Document, cursor Cursor, viewport Viewport) Result {
+	page := viewport.Height
+	if page < 1 {
+		page = 1
+	}
+
+	newTop := viewport.Top - page
+	if newTop < 0 {
+		newTop = 0
+	}
+
+	newCursorLine := cursor.Line - page
+	if newCursorLine < 0 {
+		newCursorLine = 0
+	}
+
+	if !h.hasGoal {
+		h.goalCol = cursor.Col
+		h.hasGoal = true
+	}
+
+	newCol := h.goalCol
+	lineLen := doc.LineRuneCount(newCursorLine)
+	if newCol > lineLen {
+		newCol = lineLen
+	}
+	if newCol < 0 {
+		newCol = 0
+	}
+
+	return Result{
+		Cursor:   Cursor{Line: newCursorLine, Col: newCol},
+		Viewport: Viewport{Top: newTop, Height: viewport.Height},
+	}
+}
+
+// movePageDown scrolls viewport and cursor down by one full page (Ctrl-F).
+func (h *VimHandler) movePageDown(doc Document, cursor Cursor, viewport Viewport) Result {
+	page := viewport.Height
+	if page < 1 {
+		page = 1
+	}
+
+	lineCount := doc.LineCount()
+
+	newTop := viewport.Top + page
+	maxTop := lineCount - viewport.Height
+	if maxTop < 0 {
+		maxTop = 0
+	}
+	if newTop > maxTop {
+		newTop = maxTop
+	}
+
+	newCursorLine := cursor.Line + page
+	if newCursorLine >= lineCount {
+		newCursorLine = lineCount - 1
+	}
+	if newCursorLine < 0 {
+		newCursorLine = 0
+	}
+
+	if !h.hasGoal {
+		h.goalCol = cursor.Col
+		h.hasGoal = true
+	}
+
+	newCol := h.goalCol
+	lineLen := doc.LineRuneCount(newCursorLine)
+	if newCol > lineLen {
+		newCol = lineLen
+	}
+	if newCol < 0 {
+		newCol = 0
+	}
+
+	return Result{
+		Cursor:   Cursor{Line: newCursorLine, Col: newCol},
+		Viewport: Viewport{Top: newTop, Height: viewport.Height},
+	}
+}
+
+// firstNonBlankCol returns the column of the first non-whitespace rune on a line.
+func firstNonBlankCol(doc Document, line int) int {
+	content := doc.Line(line)
+	for i, r := range content {
+		if r != ' ' && r != '\t' {
+			return i
+		}
+	}
+	return 0
+}
+
+// moveWordEndBackward moves to the end of the previous word (ge).
+// Algorithm: step backward one position, skip whitespace (crossing lines),
+// then skip backward through same-type characters. The landing position is
+// the first char of that run — but since we want the END of the previous word
+// (the last char before the whitespace we just crossed), we stop right after
+// the whitespace skip. The char under the cursor after whitespace skip IS
+// the last char of that word.
+func (h *VimHandler) moveWordEndBackward(doc Document, cursor Cursor, count int) Cursor {
+	line := cursor.Line
+	col := cursor.Col
+
+	prevCol := func() bool {
+		col--
+		for col < 0 {
+			if line <= 0 {
+				col = 0
+				return false
+			}
+			line--
+			col = len([]rune(doc.Line(line))) - 1
+			if col < 0 {
+				col = -1 // empty line, keep going
+			}
+		}
+		return true
+	}
+
+	for i := 0; i < count; i++ {
+		if !prevCol() {
+			break
+		}
+
+		// Skip whitespace backward (cross lines)
+		for {
+			runes := []rune(doc.Line(line))
+			if col >= 0 && col < len(runes) && getCharType(runes[col]) != charTypeWhitespace {
+				break
+			}
+			if !prevCol() {
+				goto done
+			}
+		}
+
+		// Now on a non-whitespace char — this is the end of the target word.
+		// For ge, we stop here. The current position is the last char of the word.
+		// (Unlike 'b' which goes to the beginning.)
+	}
+
+done:
+	if line < 0 {
+		line = 0
+	}
+	if line >= doc.LineCount() {
+		line = doc.LineCount() - 1
+	}
+	lineLen := doc.LineRuneCount(line)
+	if col >= lineLen {
+		col = lineLen - 1
+	}
+	if col < 0 {
+		col = 0
+	}
+
+	h.goalCol = col
+	h.hasGoal = true
+	return Cursor{Line: line, Col: col}
+}
+
+// moveWORDEndBackward moves to the end of the previous WORD (gE).
+// Same as ge but uses WORD boundaries (whitespace-separated).
+func (h *VimHandler) moveWORDEndBackward(doc Document, cursor Cursor, count int) Cursor {
+	line := cursor.Line
+	col := cursor.Col
+
+	prevCol := func() bool {
+		col--
+		for col < 0 {
+			if line <= 0 {
+				col = 0
+				return false
+			}
+			line--
+			col = len([]rune(doc.Line(line))) - 1
+			if col < 0 {
+				col = -1
+			}
+		}
+		return true
+	}
+
+	for i := 0; i < count; i++ {
+		if !prevCol() {
+			break
+		}
+
+		// Skip whitespace backward (cross lines)
+		for {
+			runes := []rune(doc.Line(line))
+			if col >= 0 && col < len(runes) && isWORDChar(runes[col]) {
+				break
+			}
+			if !prevCol() {
+				goto done
+			}
+		}
+		// Now on a non-whitespace char — end of previous WORD.
+	}
+
+done:
+	if line < 0 {
+		line = 0
+	}
+	if line >= doc.LineCount() {
+		line = doc.LineCount() - 1
+	}
+	lineLen := doc.LineRuneCount(line)
+	if col >= lineLen {
+		col = lineLen - 1
+	}
+	if col < 0 {
+		col = 0
+	}
+
+	h.goalCol = col
+	h.hasGoal = true
+	return Cursor{Line: line, Col: col}
+}
+
+// moveLastNonBlank moves to the last non-whitespace character on the line (g_).
+func (h *VimHandler) moveLastNonBlank(doc Document, cursor Cursor) Cursor {
+	h.hasGoal = false
+	runes := []rune(doc.Line(cursor.Line))
+	col := len(runes) - 1
+	for col >= 0 && (runes[col] == ' ' || runes[col] == '\t') {
+		col--
+	}
+	if col < 0 {
+		col = 0
+	}
+	return Cursor{Line: cursor.Line, Col: col}
+}
+
+// moveMatchBracket jumps to the matching bracket (%): (), {}, [].
+func (h *VimHandler) moveMatchBracket(doc Document, cursor Cursor) Cursor {
+	h.hasGoal = false
+	runes := []rune(doc.Line(cursor.Line))
+	if len(runes) == 0 {
+		return cursor
+	}
+
+	// Find bracket at or after cursor on the current line
+	bracketCol := -1
+	for c := cursor.Col; c < len(runes); c++ {
+		if isBracket(runes[c]) {
+			bracketCol = c
+			break
+		}
+	}
+	if bracketCol < 0 {
+		return cursor
+	}
+
+	ch := runes[bracketCol]
+	match, forward := bracketPair(ch)
+	if match == 0 {
+		return cursor
+	}
+
+	// Scan for matching bracket
+	depth := 1
+	line := cursor.Line
+	col := bracketCol
+
+	for depth > 0 {
+		if forward {
+			col++
+		} else {
+			col--
+		}
+
+		// Handle line wrapping
+		for col < 0 || col >= len([]rune(doc.Line(line))) {
+			if forward {
+				line++
+				if line >= doc.LineCount() {
+					return cursor // no match found
+				}
+				col = 0
+			} else {
+				line--
+				if line < 0 {
+					return cursor // no match found
+				}
+				rr := []rune(doc.Line(line))
+				col = len(rr) - 1
+				if col < 0 {
+					continue // empty line
+				}
+			}
+		}
+
+		r := []rune(doc.Line(line))[col]
+		if r == ch {
+			depth++
+		} else if r == match {
+			depth--
+		}
+	}
+
+	return Cursor{Line: line, Col: col}
+}
+
+func isBracket(r rune) bool {
+	switch r {
+	case '(', ')', '{', '}', '[', ']':
+		return true
+	}
+	return false
+}
+
+func bracketPair(r rune) (rune, bool) {
+	switch r {
+	case '(':
+		return ')', true
+	case ')':
+		return '(', false
+	case '{':
+		return '}', true
+	case '}':
+		return '{', false
+	case '[':
+		return ']', true
+	case ']':
+		return '[', false
+	}
+	return 0, false
 }
