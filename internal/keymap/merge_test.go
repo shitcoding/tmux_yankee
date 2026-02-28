@@ -25,7 +25,7 @@ func TestDefaultKeymapHasExpectedEntries(t *testing.T) {
 		{Key('n'), ActionSearchNext},
 		{Key('H'), ActionScreenTop},
 		{Key('M'), ActionScreenMiddle},
-		{Key('`'), ActionJumpBack},
+		{Key('\\'), ActionClearSearch},
 	}
 	for _, tt := range tests {
 		action, ok := km.Lookup(tt.key)
@@ -38,9 +38,11 @@ func TestDefaultKeymapHasExpectedEntries(t *testing.T) {
 		}
 	}
 
-	// L should NOT be in the default keymap (reserved for toggle key)
-	if _, ok := km.Lookup(Key('L')); ok {
-		t.Error("DefaultKeymap should NOT have Direct binding for 'L' (reserved for toggle key)")
+	// L should be in the default keymap as screen_bottom
+	if action, ok := km.Lookup(Key('L')); !ok {
+		t.Error("DefaultKeymap should have Direct binding for 'L' (screen_bottom)")
+	} else if action != ActionScreenBottom {
+		t.Errorf("DefaultKeymap Key('L') = %v, want ActionScreenBottom", action)
 	}
 
 	// Check prefix bindings

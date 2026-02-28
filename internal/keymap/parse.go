@@ -140,6 +140,8 @@ func isValidAction(a Action) bool {
 		ActionTextObjectInnerParen, ActionTextObjectAParen,
 		ActionTextObjectInnerBrace, ActionTextObjectABrace,
 		ActionTextObjectInnerBracket, ActionTextObjectABracket,
+		ActionTextObjectInnerAngle, ActionTextObjectAAngle,
+		ActionClearSearch,
 		ActionToggleLineMode, ActionToggleWrapMode,
 		ActionEscape, ActionQuit,
 		ActionDemoNext, ActionDemoPrev, ActionDemoThemeNext, ActionDemoThemePrev:

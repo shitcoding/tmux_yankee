@@ -96,9 +96,19 @@ func TestTUILineNumberRendering(t *testing.T) {
 	}
 }
 
-// TestTUIModeToggle tests cycling through line number modes with 'L' key
+// TestTUIModeToggle tests cycling through line number modes with toggle key.
+// Uses 'P' as toggle key since 'L' is bound to screen_bottom in the keymap.
 func TestTUIModeToggle(t *testing.T) {
-	tui := newTestTUI("test-pane", []string{"line 1", "line 2", "line 3"}, "hybrid")
+	cfg := config.Settings{
+		PaneID:        "test-pane",
+		Mode:          config.LineNumberModeHybrid,
+		Palette:       theme.Presets[theme.ThemeDefault],
+		CopyTarget:    config.CopyTargetBoth,
+		ExitOnYank:    true,
+		StartPosition: config.StartPositionBottom,
+		ToggleModeKey: 'P',
+	}
+	tui := NewTUI(cfg, []string{"line 1", "line 2", "line 3"})
 	tui.width = 80
 	tui.height = 10
 
@@ -107,20 +117,20 @@ func TestTUIModeToggle(t *testing.T) {
 		t.Errorf("initial mode = %s, want hybrid", tui.GetMode())
 	}
 
-	// Press 'L' -> should change to absolute
-	tui.handleInput([]byte{'L'})
+	// Press 'P' -> should change to absolute
+	tui.handleInput([]byte{'P'})
 	if tui.GetMode() != "absolute" {
 		t.Errorf("after first toggle mode = %s, want absolute", tui.GetMode())
 	}
 
-	// Press 'L' again -> should change to relative
-	tui.handleInput([]byte{'L'})
+	// Press 'P' again -> should change to relative
+	tui.handleInput([]byte{'P'})
 	if tui.GetMode() != "relative" {
 		t.Errorf("after second toggle mode = %s, want relative", tui.GetMode())
 	}
 
-	// Press 'L' again -> should cycle back to hybrid
-	tui.handleInput([]byte{'L'})
+	// Press 'P' again -> should cycle back to hybrid
+	tui.handleInput([]byte{'P'})
 	if tui.GetMode() != "hybrid" {
 		t.Errorf("after third toggle mode = %s, want hybrid (cycle complete)", tui.GetMode())
 	}

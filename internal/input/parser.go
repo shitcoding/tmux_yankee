@@ -239,6 +239,12 @@ func (p *Parser) parseInner(b byte) Command {
 		return Command{Type: CommandNone}
 	}
 
+	// Check if this key starts a text object prefix (i/a in visual mode)
+	if p.km.HasTextObjectPrefix(b) {
+		p.pending.Prefix = b
+		return Command{Type: CommandNone}
+	}
+
 	// All other keys complete the command
 	cmd := p.parseCommand(b)
 	p.clearPending()
@@ -261,6 +267,11 @@ func (p *Parser) parsePrefixedKey(b byte) Command {
 		return ActionToCommand(action, count, b)
 	}
 
+	// Text object lookup (i/a prefix)
+	if action, ok := p.km.LookupTextObject(prefix, b); ok {
+		return ActionToCommand(action, count, 0)
+	}
+
 	// Standard prefix lookup
 	if action, ok := p.km.LookupPrefix(prefix, b); ok {
 		return ActionToCommand(action, count, 0)
@@ -274,11 +285,6 @@ func (p *Parser) parsePrefixedKey(b byte) Command {
 func (p *Parser) parseCommand(b byte) Command {
 	count := p.pending.Count
 
-	// Check configurable toggle key first (backward compat, takes priority)
-	if b == p.toggleKey {
-		return Command{Type: CommandToggleLineMode}
-	}
-
 	// Build KeySpec from byte.
 	// For bytes 1-26 (Ctrl+A through Ctrl+Z), try plain Key(b) first
 	// (handles Enter=13, Tab=9 etc.), then fall back to Ctrl notation.
@@ -288,7 +294,14 @@ func (p *Parser) parseCommand(b byte) Command {
 		key = keymap.Ctrl(byte('a' + b - 1))
 		action, ok = p.km.Lookup(key)
 	}
+
+	// If key is not in keymap, check configurable toggle key as fallback.
+	// This allows keymap bindings (e.g. L→screen_bottom) to take priority
+	// over the default toggle key.
 	if !ok {
+		if b == p.toggleKey {
+			return Command{Type: CommandToggleLineMode}
+		}
 		return Command{Type: CommandNone}
 	}
 
@@ -445,6 +458,12 @@ func (p *Parser) parseNormalByte(b byte) Command {
 
 	// Check if this key starts a char-capture sequence
 	if p.km.IsCharCapture(b) {
+		p.pending.Prefix = b
+		return Command{Type: CommandNone}
+	}
+
+	// Check if this key starts a text object prefix (i/a in visual mode)
+	if p.km.HasTextObjectPrefix(b) {
 		p.pending.Prefix = b
 		return Command{Type: CommandNone}
 	}

@@ -51,6 +51,7 @@ const (
 	CommandTextObject           // iw, aw, etc. — text object (visual mode)
 	CommandSearchSelect         // gn — search and select next match
 	CommandSearchSelectBack     // gN — search and select previous match
+	CommandClearSearch          // \ — clear search highlights
 )
 
 // ScrollDirection indicates mouse wheel direction for CommandMouseScroll.

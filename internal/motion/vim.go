@@ -1256,12 +1256,11 @@ func firstNonBlankCol(doc Document, line int) int {
 }
 
 // moveWordEndBackward moves to the end of the previous word (ge).
-// Algorithm: step backward one position, skip whitespace (crossing lines),
-// then skip backward through same-type characters. The landing position is
-// the first char of that run — but since we want the END of the previous word
-// (the last char before the whitespace we just crossed), we stop right after
-// the whitespace skip. The char under the cursor after whitespace skip IS
-// the last char of that word.
+// Algorithm:
+//  1. Move back one position
+//  2. Skip whitespace backward → if we land on non-ws, that's the word end, done
+//  3. If no whitespace was skipped (still in same word), skip same-type chars
+//     backward to exit the current word, then skip whitespace → done
 func (h *VimHandler) moveWordEndBackward(doc Document, cursor Cursor, count int) Cursor {
 	line := cursor.Line
 	col := cursor.Col
@@ -1282,25 +1281,60 @@ func (h *VimHandler) moveWordEndBackward(doc Document, cursor Cursor, count int)
 		return true
 	}
 
+	charAt := func() charType {
+		runes := []rune(doc.Line(line))
+		if col >= 0 && col < len(runes) {
+			return getCharType(runes[col])
+		}
+		return charTypeWhitespace
+	}
+
 	for i := 0; i < count; i++ {
+		// Save original char type to detect word boundary crossing
+		origType := charAt()
+
 		if !prevCol() {
 			break
 		}
 
-		// Skip whitespace backward (cross lines)
-		for {
-			runes := []rune(doc.Line(line))
-			if col >= 0 && col < len(runes) && getCharType(runes[col]) != charTypeWhitespace {
-				break
+		curType := charAt()
+
+		// Case 1: landed on whitespace → skip whitespace, done at word end
+		if curType == charTypeWhitespace {
+			for curType == charTypeWhitespace {
+				if !prevCol() {
+					goto done
+				}
+				curType = charAt()
 			}
+			continue
+		}
+
+		// Case 2: crossed word boundary (different non-ws type) → done
+		if origType != charTypeWhitespace && curType != origType {
+			continue
+		}
+
+		// Case 3: still in same word → skip rest of word, then whitespace
+		for {
 			if !prevCol() {
 				goto done
 			}
+			ct := charAt()
+			if ct != curType {
+				// Exited the word. If whitespace, skip it too.
+				if ct == charTypeWhitespace {
+					for ct == charTypeWhitespace {
+						if !prevCol() {
+							goto done
+						}
+						ct = charAt()
+					}
+				}
+				// Now at end of previous word
+				break
+			}
 		}
-
-		// Now on a non-whitespace char — this is the end of the target word.
-		// For ge, we stop here. The current position is the last char of the word.
-		// (Unlike 'b' which goes to the beginning.)
 	}
 
 done:
@@ -1324,7 +1358,7 @@ done:
 }
 
 // moveWORDEndBackward moves to the end of the previous WORD (gE).
-// Same as ge but uses WORD boundaries (whitespace-separated).
+// Same as ge but uses WORD boundaries (whitespace-separated only).
 func (h *VimHandler) moveWORDEndBackward(doc Document, cursor Cursor, count int) Cursor {
 	line := cursor.Line
 	col := cursor.Col
@@ -1345,22 +1379,54 @@ func (h *VimHandler) moveWORDEndBackward(doc Document, cursor Cursor, count int)
 		return true
 	}
 
+	isWS := func() bool {
+		runes := []rune(doc.Line(line))
+		if col >= 0 && col < len(runes) {
+			return !isWORDChar(runes[col])
+		}
+		return true
+	}
+
 	for i := 0; i < count; i++ {
+		origWS := isWS()
+
 		if !prevCol() {
 			break
 		}
 
-		// Skip whitespace backward (cross lines)
-		for {
-			runes := []rune(doc.Line(line))
-			if col >= 0 && col < len(runes) && isWORDChar(runes[col]) {
-				break
+		curWS := isWS()
+
+		// Case 1: landed on whitespace → skip it, done at WORD end
+		if curWS {
+			for curWS {
+				if !prevCol() {
+					goto done
+				}
+				curWS = isWS()
 			}
+			continue
+		}
+
+		// Case 2: crossed from ws to non-ws → already at word end
+		if origWS {
+			continue
+		}
+
+		// Case 3: still in same WORD → skip to start of WORD, then whitespace
+		for {
 			if !prevCol() {
 				goto done
 			}
+			if isWS() {
+				// Skip whitespace
+				for isWS() {
+					if !prevCol() {
+						goto done
+					}
+				}
+				break
+			}
 		}
-		// Now on a non-whitespace char — end of previous WORD.
 	}
 
 done:

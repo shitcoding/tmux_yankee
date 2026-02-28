@@ -17,10 +17,12 @@ import (
 
 	"github.com/shitcoding/tmux_yankee/internal/config"
 	"github.com/shitcoding/tmux_yankee/internal/input"
+	"github.com/shitcoding/tmux_yankee/internal/keymap"
 	"github.com/shitcoding/tmux_yankee/internal/linenums"
 	vmode "github.com/shitcoding/tmux_yankee/internal/mode"
 	"github.com/shitcoding/tmux_yankee/internal/motion"
 	"github.com/shitcoding/tmux_yankee/internal/selection"
+	"github.com/shitcoding/tmux_yankee/internal/textobj"
 	"github.com/shitcoding/tmux_yankee/internal/theme"
 	"github.com/shitcoding/tmux_yankee/internal/tmux"
 	"golang.org/x/term"
@@ -91,7 +93,7 @@ type TUI struct {
 
 	// Jump list (Ctrl-O/Ctrl-I)
 	jumpList    [][2]int // circular list of [line, col] positions
-	jumpListIdx int      // current position in jump list (-1 = at tip)
+	jumpListIdx int      // current position in jump list (== len(jumpList) means at tip)
 
 	// Marks (m{a-z} / `{a-z})
 	marks map[byte][2]int // char → [line, col]
@@ -648,6 +650,7 @@ func (t *TUI) handleInput(key []byte) bool {
 	}
 
 	cmd := t.parser.Parse(key[0])
+
 	if cmd.Type == input.CommandNone {
 		// In visual mode, 'y' should yank the selection immediately
 		// rather than waiting for a second key (like 'yy' for yank-line).
@@ -801,11 +804,14 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		return false
 
 	case input.CommandMotion:
-		// Save cursor for jump-back on jump motions (G, gg, H, M, L, %)
+		// Save cursor for jump-back on jump motions
 		switch cmd.Motion {
 		case motion.MotionFirstLine, motion.MotionLastLine,
 			motion.MotionScreenTop, motion.MotionScreenMiddle, motion.MotionScreenBottom,
-			motion.MotionMatchBracket:
+			motion.MotionMatchBracket,
+			motion.MotionHalfPageUp, motion.MotionHalfPageDown,
+			motion.MotionPageUp, motion.MotionPageDown,
+			motion.MotionParagraphForward, motion.MotionParagraphBackward:
 			t.savePrevCursor()
 		}
 
@@ -983,6 +989,12 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		// Keep searchActive for n/N if a previous confirmed pattern exists.
 		t.dirty = true
 
+	case input.CommandClearSearch:
+		t.searchActive = false
+		t.searchMatches = nil
+		t.searchMatchIdx = -1
+		t.dirty = true
+
 	case input.CommandSearchNext:
 		if t.searchActive && len(t.searchMatches) > 0 {
 			t.savePrevCursor()
@@ -1071,31 +1083,40 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 			t.cursorCol = t.prevCursorCol
 			t.prevCursorLine = oldLine
 			t.prevCursorCol = oldCol
+			t.clampViewportAndCursor()
 			t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
 		}
 
 	case input.CommandJumpListBack:
 		// Ctrl-O: jump backward in jump list
-		if len(t.jumpList) > 0 && t.jumpListIdx > 0 {
-			count := cmd.Count
-			if count == 0 {
-				count = 1
+		if len(t.jumpList) > 0 {
+			// If at tip (not navigating), save current position first so
+			// Ctrl-I can return here.
+			if t.jumpListIdx >= len(t.jumpList) {
+				t.jumpList = append(t.jumpList, [2]int{t.cursorLine, t.cursorCol})
+				t.jumpListIdx = len(t.jumpList) - 1
 			}
-			t.jumpListIdx -= count
-			if t.jumpListIdx < 0 {
-				t.jumpListIdx = 0
+			if t.jumpListIdx > 0 {
+				count := cmd.Count
+				if count == 0 {
+					count = 1
+				}
+				t.jumpListIdx -= count
+				if t.jumpListIdx < 0 {
+					t.jumpListIdx = 0
+				}
+				pos := t.jumpList[t.jumpListIdx]
+				t.cursorLine = pos[0]
+				t.cursorCol = pos[1]
+				if t.cursorLine >= t.doc.LineCount() {
+					t.cursorLine = t.doc.LineCount() - 1
+				}
+				if t.cursorLine < 0 {
+					t.cursorLine = 0
+				}
+				t.clampViewportAndCursor()
+				t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
 			}
-			pos := t.jumpList[t.jumpListIdx]
-			t.cursorLine = pos[0]
-			t.cursorCol = pos[1]
-			// Clamp to document bounds
-			if t.cursorLine >= t.doc.LineCount() {
-				t.cursorLine = t.doc.LineCount() - 1
-			}
-			if t.cursorLine < 0 {
-				t.cursorLine = 0
-			}
-			t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
 		}
 
 	case input.CommandJumpListForward:
@@ -1118,6 +1139,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 			if t.cursorLine < 0 {
 				t.cursorLine = 0
 			}
+			t.clampViewportAndCursor()
 			t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
 		}
 
@@ -1131,12 +1153,22 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		}
 
 	case input.CommandGoToMark:
-		// `{char} or '{char}: jump to mark position
-		if pos, ok := t.marks[cmd.MarkChar]; ok {
+		if cmd.MarkChar == '`' || cmd.MarkChar == '\'' {
+			// `` or '': jump back to previous position (same as CommandJumpBack)
+			if t.hasPrevCursor {
+				oldLine, oldCol := t.cursorLine, t.cursorCol
+				t.cursorLine = t.prevCursorLine
+				t.cursorCol = t.prevCursorCol
+				t.prevCursorLine = oldLine
+				t.prevCursorCol = oldCol
+				t.clampViewportAndCursor()
+				t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+			}
+		} else if pos, ok := t.marks[cmd.MarkChar]; ok {
+			// `{a-z} or '{a-z}: jump to named mark
 			t.savePrevCursor()
 			t.cursorLine = pos[0]
 			t.cursorCol = pos[1]
-			// Clamp to document bounds
 			if t.cursorLine >= t.doc.LineCount() {
 				t.cursorLine = t.doc.LineCount() - 1
 			}
@@ -1147,6 +1179,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 			if t.cursorCol > lineLen {
 				t.cursorCol = lineLen
 			}
+			t.clampViewportAndCursor()
 			t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
 		}
 
@@ -1167,6 +1200,84 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 			t.cursorCol = newCursor.Col
 			pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 			t.modeMachine.OnCursorMoved(pos)
+		}
+
+	case input.CommandSearchSelect:
+		// gn: find next search match, select it in visual char mode
+		if t.searchActive && len(t.searchMatches) > 0 {
+			idx := t.nearestMatch(t.cursorLine, t.cursorCol, 1)
+			m := t.searchMatches[idx]
+			// Enter visual mode at match start, move cursor to match end
+			if t.modeMachine.Mode() == vmode.Normal {
+				t.modeMachine.Handle(vmode.EventToggleVisualChar, selection.Pos{Line: m.Line, Col: m.ColStart})
+			} else {
+				// Already visual — reset to match start
+				t.modeMachine.Handle(vmode.EventEscape, selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+				t.modeMachine.Handle(vmode.EventToggleVisualChar, selection.Pos{Line: m.Line, Col: m.ColStart})
+			}
+			t.cursorLine = m.Line
+			t.cursorCol = m.ColEnd
+			t.modeMachine.OnCursorMoved(selection.Pos{Line: m.Line, Col: m.ColEnd})
+			t.clampViewportAndCursor()
+		}
+
+	case input.CommandSearchSelectBack:
+		// gN: find previous search match, select it in visual char mode
+		if t.searchActive && len(t.searchMatches) > 0 {
+			idx := t.nearestMatch(t.cursorLine, t.cursorCol, -1)
+			m := t.searchMatches[idx]
+			if t.modeMachine.Mode() == vmode.Normal {
+				t.modeMachine.Handle(vmode.EventToggleVisualChar, selection.Pos{Line: m.Line, Col: m.ColStart})
+			} else {
+				t.modeMachine.Handle(vmode.EventEscape, selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+				t.modeMachine.Handle(vmode.EventToggleVisualChar, selection.Pos{Line: m.Line, Col: m.ColStart})
+			}
+			t.cursorLine = m.Line
+			t.cursorCol = m.ColEnd
+			t.modeMachine.OnCursorMoved(selection.Pos{Line: m.Line, Col: m.ColEnd})
+			t.clampViewportAndCursor()
+		}
+
+	case input.CommandTextObject:
+		// Text objects only work in visual mode (read-only viewer has no operators)
+		if t.modeMachine.Mode() != vmode.Normal {
+			cursor := motion.Cursor{Line: t.cursorLine, Col: t.cursorCol}
+			action := keymap.Action(cmd.TextObject)
+			r := textobj.Resolve(t, cursor, action)
+			if r.OK {
+				// Check if text object range is within current selection (for expansion)
+				region := t.modeMachine.Region()
+				selStart := region.Start
+				selEnd := region.End
+				if selStart.Line > selEnd.Line || (selStart.Line == selEnd.Line && selStart.Col > selEnd.Col) {
+					selStart, selEnd = selEnd, selStart
+				}
+				contained := (r.StartLine > selStart.Line || (r.StartLine == selStart.Line && r.StartCol >= selStart.Col)) &&
+					(r.EndLine < selEnd.Line || (r.EndLine == selEnd.Line && r.EndCol <= selEnd.Col))
+
+				if contained {
+					// Expansion: resolve from one line beyond selection end
+					expandLine := selEnd.Line + 1
+					if expandLine < t.doc.LineCount() {
+						expanded := textobj.Resolve(t, motion.Cursor{Line: expandLine, Col: 0}, action)
+						if expanded.OK {
+							// Extend selection end to include the expanded range
+							r.StartLine = selStart.Line
+							r.StartCol = selStart.Col
+							r.EndLine = expanded.EndLine
+							r.EndCol = expanded.EndCol
+						}
+					}
+				}
+
+				// Set selection to the (possibly expanded) text object range
+				t.modeMachine.Handle(vmode.EventEscape, selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+				t.modeMachine.Handle(vmode.EventToggleVisualChar, selection.Pos{Line: r.StartLine, Col: r.StartCol})
+				t.cursorLine = r.EndLine
+				t.cursorCol = r.EndCol
+				t.modeMachine.OnCursorMoved(selection.Pos{Line: r.EndLine, Col: r.EndCol})
+				t.clampViewportAndCursor()
+			}
 		}
 	}
 
@@ -1818,21 +1929,25 @@ func (t *TUI) incrementalSearch(pattern string) {
 
 // savePrevCursor saves the current cursor position for jump-back (``/'')
 // and pushes it onto the jump list.
+// After this call, jumpListIdx == len(jumpList), meaning "at tip" (not
+// navigating backward). The first Ctrl-O will save the current position
+// and then jump to the entry before it.
 func (t *TUI) savePrevCursor() {
 	t.prevCursorLine = t.cursorLine
 	t.prevCursorCol = t.cursorCol
 	t.hasPrevCursor = true
 
 	// Push to jump list: truncate any forward entries (if we navigated back)
-	if t.jumpListIdx >= 0 && t.jumpListIdx < len(t.jumpList)-1 {
-		t.jumpList = t.jumpList[:t.jumpListIdx+1]
+	if t.jumpListIdx < len(t.jumpList) {
+		t.jumpList = t.jumpList[:t.jumpListIdx]
 	}
 	t.jumpList = append(t.jumpList, [2]int{t.cursorLine, t.cursorCol})
 	const maxJumpList = 100
 	if len(t.jumpList) > maxJumpList {
 		t.jumpList = t.jumpList[len(t.jumpList)-maxJumpList:]
 	}
-	t.jumpListIdx = len(t.jumpList) - 1
+	// "at tip" — past the last entry
+	t.jumpListIdx = len(t.jumpList)
 }
 
 // wordAtCursor extracts the word under the cursor (similar to vim's * word boundary).

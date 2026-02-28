@@ -3,10 +3,10 @@ package keymap
 // DefaultKeymap returns the full default keymap matching all current bindings
 // plus new Tier 1/2/3 defaults.
 //
-// Note: toggleKey and wrapKey are NOT in the keymap. The parser checks them
-// first for backward compatibility. The default keymap does NOT include 'L'
-// for screen_bottom — it's reserved for the toggle key. Users who want H/M/L
-// must change @yankee_toggle_mode_key.
+// Note: wrapKey is NOT in the keymap. The parser checks it separately.
+// toggleKey is a fallback — keymap bindings take priority. L is bound to
+// screen_bottom in the default keymap. The toggle key ('L' by default)
+// only fires when the key has no keymap binding.
 func DefaultKeymap() Keymap {
 	return Keymap{
 		Direct: map[KeySpec]Action{
@@ -28,6 +28,7 @@ func DefaultKeymap() Keymap {
 			Key('}'):  ActionParagraphForward,
 			Key('H'):  ActionScreenTop,
 			Key('M'):  ActionScreenMiddle,
+			Key('L'):  ActionScreenBottom,
 			Key('%'):  ActionMatchBracket,
 
 			// Scroll/page
@@ -64,16 +65,14 @@ func DefaultKeymap() Keymap {
 			Key(';'): ActionCharSearchRepeat,
 			Key(','): ActionCharSearchReverse,
 
-			// Jump back
-			Key('`'):  ActionJumpBack,
-			Key('\''): ActionJumpBack,
+			// Clear search highlights
+			Key('\\'): ActionClearSearch,
 
 			// Mode/quit
-			Key('q'): ActionQuit,
+			Key('q'):  ActionQuit,
 			Ctrl('c'): ActionQuit,
 
-			// Demo (Tab, Shift-Tab handled separately via CSI)
-			Key(9):   ActionDemoNext, // Tab
+			// Demo (Shift-Tab handled via CSI)
 			Key(']'): ActionDemoThemeNext,
 			Key('['): ActionDemoThemePrev,
 		},
@@ -101,11 +100,13 @@ func DefaultKeymap() Keymap {
 		},
 
 		CharCapture: map[byte]Action{
-			'f': ActionCharSearchF,
-			't': ActionCharSearchT,
-			'F': ActionCharSearchFBack,
-			'T': ActionCharSearchTBack,
-			'm': ActionSetMark,
+			'f':    ActionCharSearchF,
+			't':    ActionCharSearchT,
+			'F':    ActionCharSearchFBack,
+			'T':    ActionCharSearchTBack,
+			'm':    ActionSetMark,
+			'`':    ActionGoToMark,
+			'\'':   ActionGoToMarkLine,
 		},
 
 		TextObjects: map[[2]byte]Action{
@@ -135,6 +136,10 @@ func DefaultKeymap() Keymap {
 			{'a', '['}:  ActionTextObjectABracket,
 			{'i', ']'}:  ActionTextObjectInnerBracket,
 			{'a', ']'}:  ActionTextObjectABracket,
+			{'i', '<'}:  ActionTextObjectInnerAngle,
+			{'a', '<'}:  ActionTextObjectAAngle,
+			{'i', '>'}:  ActionTextObjectInnerAngle,
+			{'a', '>'}:  ActionTextObjectAAngle,
 		},
 	}
 }

@@ -100,6 +100,11 @@ const (
 	ActionTextObjectABrace         Action = "a_brace"         // aB / a{
 	ActionTextObjectInnerBracket   Action = "inner_bracket"   // i[
 	ActionTextObjectABracket       Action = "a_bracket"       // a[
+	ActionTextObjectInnerAngle     Action = "inner_angle"     // i<
+	ActionTextObjectAAngle         Action = "a_angle"         // a<
+
+	// Search control
+	ActionClearSearch Action = "clear_search" // \ — clear search highlights
 
 	// Mode control
 	ActionToggleLineMode Action = "toggle_line_mode"

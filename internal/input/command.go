@@ -138,6 +138,10 @@ func ActionToCommand(action keymap.Action, count int, capturedChar byte) Command
 	case keymap.ActionSearchSelectBack:
 		return Command{Type: CommandSearchSelectBack}
 
+	// Clear search
+	case keymap.ActionClearSearch:
+		return Command{Type: CommandClearSearch}
+
 	// Char search
 	case keymap.ActionCharSearchF:
 		return Command{Type: CommandCharSearch, SearchKind: SearchFindForward, SearchChar: capturedChar, Count: count}
@@ -159,7 +163,8 @@ func ActionToCommand(action keymap.Action, count int, capturedChar byte) Command
 		keymap.ActionTextObjectInnerQuote, keymap.ActionTextObjectAQuote,
 		keymap.ActionTextObjectInnerParen, keymap.ActionTextObjectAParen,
 		keymap.ActionTextObjectInnerBrace, keymap.ActionTextObjectABrace,
-		keymap.ActionTextObjectInnerBracket, keymap.ActionTextObjectABracket:
+		keymap.ActionTextObjectInnerBracket, keymap.ActionTextObjectABracket,
+		keymap.ActionTextObjectInnerAngle, keymap.ActionTextObjectAAngle:
 		return Command{Type: CommandTextObject, TextObject: string(action)}
 
 	// Mode control

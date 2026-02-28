@@ -272,7 +272,7 @@ func TestParser_OtherCommands(t *testing.T) {
 		{"v visual char", 'v', CommandVisual},
 		{"V visual line", 'V', CommandVisualLine},
 		{"Enter yank", 13, CommandYank},
-		{"L toggle mode", 'L', CommandToggleLineMode},
+		{"L screen bottom", 'L', CommandMotion},
 		{"q quit", 'q', CommandQuit},
 		{"Ctrl-C quit", 3, CommandQuit},
 	}
@@ -316,11 +316,11 @@ func TestParser_OtherCommands(t *testing.T) {
 }
 
 func TestParser_CustomToggleKey(t *testing.T) {
-	// Parser with 'M' as toggle key: 'M' produces ToggleMode, 'L' does NOT
-	p := NewParserWithToggleKey('M')
+	// Parser with 'P' as toggle key: 'P' produces ToggleMode (P is not in keymap)
+	p := NewParserWithToggleKey('P')
 
-	t.Run("M produces ToggleMode", func(t *testing.T) {
-		cmd := p.Parse('M')
+	t.Run("P produces ToggleMode", func(t *testing.T) {
+		cmd := p.Parse('P')
 		if cmd.Type != CommandToggleLineMode {
 			t.Errorf("Type = %v, want CommandToggleLineMode", cmd.Type)
 		}
@@ -544,11 +544,11 @@ func TestParser_Flush_NoOp(t *testing.T) {
 	}
 }
 
-func TestParser_Tab_DemoNext(t *testing.T) {
+func TestParser_Tab_JumpListForward(t *testing.T) {
 	p := NewParser()
-	cmd := p.Parse(9) // Tab = 0x09
-	if cmd.Type != CommandDemoNext {
-		t.Errorf("Tab: got type %d, want CommandDemoNext", cmd.Type)
+	cmd := p.Parse(9) // Tab/Ctrl-I = 0x09
+	if cmd.Type != CommandJumpListForward {
+		t.Errorf("Tab/Ctrl-I: got type %d, want CommandJumpListForward", cmd.Type)
 	}
 }
 
@@ -798,6 +798,54 @@ func TestParser_CSI_ClearsPendingCount(t *testing.T) {
 	}
 	if cmd.Count != 0 {
 		t.Errorf("j count after CSI: got %d, want 0 (pending should be cleared)", cmd.Count)
+	}
+}
+
+func TestParser_TextObject_InnerParen(t *testing.T) {
+	p := NewParser()
+	// v → visual mode command
+	cmd := p.Parse('v')
+	if cmd.Type != CommandVisual {
+		t.Fatalf("v: got type=%d, want CommandVisual(%d)", cmd.Type, CommandVisual)
+	}
+	// i → should set pending prefix (text object prefix)
+	cmd = p.Parse('i')
+	if cmd.Type != CommandNone {
+		t.Fatalf("i: got type=%d, want CommandNone (pending text object prefix)", cmd.Type)
+	}
+	// ( → should produce text object
+	cmd = p.Parse('(')
+	if cmd.Type != CommandTextObject {
+		t.Fatalf("(: got type=%d, want CommandTextObject(%d)", cmd.Type, CommandTextObject)
+	}
+	if cmd.TextObject != "inner_paren" {
+		t.Errorf("(: got TextObject=%q, want %q", cmd.TextObject, "inner_paren")
+	}
+}
+
+func TestParser_TextObject_InnerBracket(t *testing.T) {
+	p := NewParser()
+	p.Parse('v') // visual mode
+	p.Parse('i') // text object prefix
+	cmd := p.Parse('[')
+	if cmd.Type != CommandTextObject {
+		t.Fatalf("[: got type=%d, want CommandTextObject(%d)", cmd.Type, CommandTextObject)
+	}
+	if cmd.TextObject != "inner_bracket" {
+		t.Errorf("[: got TextObject=%q, want %q", cmd.TextObject, "inner_bracket")
+	}
+}
+
+func TestParser_TextObject_InnerAngle(t *testing.T) {
+	p := NewParser()
+	p.Parse('v') // visual mode
+	p.Parse('i') // text object prefix
+	cmd := p.Parse('<')
+	if cmd.Type != CommandTextObject {
+		t.Fatalf("<: got type=%d, want CommandTextObject(%d)", cmd.Type, CommandTextObject)
+	}
+	if cmd.TextObject != "inner_angle" {
+		t.Errorf("<: got TextObject=%q, want %q", cmd.TextObject, "inner_angle")
 	}
 }
 
