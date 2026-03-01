@@ -66,7 +66,10 @@ func ActionToCommand(action keymap.Action, count int, capturedChar byte) Command
 	case keymap.ActionScreenBottom:
 		return Command{Type: CommandMotion, Motion: motion.MotionScreenBottom, Count: count}
 	case keymap.ActionMatchBracket:
-		return Command{Type: CommandMotion, Motion: motion.MotionMatchBracket, Count: count}
+		if count > 0 {
+			return Command{Type: CommandMotion, Motion: motion.MotionPercentage, Count: count}
+		}
+		return Command{Type: CommandMotion, Motion: motion.MotionMatchBracket}
 
 	// Viewport positioning
 	case keymap.ActionViewportTop:
@@ -141,6 +144,10 @@ func ActionToCommand(action keymap.Action, count int, capturedChar byte) Command
 	// Clear search
 	case keymap.ActionClearSearch:
 		return Command{Type: CommandClearSearch}
+
+	// Colon command-line
+	case keymap.ActionColonMode:
+		return Command{Type: CommandColonEnter}
 
 	// Char search
 	case keymap.ActionCharSearchF:

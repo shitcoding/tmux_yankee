@@ -106,6 +106,9 @@ const (
 	// Search control
 	ActionClearSearch Action = "clear_search" // \ — clear search highlights
 
+	// Colon command-line
+	ActionColonMode Action = "colon_mode" // : — enter colon command mode
+
 	// Mode control
 	ActionToggleLineMode Action = "toggle_line_mode"
 	ActionToggleWrapMode Action = "toggle_wrap_mode" // gw

@@ -94,6 +94,8 @@ func (h *VimHandler) Apply(doc Document, cursor Cursor, viewport Viewport, motio
 		result.Cursor = h.moveLastNonBlank(doc, cursor)
 	case MotionMatchBracket:
 		result.Cursor = h.moveMatchBracket(doc, cursor)
+	case MotionPercentage:
+		result.Cursor = h.movePercentage(doc, cursor, count)
 	}
 
 	// Ensure cursor is within viewport
@@ -1531,6 +1533,26 @@ func (h *VimHandler) moveMatchBracket(doc Document, cursor Cursor) Cursor {
 	}
 
 	return Cursor{Line: line, Col: col}
+}
+
+// movePercentage jumps to N% of the document ([count]% motion).
+// count is the percentage (1-100). Values >100 are clamped to 100.
+func (h *VimHandler) movePercentage(doc Document, cursor Cursor, count int) Cursor {
+	h.hasGoal = false
+	totalLines := doc.LineCount()
+	if totalLines == 0 {
+		return cursor
+	}
+	pct := count
+	if pct > 100 {
+		pct = 100
+	}
+	if pct < 1 {
+		pct = 1
+	}
+	targetLine := (totalLines - 1) * pct / 100
+	col := firstNonBlankCol(doc, targetLine)
+	return Cursor{Line: targetLine, Col: col}
 }
 
 func isBracket(r rune) bool {

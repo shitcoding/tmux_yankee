@@ -37,6 +37,7 @@ const (
 	MotionWORDEndBackward   // gE - end of previous WORD
 	MotionLastNonBlank      // g_ - last non-blank char on line
 	MotionMatchBracket      // % - jump to matching bracket
+	MotionPercentage        // [count]% - jump to percentage of document
 )
 
 // Cursor represents the cursor position in the document.

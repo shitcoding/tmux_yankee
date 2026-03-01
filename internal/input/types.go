@@ -52,6 +52,10 @@ const (
 	CommandSearchSelect         // gn — search and select next match
 	CommandSearchSelectBack     // gN — search and select previous match
 	CommandClearSearch          // \ — clear search highlights
+	CommandColonEnter           // ':' pressed — enter colon mode
+	CommandColonUpdate          // digit typed — update colon buffer
+	CommandColonExecute         // Enter pressed — execute colon command
+	CommandColonCancel          // Escape/invalid — cancel colon mode
 )
 
 // ScrollDirection indicates mouse wheel direction for CommandMouseScroll.

@@ -65,6 +65,9 @@ func DefaultKeymap() Keymap {
 			Key(';'): ActionCharSearchRepeat,
 			Key(','): ActionCharSearchReverse,
 
+			// Colon command-line
+			Key(':'): ActionColonMode,
+
 			// Clear search highlights
 			Key('\\'): ActionClearSearch,
 

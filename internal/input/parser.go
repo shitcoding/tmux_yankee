@@ -23,6 +23,8 @@ type Parser struct {
 	searchBuf    []rune  // accumulates search pattern text (rune-aware for UTF-8)
 	inSearch     bool    // true while collecting search input
 	searchDir    byte    // '/' or '?'
+	colonBuf     []rune  // accumulates colon command digits
+	inColon      bool    // true while collecting colon input
 }
 
 // NewParser creates a new input parser with the default toggle key ('L') and default keymap.
@@ -122,6 +124,11 @@ func (p *Parser) parseInner(b byte) Command {
 		return p.parseSearchByte(b)
 	}
 
+	// Colon input mode: intercept resolved bytes before normal key processing.
+	if p.inColon && !p.inMouse && !p.inCSI && len(p.mouseBuf) == 0 && b != 0x1b {
+		return p.parseColonByte(b)
+	}
+
 	// Detect 3-byte prefix: ESC [ <
 	// We speculatively buffer ESC and ESC+[ to detect SGR mouse sequences.
 	// ESC is held (deferred) until we know whether '[' follows.
@@ -156,6 +163,11 @@ func (p *Parser) parseInner(b byte) Command {
 					p.searchBuf = p.searchBuf[:0]
 					return Command{Type: CommandSearchCancel}
 				}
+				if p.inColon {
+					p.inColon = false
+					p.colonBuf = p.colonBuf[:0]
+					return Command{Type: CommandColonCancel}
+				}
 				return ActionToCommand(action, 0, 0)
 			}
 			// Unbound Alt+key — discard silently.
@@ -170,6 +182,13 @@ func (p *Parser) parseInner(b byte) Command {
 			p.deferredCmd = p.parseNormalByte(b)
 			p.hasDeferred = true
 			return Command{Type: CommandSearchCancel}
+		}
+		if p.inColon {
+			p.inColon = false
+			p.colonBuf = p.colonBuf[:0]
+			p.deferredCmd = p.parseNormalByte(b)
+			p.hasDeferred = true
+			return Command{Type: CommandColonCancel}
 		}
 		p.deferredCmd = p.parseNormalByte(b)
 		p.hasDeferred = true
@@ -305,7 +324,7 @@ func (p *Parser) parseCommand(b byte) Command {
 		return Command{Type: CommandNone}
 	}
 
-	// Special handling for search commands that need to set parser state
+	// Special handling for search/colon commands that need to set parser state
 	switch action {
 	case keymap.ActionSearchForward:
 		p.inSearch = true
@@ -317,6 +336,10 @@ func (p *Parser) parseCommand(b byte) Command {
 		p.searchDir = '?'
 		p.searchBuf = p.searchBuf[:0]
 		return Command{Type: CommandSearchBackward}
+	case keymap.ActionColonMode:
+		p.inColon = true
+		p.colonBuf = p.colonBuf[:0]
+		return Command{Type: CommandColonEnter}
 	}
 
 	return ActionToCommand(action, count, 0)
@@ -373,6 +396,11 @@ func (p *Parser) Flush() Command {
 			p.searchBuf = p.searchBuf[:0]
 			return Command{Type: CommandSearchCancel}
 		}
+		if p.inColon {
+			p.inColon = false
+			p.colonBuf = p.colonBuf[:0]
+			return Command{Type: CommandColonCancel}
+		}
 		return Command{Type: CommandEscape}
 	}
 	return Command{Type: CommandNone}
@@ -420,6 +448,47 @@ func (p *Parser) SearchDir() byte {
 func (p *Parser) CancelSearch() {
 	p.inSearch = false
 	p.searchBuf = p.searchBuf[:0]
+}
+
+// parseColonByte handles a single byte while in colon input mode.
+func (p *Parser) parseColonByte(b byte) Command {
+	switch {
+	case b == 13: // Enter → execute colon command
+		buf := string(p.colonBuf)
+		p.inColon = false
+		lineNum, err := strconv.Atoi(buf)
+		if err != nil || lineNum < 1 {
+			return Command{Type: CommandColonCancel}
+		}
+		return Command{Type: CommandColonExecute, Count: lineNum}
+	case b == 127 || b == 8: // Backspace
+		if len(p.colonBuf) > 0 {
+			p.colonBuf = p.colonBuf[:len(p.colonBuf)-1]
+		} else {
+			// Empty buffer + backspace → cancel
+			p.inColon = false
+			return Command{Type: CommandColonCancel}
+		}
+		return Command{Type: CommandColonUpdate}
+	case b >= '0' && b <= '9':
+		p.colonBuf = append(p.colonBuf, rune(b))
+		return Command{Type: CommandColonUpdate}
+	default:
+		// Non-digit → cancel colon mode
+		p.inColon = false
+		p.colonBuf = p.colonBuf[:0]
+		return Command{Type: CommandColonCancel}
+	}
+}
+
+// ColonBuffer returns the current colon input buffer as a string.
+func (p *Parser) ColonBuffer() string {
+	return string(p.colonBuf)
+}
+
+// InColonMode returns true if the parser is currently collecting colon input.
+func (p *Parser) InColonMode() bool {
+	return p.inColon
 }
 
 // parseNormalByte processes a single byte through the normal (non-mouse) parse path.

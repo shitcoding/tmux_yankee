@@ -799,6 +799,18 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		}
 	}
 
+	// While in colon input mode, only allow colon-related commands.
+	if t.parser.InColonMode() {
+		switch cmd.Type {
+		case input.CommandColonEnter, input.CommandColonUpdate,
+			input.CommandColonExecute, input.CommandColonCancel:
+			// Allow these through.
+		default:
+			// Ignore non-colon commands during colon input.
+			return false
+		}
+	}
+
 	switch cmd.Type {
 	case input.CommandNone:
 		return false
@@ -808,7 +820,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		switch cmd.Motion {
 		case motion.MotionFirstLine, motion.MotionLastLine,
 			motion.MotionScreenTop, motion.MotionScreenMiddle, motion.MotionScreenBottom,
-			motion.MotionMatchBracket,
+			motion.MotionMatchBracket, motion.MotionPercentage,
 			motion.MotionHalfPageUp, motion.MotionHalfPageDown,
 			motion.MotionPageUp, motion.MotionPageDown,
 			motion.MotionParagraphForward, motion.MotionParagraphBackward:
@@ -993,6 +1005,27 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		t.searchActive = false
 		t.searchMatches = nil
 		t.searchMatchIdx = -1
+		t.dirty = true
+
+	case input.CommandColonEnter:
+		t.dirty = true
+
+	case input.CommandColonUpdate:
+		t.dirty = true
+
+	case input.CommandColonExecute:
+		lineNum := cmd.Count
+		t.savePrevCursor()
+		result := t.motionHandler.Apply(t.doc, motion.Cursor{Line: t.cursorLine, Col: t.cursorCol},
+			motion.Viewport{Top: t.viewportTop, Height: t.height - 1},
+			motion.MotionFirstLine, lineNum)
+		t.cursorLine = result.Cursor.Line
+		t.cursorCol = result.Cursor.Col
+		t.viewportTop = result.Viewport.Top
+		t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+		t.dirty = true
+
+	case input.CommandColonCancel:
 		t.dirty = true
 
 	case input.CommandSearchNext:

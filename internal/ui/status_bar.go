@@ -34,6 +34,12 @@ func (t *TUI) renderStatusBar() {
 		return
 	}
 
+	// Colon input prompt: replace entire status bar.
+	if t.parser.InColonMode() {
+		t.renderColonPrompt(width)
+		return
+	}
+
 	pal := t.palette.StatusBar
 	mode := t.modeMachine.Mode()
 	region := t.modeMachine.Region()
@@ -260,6 +266,31 @@ func (t *TUI) renderSearchPrompt(width int) {
 	b.WriteString(cellPaletteSGR(pal))
 	b.WriteString(string(runes))
 	// Fill remaining width.
+	remaining := width - len(runes)
+	if remaining > 0 {
+		b.WriteString(strings.Repeat(" ", remaining))
+	}
+	b.WriteString("\x1b[0m")
+	fmt.Print(b.String())
+}
+
+// renderColonPrompt renders the colon input prompt as the status bar.
+func (t *TUI) renderColonPrompt(width int) {
+	pal := t.palette.StatusBar.Fill
+	buf := t.parser.ColonBuffer()
+
+	// Format: :{digits}▏
+	prompt := ":" + buf + "▏"
+
+	runes := []rune(prompt)
+	if len(runes) > width {
+		runes = runes[len(runes)-width:]
+	}
+
+	var b strings.Builder
+	b.WriteString("\r\n")
+	b.WriteString(cellPaletteSGR(pal))
+	b.WriteString(string(runes))
 	remaining := width - len(runes)
 	if remaining > 0 {
 		b.WriteString(strings.Repeat(" ", remaining))
