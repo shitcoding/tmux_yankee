@@ -149,6 +149,10 @@ func ActionToCommand(action keymap.Action, count int, capturedChar byte) Command
 	case keymap.ActionColonMode:
 		return Command{Type: CommandColonEnter}
 
+	// Flash
+	case keymap.ActionFlash:
+		return Command{Type: CommandFlashEnter}
+
 	// Char search
 	case keymap.ActionCharSearchF:
 		return Command{Type: CommandCharSearch, SearchKind: SearchFindForward, SearchChar: capturedChar, Count: count}

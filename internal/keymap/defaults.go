@@ -71,6 +71,9 @@ func DefaultKeymap() Keymap {
 			// Clear search highlights
 			Key('\\'): ActionClearSearch,
 
+			// Flash
+			Key('s'): ActionFlash,
+
 			// Mode/quit
 			Key('q'):  ActionQuit,
 			Ctrl('c'): ActionQuit,

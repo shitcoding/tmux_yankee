@@ -115,6 +115,9 @@ const (
 	ActionEscape         Action = "escape"
 	ActionQuit           Action = "quit"
 
+	// Flash navigation
+	ActionFlash Action = "flash" // s — enter flash search mode
+
 	// Demo
 	ActionDemoNext      Action = "demo_next"
 	ActionDemoPrev      Action = "demo_prev"

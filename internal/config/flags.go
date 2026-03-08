@@ -49,4 +49,16 @@ func RegisterFlags(fs *flag.FlagSet, opts *CLIOptions) {
 	fs.StringVar(&opts.WrapMode, "wrap-mode", DefaultWrapMode, "Long line wrapping (on, off)")
 	fs.StringVar(&opts.StatusBar, "status-bar", DefaultStatusBar, "Powerline status bar (on, off)")
 	fs.StringVar(&opts.Bindings, "bindings", "", "Key binding overrides (comma-separated key=action, !key to unbind)")
+
+	// Flash navigation
+	fs.StringVar(&opts.Flash, "flash", "on", "Flash navigation mode (on, off)")
+	fs.StringVar(&opts.FlashMinChars, "flash-min-chars", "1", "Minimum chars before flash labels appear")
+	fs.StringVar(&opts.FlashFT, "flash-ft", "off", "Flash labels for f/t motions (on, off)")
+	fs.StringVar(&opts.FlashLabelFG, "flash-label-fg", "", "Flash label foreground color (#RRGGBB)")
+	fs.StringVar(&opts.FlashLabelBG, "flash-label-bg", "", "Flash label background color (#RRGGBB)")
+	fs.StringVar(&opts.FlashMatchFG, "flash-match-fg", "", "Flash match foreground color (#RRGGBB)")
+	fs.StringVar(&opts.FlashMatchBG, "flash-match-bg", "", "Flash match background color (#RRGGBB)")
+	fs.StringVar(&opts.FlashBackdrop, "flash-backdrop", "", "Flash backdrop foreground color (#RRGGBB)")
+	fs.StringVar(&opts.FlashJumpPos, "flash-jump-pos", "match_end", "Flash label jump position (match_start, match_end, word_start, word_end)")
+	fs.StringVar(&opts.FlashAltJumpPos, "flash-alt-jump-pos", "match_start", "Flash Shift+label jump position (match_start, match_end, word_start, word_end, off)")
 }

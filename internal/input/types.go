@@ -56,6 +56,7 @@ const (
 	CommandColonUpdate          // digit typed — update colon buffer
 	CommandColonExecute         // Enter pressed — execute colon command
 	CommandColonCancel          // Escape/invalid — cancel colon mode
+	CommandFlashEnter          // Enter flash search mode
 )
 
 // ScrollDirection indicates mouse wheel direction for CommandMouseScroll.

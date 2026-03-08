@@ -322,6 +322,16 @@ build_yankee_args() {
         "@yankee_start_position"      "--start-position"
         "@yankee_wrap_mode"           "--wrap-mode"
         "@yankee_status_bar"          "--status-bar"
+        "@yankee_flash"               "--flash"
+        "@yankee_flash_min_chars"     "--flash-min-chars"
+        "@yankee_flash_ft"            "--flash-ft"
+        "@yankee_flash_label_fg"      "--flash-label-fg"
+        "@yankee_flash_label_bg"      "--flash-label-bg"
+        "@yankee_flash_match_fg"      "--flash-match-fg"
+        "@yankee_flash_match_bg"      "--flash-match-bg"
+        "@yankee_flash_backdrop"      "--flash-backdrop"
+        "@yankee_flash_jump_pos"      "--flash-jump-pos"
+        "@yankee_flash_alt_jump_pos"  "--flash-alt-jump-pos"
     )
 
     local i

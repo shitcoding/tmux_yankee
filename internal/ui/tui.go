@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/shitcoding/tmux_yankee/internal/config"
+	"github.com/shitcoding/tmux_yankee/internal/flash"
 	"github.com/shitcoding/tmux_yankee/internal/input"
 	"github.com/shitcoding/tmux_yankee/internal/keymap"
 	"github.com/shitcoding/tmux_yankee/internal/linenums"
@@ -96,7 +97,10 @@ type TUI struct {
 	jumpListIdx int      // current position in jump list (== len(jumpList) means at tip)
 
 	// Marks (m{a-z} / `{a-z})
-	marks map[byte][2]int // char → [line, col]
+	marks map[byte][2]int
+
+	// Flash navigation state (nil when disabled by config)
+	flash *flash.State
 
 	// Demo mode fields
 	isDemo         bool
@@ -178,6 +182,15 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 		parser = input.NewParserWithKeymap(toggleKey, wrapKey, cfg.Keymap)
 	}
 
+	var flashState *flash.State
+	if cfg.FlashEnabled {
+		flashState = flash.New(flash.Options{
+			MinChars:   cfg.FlashMinChars,
+			JumpPos:    flash.JumpPos(cfg.FlashJumpPos),
+			AltJumpPos: flash.JumpPos(cfg.FlashAltJumpPos),
+		})
+	}
+
 	return &TUI{
 		cfg:           cfg,
 		paneID:        cfg.PaneID,
@@ -192,6 +205,7 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 		cursorLine:    initialCursorLine,
 		cursorCol:     0,
 		viewportTop:   0,
+		flash:         flashState,
 	}
 }
 
@@ -553,6 +567,41 @@ func (t *TUI) wrapContentWidth() int {
 	return cw
 }
 
+// visibleDocLineRange returns the (top, height) of document lines that have
+// at least one display row visible in the current viewport. Used for flash
+// matching in wrap mode where document lines may span multiple display rows.
+func (t *TUI) visibleDocLineRange() (top, height int) {
+	contentWidth := t.wrapContentWidth()
+	if contentWidth <= 0 {
+		return t.viewportTop, t.contentHeight()
+	}
+
+	contentH := t.contentHeight()
+	displayRow := 0
+	firstLine := -1
+	lastLine := -1
+
+	for i := t.viewportTop; i < t.doc.LineCount() && displayRow < contentH; i++ {
+		cells := t.doc.Cells(i)
+		chunks := t.cachedWrapChunks(i, cells, contentWidth)
+		nRows := len(chunks)
+		if nRows == 0 {
+			nRows = 1
+		}
+
+		if firstLine == -1 {
+			firstLine = i
+		}
+		lastLine = i
+		displayRow += nRows
+	}
+
+	if firstLine == -1 {
+		return t.viewportTop, t.contentHeight()
+	}
+	return firstLine, lastLine - firstLine + 1
+}
+
 // centerViewportWrap sets viewportTop so the cursor line starts approximately
 // at the vertical middle of the screen, accounting for wrapped display rows.
 // Used once on startup to give a centered initial view.
@@ -649,6 +698,11 @@ func (t *TUI) handleInput(key []byte) bool {
 		return false
 	}
 
+	// Flash mode intercepts all input when active
+	if t.flash != nil && t.flash.Active {
+		return t.handleFlashInput(key[0])
+	}
+
 	cmd := t.parser.Parse(key[0])
 
 	if cmd.Type == input.CommandNone {
@@ -662,6 +716,104 @@ func (t *TUI) handleInput(key []byte) bool {
 		return false
 	}
 	return t.handleCommand(cmd)
+}
+
+// handleFlashInput processes a single byte during flash mode.
+func (t *TUI) handleFlashInput(b byte) bool {
+	// flashViewportBounds returns the viewport top and height for flash matching,
+	// accounting for wrap mode where long lines consume multiple display rows.
+	flashViewportBounds := func() (vpTop, vpHeight int) {
+		vpTop = t.viewportTop
+		vpHeight = t.contentHeight()
+		if t.cfg.WrapMode == config.WrapModeOn {
+			vpTop, vpHeight = t.visibleDocLineRange()
+		}
+		return
+	}
+
+	// Escape: cancel and restore position
+	if b == 27 {
+		t.flash.HandleKey(b, nil)
+		t.cursorLine = t.flash.SavedCursor[0]
+		t.cursorCol = t.flash.SavedCursor[1]
+		t.viewportTop = t.flash.SavedViewport
+		t.dirty = true
+		return false
+	}
+
+	// Backspace: shorten pattern or cancel if empty
+	if b == 127 || b == 8 {
+		action := t.flash.HandleKey(b, nil)
+		if action.Type == flash.ActionCancel {
+			t.cursorLine = t.flash.SavedCursor[0]
+			t.cursorCol = t.flash.SavedCursor[1]
+			t.viewportTop = t.flash.SavedViewport
+			t.dirty = true
+			return false
+		}
+		// Shorten pattern and re-run matching
+		if len(t.flash.Pattern) > 0 {
+			t.flash.Pattern = t.flash.Pattern[:len(t.flash.Pattern)-1]
+		}
+		lines := t.getPlainLines()
+		vpTop, vpHeight := flashViewportBounds()
+		t.flash.UpdatePattern(t.flash.Pattern, lines, vpTop, vpHeight)
+		t.dirty = true
+		return false
+	}
+
+	// Non-printable: ignore
+	if b < 32 || b >= 127 {
+		return false
+	}
+
+	// Printable character: try extending pattern first, then check labels.
+	// Labels are assigned from chars that DON'T extend the pattern, so if the
+	// char extends the pattern (produces matches), it's unambiguously a pattern char.
+	// If extending produces zero matches, check if it's a label and jump.
+	extendedPattern := t.flash.Pattern + string(rune(b))
+	lines := t.getPlainLines()
+	vpTop, vpHeight := flashViewportBounds()
+	extendedMatches := flash.FindMatches(lines, extendedPattern, vpTop, vpHeight)
+
+	if len(extendedMatches) > 0 {
+		// Extending produces matches — treat as pattern extension
+		t.flash.Pattern = extendedPattern
+		act := t.flash.UpdatePattern(t.flash.Pattern, lines, vpTop, vpHeight)
+		if act.Type == flash.ActionAutoJump {
+			t.savePrevCursor()
+			t.cursorLine = act.Line
+			t.cursorCol = act.Col
+			t.clampViewportAndCursor()
+		}
+		t.dirty = true
+		return false
+	}
+
+	// Extending produces zero matches — check if it's a label
+	action := t.flash.HandleKey(b, lines)
+	if action.Type == flash.ActionJump {
+		t.savePrevCursor()
+		t.cursorLine = action.Line
+		t.cursorCol = action.Col
+		t.clampViewportAndCursor()
+		t.dirty = true
+		return false
+	}
+
+	// Not a label either — ignore the keystroke (pattern stays unchanged)
+	t.dirty = true
+	return false
+}
+
+// getPlainLines returns the plain text content of all document lines.
+func (t *TUI) getPlainLines() []string {
+	n := t.doc.LineCount()
+	lines := make([]string, n)
+	for i := 0; i < n; i++ {
+		lines[i] = t.doc.Line(i)
+	}
+	return lines
 }
 
 // moveDisplayLine moves the cursor by `delta` display rows within wrapped content.
@@ -1217,6 +1369,29 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		}
 
 	case input.CommandCharSearch:
+		// Flash f/t: when enabled, no count, and not a repeat, check for multiple matches
+		if t.flash != nil && t.cfg.FlashFTEnabled && !t.flash.Active && cmd.Count == 0 &&
+			cmd.SearchKind != input.SearchRepeat && cmd.SearchKind != input.SearchRepeatReverse {
+			charStr := string(rune(cmd.SearchChar))
+			lines := t.getPlainLines()
+			// Scope FindMatches to the current line only
+			matches := flash.FindMatches(lines, charStr, t.cursorLine, 1)
+			if len(matches) > 1 {
+				// Multiple matches on this line — enter flash mode
+				t.flash.Enter(t.cursorLine, t.cursorCol, t.viewportTop)
+				act := t.flash.UpdatePattern(charStr, lines, t.cursorLine, 1)
+				if act.Type == flash.ActionAutoJump {
+					// Shouldn't happen since len > 1, but handle gracefully
+					t.savePrevCursor()
+					t.cursorLine = act.Line
+					t.cursorCol = act.Col
+					t.clampViewportAndCursor()
+				}
+				t.dirty = true
+				break
+			}
+			// 0 or 1 match — fall through to normal char search
+		}
 		if cs, ok := t.motionHandler.(motion.CharSearcher); ok {
 			cursor := motion.Cursor{Line: t.cursorLine, Col: t.cursorCol}
 			var newCursor motion.Cursor
@@ -1311,6 +1486,12 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 				t.modeMachine.OnCursorMoved(selection.Pos{Line: r.EndLine, Col: r.EndCol})
 				t.clampViewportAndCursor()
 			}
+		}
+
+	case input.CommandFlashEnter:
+		if t.flash != nil && !t.flash.Active {
+			t.flash.Enter(t.cursorLine, t.cursorCol, t.viewportTop)
+			t.dirty = true
 		}
 	}
 
@@ -2093,7 +2274,39 @@ func (t *TUI) render() {
 	if showStatus {
 		t.height = contentHeight + 1 // restore full height
 		t.renderStatusBar()
+	} else if t.flash != nil && t.flash.Active {
+		// No status bar but flash is active -- render inline prompt on last row
+		t.renderInlineFlashPrompt()
 	}
+}
+
+// renderInlineFlashPrompt renders a minimal flash prompt on the last terminal row
+// when the status bar is disabled. This gives the user visual feedback about their
+// flash search pattern and match count.
+func (t *TUI) renderInlineFlashPrompt() {
+	if t.width <= 0 {
+		return
+	}
+
+	labeled := 0
+	for _, m := range t.flash.Matches {
+		if m.Label != 0 {
+			labeled++
+		}
+	}
+	total := len(t.flash.Matches)
+
+	prompt := fmt.Sprintf("FLASH /%s [%d/%d]", t.flash.Pattern, labeled, total)
+
+	// Truncate if wider than terminal
+	promptRunes := []rune(prompt)
+	if len(promptRunes) > t.width {
+		promptRunes = promptRunes[:t.width]
+	}
+
+	// Render on last row with FlashLabel palette for visibility
+	pal := t.palette.FlashLabel
+	fmt.Printf("\x1b[%d;1H%s%s\x1b[K\x1b[0m", t.height, cellPaletteSGR(pal), string(promptRunes))
 }
 
 // renderScroll renders with horizontal scrolling (default mode).
@@ -2117,6 +2330,11 @@ func (t *TUI) renderScroll() {
 
 	t.ensureCursorVisibleH(contentWidth)
 
+	var flashOverlay *flash.Overlay
+	if t.flash != nil {
+		flashOverlay = t.flash.Overlay()
+	}
+
 	for i := t.viewportTop; i < endLine; i++ {
 		gutter := t.formatter.RenderGutter(i+1, t.cursorLine+1)
 		b.WriteString(gutter)
@@ -2124,7 +2342,7 @@ func (t *TUI) renderScroll() {
 		cursorCol, selStart, selEnd := t.lineSelection(i, region)
 
 		searchRanges, currentMatch := t.lineSearchRanges(i)
-		renderedLine := RenderCellsWithPalette(t.doc.Cells(i), cursorCol, selStart, selEnd, searchRanges, currentMatch, t.hOffset, contentWidth, t.palette)
+		renderedLine := RenderCellsWithPalette(t.doc.Cells(i), cursorCol, selStart, selEnd, searchRanges, currentMatch, t.hOffset, contentWidth, t.palette, flashOverlay, i)
 		b.WriteString(renderedLine)
 		b.WriteString("\x1b[K")
 
@@ -2277,6 +2495,11 @@ func (t *TUI) renderWrap() {
 	// Adjust viewport so cursor is on-screen (wrap-aware).
 	t.ensureCursorVisibleWrap(contentWidth)
 
+	var flashOverlay *flash.Overlay
+	if t.flash != nil {
+		flashOverlay = t.flash.Overlay()
+	}
+
 	displayRow := 0
 	lineCount := t.doc.LineCount()
 
@@ -2313,7 +2536,7 @@ func (t *TUI) renderWrap() {
 			}
 
 			searchRanges, currentMatch := t.lineSearchRanges(i)
-			renderedLine := RenderCellsWithPalette(cells, cursorCol, selStart, selEnd, searchRanges, currentMatch, chunk.start, maxWidth, t.palette)
+			renderedLine := RenderCellsWithPalette(cells, cursorCol, selStart, selEnd, searchRanges, currentMatch, chunk.start, maxWidth, t.palette, flashOverlay, i)
 			b.WriteString(renderedLine)
 			// Extend the last cell's background through \x1b[K so that
 			// full-width highlights (e.g. git diff) don't break on wrapped rows.

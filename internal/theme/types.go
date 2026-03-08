@@ -76,6 +76,9 @@ type Palette struct {
 	Selection     CellPalette
 	SearchMatch   CellPalette // all search matches (yellow bg)
 	SearchCurrent CellPalette // current/active search match (orange/pink bg)
+	FlashLabel    CellPalette // flash label overlay (bold accent)
+	FlashMatch    CellPalette // flash match highlight
+	FlashBackdrop CellPalette // dimmed non-match text during flash
 	Gutter        GutterPalette
 	LineNum       LineNumPalette
 	Status        StatusPalette
@@ -116,4 +119,9 @@ type ThemeOverrides struct {
 	CursorItalic          string
 	SelectionDim          string
 	SelectionItalic       string
+	FlashLabelFG          string
+	FlashLabelBG          string
+	FlashMatchFG          string
+	FlashMatchBG          string
+	FlashBackdrop         string // FG only — backdrop is just dimmed text
 }

@@ -40,6 +40,12 @@ func (t *TUI) renderStatusBar() {
 		return
 	}
 
+	// Flash mode prompt: replace entire status bar.
+	if t.flash != nil && t.flash.Active {
+		t.renderFlashPrompt(width)
+		return
+	}
+
 	pal := t.palette.StatusBar
 	mode := t.modeMachine.Mode()
 	region := t.modeMachine.Region()
@@ -297,6 +303,67 @@ func (t *TUI) renderColonPrompt(width int) {
 	}
 	b.WriteString("\x1b[0m")
 	fmt.Print(b.String())
+}
+
+// renderFlashPrompt renders the flash mode status bar with mode indicator, pattern, and match count.
+func (t *TUI) renderFlashPrompt(width int) {
+	ov := t.flash.Overlay()
+	pattern := t.flash.Pattern
+	if ov != nil && ov.Prompt != "" {
+		pattern = ov.Prompt
+	}
+
+	// Count labeled matches
+	labeled := 0
+	for _, m := range t.flash.Matches {
+		if m.Label != 0 {
+			labeled++
+		}
+	}
+	total := len(t.flash.Matches)
+
+	// Build segments
+	flashModePal := t.palette.FlashLabel
+	modeSeg := statusSegment{text: " FLASH ", pal: flashModePal}
+
+	promptText := fmt.Sprintf(" /%s ", pattern)
+	countText := fmt.Sprintf(" [%d/%d] ", labeled, total)
+
+	pal := t.palette.StatusBar
+	segments := []statusSegment{
+		modeSeg,
+		{text: promptText, pal: pal.ModeNormal},
+		{text: countText, pal: pal.InfoPrimary},
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\r\n")
+
+	totalLen := 0
+	for _, seg := range segments {
+		totalLen += len([]rune(seg.text))
+	}
+	totalLen += len(segments) - 1 // separators
+
+	for idx, seg := range segments {
+		sb.WriteString(cellPaletteSGR(seg.pal))
+		sb.WriteString(seg.text)
+		if idx < len(segments)-1 {
+			nextPal := segments[idx+1].pal
+			sb.WriteString(transitionSGR(seg.pal.BG, nextPal.BG))
+			sb.WriteString(sepRight)
+		}
+	}
+
+	// Fill remaining width with status bar background
+	remaining := width - totalLen
+	if remaining > 0 {
+		sb.WriteString(cellPaletteSGR(pal.Fill))
+		sb.WriteString(strings.Repeat(" ", remaining))
+	}
+
+	sb.WriteString("\x1b[0m")
+	fmt.Print(sb.String())
 }
 
 // selectionStats returns the number of lines and characters in the current selection.

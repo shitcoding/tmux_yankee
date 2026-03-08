@@ -14,6 +14,9 @@ var Presets = map[ThemeName]Palette{
 		Selection:     CellPalette{FG: "", BG: "#FF8700"},
 		SearchMatch:   CellPalette{FG: "#3c3836", BG: "#fabd2f"}, // dark on bright_yellow
 		SearchCurrent: CellPalette{FG: "#3c3836", BG: "#fe8019"}, // dark on bright_orange
+		FlashLabel:    CellPalette{FG: "#1d2021", BG: "#d3869b", Style: TextStyle{Bold: true}},
+		FlashMatch:    CellPalette{FG: "#ebdbb2", BG: "#504945", Style: TextStyle{Underline: true}},
+		FlashBackdrop: CellPalette{FG: "#665c54"},
 		Gutter:    GutterPalette{FG: "#665c54", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#7c6f64", RelativeFG: "#7c6f64", CursorFG: "#FF8700", CursorStyle: TextStyle{Bold: true}},
 		Status:    StatusPalette{FG: "#a89984", BG: "#3c3836"},
@@ -33,6 +36,9 @@ var Presets = map[ThemeName]Palette{
 		Selection:     CellPalette{FG: "#f8f8f2", BG: "#44475a"},
 		SearchMatch:   CellPalette{FG: "#282a36", BG: "#f1fa8c"}, // bg on yellow
 		SearchCurrent: CellPalette{FG: "#282a36", BG: "#ff79c6"}, // bg on pink
+		FlashLabel:    CellPalette{FG: "#282a36", BG: "#ff79c6", Style: TextStyle{Bold: true}},
+		FlashMatch:    CellPalette{FG: "#f8f8f2", BG: "#44475a", Style: TextStyle{Underline: true}},
+		FlashBackdrop: CellPalette{FG: "#6272a4"},
 		Gutter:    GutterPalette{FG: "#6272a4", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#bd93f9", RelativeFG: "#6272a4", CursorFG: "#50fa7b", CursorStyle: TextStyle{Bold: true}},
 		Status:    StatusPalette{FG: "#f8f8f2", BG: "#44475a"},
@@ -53,6 +59,9 @@ var Presets = map[ThemeName]Palette{
 		Selection:     CellPalette{FG: "", BG: "#665c54"},
 		SearchMatch:   CellPalette{FG: "#3c3836", BG: "#fabd2f"}, // dark on bright_yellow
 		SearchCurrent: CellPalette{FG: "#3c3836", BG: "#fe8019"}, // dark on bright_orange
+		FlashLabel:    CellPalette{FG: "#1d2021", BG: "#fe8019", Style: TextStyle{Bold: true}},
+		FlashMatch:    CellPalette{FG: "#ebdbb2", BG: "#504945", Style: TextStyle{Underline: true}},
+		FlashBackdrop: CellPalette{FG: "#928374"},
 		Gutter:    GutterPalette{FG: "#665c54", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#7c6f64", RelativeFG: "#7c6f64", CursorFG: "#fabd2f", CursorStyle: TextStyle{Bold: true}},
 		Status:    StatusPalette{FG: "#a89984", BG: "#3c3836"},
@@ -72,6 +81,9 @@ var Presets = map[ThemeName]Palette{
 		Selection:     CellPalette{FG: "#eceff4", BG: "#5e81ac"},
 		SearchMatch:   CellPalette{FG: "#2e3440", BG: "#ebcb8b"}, // nord0 on nord13 (yellow)
 		SearchCurrent: CellPalette{FG: "#2e3440", BG: "#d08770"}, // nord0 on nord12 (orange)
+		FlashLabel:    CellPalette{FG: "#2e3440", BG: "#a3be8c", Style: TextStyle{Bold: true}},
+		FlashMatch:    CellPalette{FG: "#eceff4", BG: "#434c5e", Style: TextStyle{Underline: true}},
+		FlashBackdrop: CellPalette{FG: "#4c566a"},
 		Gutter:    GutterPalette{FG: "#4c566a", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#d8dee9", RelativeFG: "#81a1c1", CursorFG: "#a3be8c", CursorStyle: TextStyle{Bold: true}},
 		Status:    StatusPalette{FG: "#eceff4", BG: "#3b4252"},
@@ -91,6 +103,9 @@ var Presets = map[ThemeName]Palette{
 		Selection:     CellPalette{FG: "#eee8d5", BG: "#073642"},
 		SearchMatch:   CellPalette{FG: "#002b36", BG: "#b58900"}, // base03 on yellow
 		SearchCurrent: CellPalette{FG: "#002b36", BG: "#dc322f"}, // base03 on red
+		FlashLabel:    CellPalette{FG: "#fdf6e3", BG: "#d33682", Style: TextStyle{Bold: true}},
+		FlashMatch:    CellPalette{FG: "#eee8d5", BG: "#073642", Style: TextStyle{Underline: true}},
+		FlashBackdrop: CellPalette{FG: "#586e75"},
 		Gutter:    GutterPalette{FG: "#586e75", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#93a1a1", RelativeFG: "#b58900", CursorFG: "#2aa198", CursorStyle: TextStyle{Bold: true}},
 		Status:    StatusPalette{FG: "#eee8d5", BG: "#073642"},

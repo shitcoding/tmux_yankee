@@ -91,6 +91,18 @@ type CLIOptions struct {
 	WrapMode      string
 	StatusBar     string
 	Bindings      string
+
+	// Flash navigation
+	Flash         string // "on" or "off"
+	FlashMinChars string // digits: minimum chars before labels
+	FlashFT       string // "on" or "off"
+	FlashLabelFG  string
+	FlashLabelBG  string
+	FlashMatchFG  string
+	FlashMatchBG  string
+	FlashBackdrop   string
+	FlashJumpPos    string // "match_start", "match_end", "word_start", "word_end"
+	FlashAltJumpPos string // same values + "off"
 }
 
 // Settings is the validated, typed settings passed into the TUI.
@@ -111,4 +123,11 @@ type Settings struct {
 	WrapMode      WrapMode
 	StatusBar     StatusBarMode
 	Keymap        keymap.Keymap
+
+	// Flash navigation
+	FlashEnabled   bool
+	FlashMinChars  int
+	FlashFTEnabled  bool
+	FlashJumpPos    int // matches flash.JumpPos values
+	FlashAltJumpPos int // matches flash.JumpPos values
 }

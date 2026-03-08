@@ -86,6 +86,23 @@ func Resolve(name ThemeName, overrides ThemeOverrides) (Palette, error) {
 	applyBoolOverride(overrides.SelectionDim, &p.Selection.Style.Dim)
 	applyBoolOverride(overrides.SelectionItalic, &p.Selection.Style.Italic)
 
+	// Flash color overrides
+	if err := applyColorOverride(overrides.FlashLabelFG, &p.FlashLabel.FG); err != nil {
+		return Palette{}, fmt.Errorf("flash-label-fg: %w", err)
+	}
+	if err := applyColorOverride(overrides.FlashLabelBG, &p.FlashLabel.BG); err != nil {
+		return Palette{}, fmt.Errorf("flash-label-bg: %w", err)
+	}
+	if err := applyColorOverride(overrides.FlashMatchFG, &p.FlashMatch.FG); err != nil {
+		return Palette{}, fmt.Errorf("flash-match-fg: %w", err)
+	}
+	if err := applyColorOverride(overrides.FlashMatchBG, &p.FlashMatch.BG); err != nil {
+		return Palette{}, fmt.Errorf("flash-match-bg: %w", err)
+	}
+	if err := applyColorOverride(overrides.FlashBackdrop, &p.FlashBackdrop.FG); err != nil {
+		return Palette{}, fmt.Errorf("flash-backdrop: %w", err)
+	}
+
 	return p, nil
 }
 

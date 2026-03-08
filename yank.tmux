@@ -137,6 +137,13 @@ set_scroll_bindings() {
             ''
 }
 
+# Flash navigation defaults
+tmux set-option -gq @yankee_flash "on"
+tmux set-option -gq @yankee_flash_min_chars "1"
+tmux set-option -gq @yankee_flash_ft "off"
+tmux set-option -gq @yankee_flash_jump_pos "match_end"
+tmux set-option -gq @yankee_flash_alt_jump_pos "match_start"
+
 main() {
     # Register yankee bindings first — they don't need a clipboard command
     # and must not be blocked by the early exit in error_handling_if_command_not_present.

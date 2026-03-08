@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shitcoding/tmux_yankee/internal/flash"
 	"github.com/shitcoding/tmux_yankee/internal/theme"
 )
 
@@ -461,6 +462,9 @@ const (
 	cellModeSelection     cellMode = 2
 	cellModeSearchMatch   cellMode = 3
 	cellModeSearchCurrent cellMode = 4
+	cellModeFlashLabel    cellMode = 5
+	cellModeFlashMatch    cellMode = 6
+	cellModeFlashBackdrop cellMode = 7
 )
 
 // cellStyleKey is a compact representation of a cell's visual style for run tracking.
@@ -550,7 +554,8 @@ func writeSGRNormal(b *strings.Builder, s Style) {
 // style changes from the previous cell, reducing output size and allocations.
 func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int,
 	searchRanges [][2]int, currentSearch [2]int,
-	startCol, maxWidth int, pal theme.Palette) string {
+	startCol, maxWidth int, pal theme.Palette,
+	flashOverlay *flash.Overlay, flashLine int) string {
 	// Clamp startCol to valid range
 	if startCol < 0 {
 		startCol = 0
@@ -567,6 +572,13 @@ func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int,
 	selectionSGR := buildOverlaySGR(pal.Selection)
 	searchMatchSGR := buildOverlaySGR(pal.SearchMatch)
 	searchCurrentSGR := buildOverlaySGR(pal.SearchCurrent)
+
+	var flashLabelSGR, flashMatchSGR, flashBackdropSGR string
+	if flashOverlay != nil {
+		flashLabelSGR = buildOverlaySGR(pal.FlashLabel)
+		flashMatchSGR = buildOverlaySGR(pal.FlashMatch)
+		flashBackdropSGR = buildOverlaySGR(pal.FlashBackdrop)
+	}
 
 	// Track current style to avoid redundant SGR emission.
 	var prevKey cellStyleKey
@@ -594,16 +606,30 @@ func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int,
 		inCurrentSearch := currentSearch[0] >= 0 &&
 			absIdx >= currentSearch[0] && absIdx <= currentSearch[1]
 
-		// Priority: selection > cursor > searchCurrent > searchMatch > normal
+		// Flash overlay checks
+		var flashLabel byte
+		inFlashMatch := false
+		if flashOverlay != nil {
+			flashLabel = flashOverlay.HasLabel(flashLine, absIdx)
+			inFlashMatch = flashOverlay.InMatch(flashLine, absIdx)
+		}
+
+		// Priority: cursor > flashLabel > selection > flashMatch > searchCurrent > searchMatch > flashBackdrop > normal
 		var key cellStyleKey
-		if inSelection {
-			key.mode = cellModeSelection
-		} else if absIdx == cursorCol {
+		if absIdx == cursorCol {
 			key.mode = cellModeCursor
+		} else if flashLabel != 0 {
+			key.mode = cellModeFlashLabel
+		} else if inSelection {
+			key.mode = cellModeSelection
+		} else if inFlashMatch {
+			key.mode = cellModeFlashMatch
 		} else if inCurrentSearch {
 			key.mode = cellModeSearchCurrent
 		} else if inSearchMatch {
 			key.mode = cellModeSearchMatch
+		} else if flashOverlay != nil && flashOverlay.Backdrop {
+			key.mode = cellModeFlashBackdrop
 		} else {
 			key.mode = cellModeNormal
 			key.style = cell.Style
@@ -620,6 +646,12 @@ func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int,
 				b.WriteString(searchCurrentSGR)
 			case cellModeSearchMatch:
 				b.WriteString(searchMatchSGR)
+			case cellModeFlashLabel:
+				b.WriteString(flashLabelSGR)
+			case cellModeFlashMatch:
+				b.WriteString(flashMatchSGR)
+			case cellModeFlashBackdrop:
+				b.WriteString(flashBackdropSGR)
 			default:
 				if key.style == (Style{}) {
 					// Default style — just reset.
@@ -632,8 +664,24 @@ func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int,
 			prevKey = key
 		}
 
-		b.WriteRune(cell.Rune)
+		if flashLabel != 0 {
+			b.WriteByte(flashLabel)
+		} else {
+			b.WriteRune(cell.Rune)
+		}
 		displayCols += w
+	}
+
+	// Emit flash labels that fall just past end of line content (match at line end).
+	if flashOverlay != nil && displayCols < maxWidth {
+		pastEnd := len(cells)
+		if label := flashOverlay.HasLabel(flashLine, pastEnd); label != 0 {
+			b.WriteString(flashLabelSGR)
+			b.WriteByte(label)
+			displayCols++
+			styled = true
+			prevKey = cellStyleKey{mode: cellModeFlashLabel}
+		}
 	}
 
 	// If cursor is at or past end of visible content, render cursor block

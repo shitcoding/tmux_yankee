@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"strconv"
 
+	"github.com/shitcoding/tmux_yankee/internal/flash"
 	"github.com/shitcoding/tmux_yankee/internal/keymap"
 	"github.com/shitcoding/tmux_yankee/internal/theme"
 )
@@ -60,6 +62,11 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		CursorItalic:          opts.CursorItalic,
 		SelectionDim:          opts.SelectionDim,
 		SelectionItalic:       opts.SelectionItalic,
+		FlashLabelFG:          opts.FlashLabelFG,
+		FlashLabelBG:          opts.FlashLabelBG,
+		FlashMatchFG:          opts.FlashMatchFG,
+		FlashMatchBG:          opts.FlashMatchBG,
+		FlashBackdrop:         opts.FlashBackdrop,
 	}
 
 	palette, err := theme.Resolve(theme.ThemeName(opts.Theme), overrides)
@@ -87,6 +94,18 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		km = km.Merge(overrides)
 	}
 
+	// Flash settings
+	flashEnabled := opts.Flash != "off"
+	flashMinChars := 1
+	if opts.FlashMinChars != "" {
+		if n, err := strconv.Atoi(opts.FlashMinChars); err == nil && n > 0 {
+			flashMinChars = n
+		}
+	}
+	flashFT := opts.FlashFT == "on"
+	flashJumpPos := int(flash.ParseJumpPos(opts.FlashJumpPos, flash.JumpPosMatchEnd))
+	flashAltJumpPos := int(flash.ParseJumpPos(opts.FlashAltJumpPos, flash.JumpPosMatchStart))
+
 	return Settings{
 		PaneID:          opts.PaneID,
 		Mode:            LineNumberMode(opts.Mode),
@@ -102,5 +121,10 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		WrapMode:        wrapMode,
 		StatusBar:       statusBar,
 		Keymap:          km,
+		FlashEnabled:    flashEnabled,
+		FlashMinChars:   flashMinChars,
+		FlashFTEnabled:  flashFT,
+		FlashJumpPos:    flashJumpPos,
+		FlashAltJumpPos: flashAltJumpPos,
 	}, nil
 }
