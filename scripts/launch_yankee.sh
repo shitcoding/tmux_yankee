@@ -393,11 +393,17 @@ wait_for_helper_completion() {
 
     while kill -0 "$waiter_pid" 2>/dev/null; do
         if ! tmux_pane_exists "$helper_pane_id"; then
-            sleep 0.3
-            if ! kill -0 "$waiter_pid" 2>/dev/null; then
-                wait "$waiter_pid"
-                return $?
-            fi
+            # Helper pane gone — the signal may already be in flight.
+            # Give up to 2s (in 0.2s increments) for it to arrive.
+            local grace=0
+            while [ "$grace" -lt 10 ]; do
+                sleep 0.2
+                if ! kill -0 "$waiter_pid" 2>/dev/null; then
+                    wait "$waiter_pid"
+                    return $?
+                fi
+                grace=$((grace + 1))
+            done
             kill "$waiter_pid" 2>/dev/null || true
             wait "$waiter_pid" 2>/dev/null || true
             return 1
@@ -538,6 +544,11 @@ launch_overlay() {
     # a crashed TUI destroys the helper pane (the one visible in the user's
     # window after swap), and the cleanup can no longer swap back — leaving the
     # user's original pane trapped in the helper session which then gets killed.
+    # Use pane-level (-p) so the setting follows the pane through swap-pane
+    # operations (window-level -w only protects the window, not the pane after
+    # it's swapped into the user's window which lacks remain-on-exit).
+    tmux set-option -p -t "$helper_pane_id" remain-on-exit on 2>/dev/null || true
+    # Fallback: also set on window for tmux versions that don't support pane-level.
     tmux set-option -w -t "$helper_window_id" remain-on-exit on 2>/dev/null || true
 
     # Force helper window to match original pane dimensions (tmux 3.5a bug workaround).
@@ -612,24 +623,11 @@ launch_overlay() {
 }
 
 launch_popup() {
-    # Optional args: --borderless  → seamless, matches zoomed pane exactly
-    #                (default)     → -w 90% -h 90% (standard popup with border)
+    # Used when @yankee_display_mode is explicitly set to "popup".
+    # Note: tmux key bindings (prefix, root-table) do NOT work inside popups
+    # because the -K flag does not exist in any released tmux version (≤3.5a).
+    # For most users, the default "overlay" mode (pane-swap) is recommended.
     local popup_flags="-w 90% -h 90%"
-    if [ "${1:-}" = "--borderless" ]; then
-        # Use the actual pane dimensions (excludes status bar) and anchor at
-        # top-left so the popup covers exactly the zoomed pane area without
-        # hiding the tmux status bar.
-        local _pw _ph
-        _pw="$(tmux display-message -p -t "$PANE_ID" '#{pane_width}' 2>/dev/null)"
-        _ph="$(tmux display-message -p -t "$PANE_ID" '#{pane_height}' 2>/dev/null)"
-        popup_flags="-B -x 0 -y 0 -w ${_pw} -h ${_ph}"
-    fi
-    # -K (tmux 3.3+): enable tmux key binding processing inside the popup,
-    # so prefix bindings (pane switching) and root-table bindings (Alt+hjkl
-    # window switching, Alt+z zoom, etc.) still work while yankee is open.
-    if tmux display-popup -K -E -w 1 -h 1 "true" >/dev/null 2>&1; then
-        popup_flags="-K $popup_flags"
-    fi
     local pane_lock_dir
     pane_lock_dir="$(_yankee_lock_dir "$PANE_ID")"
     if ! yankee_lock_acquire "$pane_lock_dir"; then return 0; fi
@@ -660,20 +658,16 @@ launch_split() {
 
 # --- Dispatch to display mode (sweep runs inside overlay after lock) -------
 
-# When the pane is zoomed, swap-pane (used by overlay mode) triggers an internal
-# unzoom→swap→rezoom cycle that causes tmux to reflow the entire scrollback
-# buffer twice.  On panes with long history (50K+ lines) this produces a visible
-# rapid-scroll artifact.  Popup mode avoids this entirely because it overlays a
-# temporary window without moving or resizing any existing panes.
-_yankee_zoom_flag="$(tmux display-message -p -t "$PANE_ID" '#{window_zoomed_flag}' 2>/dev/null || true)"
+# Overlay mode always uses pane-swap regardless of zoom state.  This ensures
+# tmux key bindings (prefix, root-table) work inside yankee since it runs in
+# a real pane.  The -K flag (which would let popups forward bindings to tmux)
+# does not exist in any released tmux version as of 3.5a.
+# Trade-off: on zoomed panes with very long scrollback (50K+ lines), the
+# swap-pane unzoom/rezoom cycle may cause a brief visual reflow artifact.
 
 case "$DISPLAY_MODE" in
     overlay)
-        if [ "$_yankee_zoom_flag" = "1" ] && popup_supported; then
-            launch_popup --borderless
-        else
-            launch_overlay
-        fi
+        launch_overlay
         ;;
     popup)
         if popup_supported; then
