@@ -795,6 +795,7 @@ func (t *TUI) handleFlashInput(b byte) bool {
 			t.savePrevCursor()
 			t.cursorLine = act.Line
 			t.cursorCol = act.Col
+			t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
 			t.clampViewportAndCursor()
 		}
 		t.dirty = true
@@ -807,6 +808,7 @@ func (t *TUI) handleFlashInput(b byte) bool {
 		t.savePrevCursor()
 		t.cursorLine = action.Line
 		t.cursorCol = action.Col
+		t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
 		t.clampViewportAndCursor()
 		t.dirty = true
 		return false
@@ -1420,6 +1422,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 					t.savePrevCursor()
 					t.cursorLine = act.Line
 					t.cursorCol = act.Col
+					t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
 					t.clampViewportAndCursor()
 				}
 				t.dirty = true
