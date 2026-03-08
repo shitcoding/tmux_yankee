@@ -118,6 +118,10 @@ const (
 	// Flash navigation
 	ActionFlash Action = "flash" // s — enter flash search mode
 
+	// Theme cycling (works in all modes)
+	ActionThemeNext Action = "theme_next"
+	ActionThemePrev Action = "theme_prev"
+
 	// Demo
 	ActionDemoNext      Action = "demo_next"
 	ActionDemoPrev      Action = "demo_prev"

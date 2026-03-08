@@ -145,6 +145,7 @@ func isValidAction(a Action) bool {
 		ActionColonMode,
 		ActionToggleLineMode, ActionToggleWrapMode,
 		ActionEscape, ActionQuit,
+		ActionThemeNext, ActionThemePrev,
 		ActionDemoNext, ActionDemoPrev, ActionDemoThemeNext, ActionDemoThemePrev:
 		return true
 	}

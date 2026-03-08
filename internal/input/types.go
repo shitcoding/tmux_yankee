@@ -57,6 +57,8 @@ const (
 	CommandColonExecute         // Enter pressed — execute colon command
 	CommandColonCancel          // Escape/invalid — cancel colon mode
 	CommandFlashEnter          // Enter flash search mode
+	CommandThemeNext           // Alt+t: next theme (works in all modes)
+	CommandThemePrev           // previous theme (works in all modes)
 )
 
 // ScrollDirection indicates mouse wheel direction for CommandMouseScroll.

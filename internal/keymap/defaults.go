@@ -78,6 +78,9 @@ func DefaultKeymap() Keymap {
 			Key('q'):  ActionQuit,
 			Ctrl('c'): ActionQuit,
 
+			// Theme cycling
+			Alt('t'): ActionThemeNext,
+
 			// Demo (Shift-Tab handled via CSI)
 			Key(']'): ActionDemoThemeNext,
 			Key('['): ActionDemoThemePrev,

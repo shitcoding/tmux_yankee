@@ -198,6 +198,12 @@ func ActionToCommand(action keymap.Action, count int, capturedChar byte) Command
 	case keymap.ActionDemoThemePrev:
 		return Command{Type: CommandDemoThemePrev}
 
+	// Theme cycling (all modes)
+	case keymap.ActionThemeNext:
+		return Command{Type: CommandThemeNext}
+	case keymap.ActionThemePrev:
+		return Command{Type: CommandThemePrev}
+
 	default:
 		return Command{Type: CommandNone}
 	}

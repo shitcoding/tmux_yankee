@@ -1097,13 +1097,19 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 
 	case input.CommandDemoThemeNext:
 		if t.isDemo {
-			t.cycleDemoTheme(1)
+			t.cycleTheme(1)
 		}
 
 	case input.CommandDemoThemePrev:
 		if t.isDemo {
-			t.cycleDemoTheme(-1)
+			t.cycleTheme(-1)
 		}
+
+	case input.CommandThemeNext:
+		t.cycleTheme(1)
+
+	case input.CommandThemePrev:
+		t.cycleTheme(-1)
 
 	case input.CommandQuit:
 		return true
@@ -1954,8 +1960,8 @@ func (t *TUI) cycleDemoPage(delta int) {
 	t.dirty = true
 }
 
-// cycleDemoTheme cycles the demo theme by delta (+1 or -1) with wrapping.
-func (t *TUI) cycleDemoTheme(delta int) {
+// cycleTheme cycles the demo theme by delta (+1 or -1) with wrapping.
+func (t *TUI) cycleTheme(delta int) {
 	n := len(theme.ThemeOrder)
 	if n == 0 {
 		return
