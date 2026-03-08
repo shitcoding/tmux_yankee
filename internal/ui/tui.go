@@ -176,10 +176,14 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 		wrapKey = 'w'
 	}
 
-	// Use configured keymap if present, otherwise default.
-	parser := input.NewParserWithKeys(toggleKey, wrapKey)
-	if cfg.Keymap.Direct != nil {
-		parser = input.NewParserWithKeymap(toggleKey, wrapKey, cfg.Keymap)
+	// Use normal-mode keymap from ModeKeymap for initial parser.
+	// Fall back to default parser if ModeKeymap is zero-valued (test convenience).
+	var parser *input.Parser
+	normalKm := cfg.ModeKeymap.ForMode(false)
+	if normalKm.Direct != nil {
+		parser = input.NewParserWithKeymap(toggleKey, wrapKey, normalKm)
+	} else {
+		parser = input.NewParserWithKeys(toggleKey, wrapKey)
 	}
 
 	var flashState *flash.State
@@ -253,10 +257,13 @@ func NewDemoTUI(cfg config.Settings, pages [][]string, pageNames []string) *TUI 
 		}
 	}
 
-	// Use configured keymap if present, otherwise default.
-	parser := input.NewParserWithKeys(toggleKey, wrapKey)
-	if cfg.Keymap.Direct != nil {
-		parser = input.NewParserWithKeymap(toggleKey, wrapKey, cfg.Keymap)
+	// Use normal-mode keymap from ModeKeymap for initial parser.
+	var parser *input.Parser
+	normalKm := cfg.ModeKeymap.ForMode(false)
+	if normalKm.Direct != nil {
+		parser = input.NewParserWithKeymap(toggleKey, wrapKey, normalKm)
+	} else {
+		parser = input.NewParserWithKeys(toggleKey, wrapKey)
 	}
 
 	return &TUI{
@@ -1523,6 +1530,10 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		}
 	}
 
+	// Sync parser keymap after any mode transition (covers keyboard, mouse,
+	// gn/gN, text objects — all paths uniformly).
+	t.syncKeymapToMode()
+
 	// Only mark dirty if visible state actually changed.
 	curMode := t.modeMachine.Mode()
 	curRegion := t.modeMachine.Region()
@@ -1908,6 +1919,16 @@ func (t *TUI) toggleMode() {
 	case linenums.ModeHybrid:
 		t.lineNumMode = "hybrid"
 	}
+}
+
+// syncKeymapToMode swaps the parser's keymap to match the current mode machine state.
+// No-op if ModeKeymap was not configured (zero-valued, e.g. in tests).
+func (t *TUI) syncKeymapToMode() {
+	km := t.cfg.ModeKeymap.ForMode(t.modeMachine.Mode() != vmode.Normal)
+	if km.Direct == nil {
+		return
+	}
+	t.parser.SetKeymap(km)
 }
 
 // toggleWrapMode switches between wrap and scroll mode at runtime.
@@ -2685,6 +2706,7 @@ func (t *TUI) yank() bool {
 	// Exit visual mode and return to Normal mode (vim behavior)
 	pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
 	t.modeMachine.Handle(vmode.EventEscape, pos)
+	t.syncKeymapToMode()
 
 	// ExitOnYank=true (default): exit TUI after yank
 	// ExitOnYank=false: stay in TUI in Normal mode (selection already cleared above)

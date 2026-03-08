@@ -5,6 +5,33 @@ import (
 	"strings"
 )
 
+// KeyBinding represents either a single key (Direct) or a two-key prefix sequence.
+// Prefix sequences use X-Y notation where X is not C or M (those are Ctrl/Alt modifiers).
+type KeyBinding struct {
+	IsPrefixSeq bool
+	Spec        KeySpec // used when IsPrefixSeq == false
+	Prefix      byte    // used when IsPrefixSeq == true
+	Second      byte    // used when IsPrefixSeq == true
+}
+
+// ParseKeyBinding parses a key notation that may be a prefix sequence or a single key.
+// Prefix sequences: "g-g", "z-t", "y-y" (X-Y where X is not C/c or M/m).
+// Single keys: "h", "C-d", "M-t", "Enter", etc.
+func ParseKeyBinding(s string) (KeyBinding, error) {
+	if len(s) == 3 && s[1] == '-' && s[0] != 'C' && s[0] != 'c' && s[0] != 'M' && s[0] != 'm' {
+		return KeyBinding{
+			IsPrefixSeq: true,
+			Prefix:      s[0],
+			Second:      s[2],
+		}, nil
+	}
+	spec, err := ParseKeyNotation(s)
+	if err != nil {
+		return KeyBinding{}, err
+	}
+	return KeyBinding{Spec: spec}, nil
+}
+
 // ParseKeyNotation parses a human-readable key notation string into a KeySpec.
 // Supported formats:
 //   - Single char: "h", "H", "$", "^", etc.
@@ -16,14 +43,14 @@ func ParseKeyNotation(s string) (KeySpec, error) {
 		return KeySpec{}, fmt.Errorf("empty key notation")
 	}
 
-	// Ctrl modifier: C-x
-	if strings.HasPrefix(s, "C-") && len(s) == 3 {
+	// Ctrl modifier: C-x or c-x
+	if (strings.HasPrefix(s, "C-") || strings.HasPrefix(s, "c-")) && len(s) == 3 {
 		letter := s[2]
 		return Ctrl(letter), nil
 	}
 
-	// Alt modifier: M-x
-	if strings.HasPrefix(s, "M-") && len(s) == 3 {
+	// Alt modifier: M-x or m-x
+	if (strings.HasPrefix(s, "M-") || strings.HasPrefix(s, "m-")) && len(s) == 3 {
 		key := s[2]
 		return Alt(key), nil
 	}
@@ -76,11 +103,18 @@ func ParseBindings(s string) (Keymap, error) {
 		// Unbind: "!key"
 		if strings.HasPrefix(part, "!") {
 			keyStr := part[1:]
-			key, err := ParseKeyNotation(keyStr)
+			kb, err := ParseKeyBinding(keyStr)
 			if err != nil {
 				return Keymap{}, fmt.Errorf("unbind %q: %w", keyStr, err)
 			}
-			result.Direct[key] = ActionNone
+			if kb.IsPrefixSeq {
+				if result.Prefix[kb.Prefix] == nil {
+					result.Prefix[kb.Prefix] = make(map[byte]Action)
+				}
+				result.Prefix[kb.Prefix][kb.Second] = ActionNone
+			} else {
+				result.Direct[kb.Spec] = ActionNone
+			}
 			continue
 		}
 
@@ -92,7 +126,7 @@ func ParseBindings(s string) (Keymap, error) {
 		keyStr := part[:eq]
 		actionStr := part[eq+1:]
 
-		key, err := ParseKeyNotation(keyStr)
+		kb, err := ParseKeyBinding(keyStr)
 		if err != nil {
 			return Keymap{}, fmt.Errorf("binding %q: %w", part, err)
 		}
@@ -102,7 +136,14 @@ func ParseBindings(s string) (Keymap, error) {
 			return Keymap{}, fmt.Errorf("binding %q: unknown action %q", part, actionStr)
 		}
 
-		result.Direct[key] = action
+		if kb.IsPrefixSeq {
+			if result.Prefix[kb.Prefix] == nil {
+				result.Prefix[kb.Prefix] = make(map[byte]Action)
+			}
+			result.Prefix[kb.Prefix][kb.Second] = action
+		} else {
+			result.Direct[kb.Spec] = action
+		}
 	}
 
 	return result, nil
@@ -145,6 +186,7 @@ func isValidAction(a Action) bool {
 		ActionColonMode,
 		ActionToggleLineMode, ActionToggleWrapMode,
 		ActionEscape, ActionQuit,
+		ActionFlash,
 		ActionThemeNext, ActionThemePrev,
 		ActionDemoNext, ActionDemoPrev, ActionDemoThemeNext, ActionDemoThemePrev:
 		return true

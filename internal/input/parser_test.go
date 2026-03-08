@@ -3,6 +3,7 @@ package input
 import (
 	"testing"
 
+	"github.com/shitcoding/tmux_yankee/internal/keymap"
 	"github.com/shitcoding/tmux_yankee/internal/motion"
 )
 
@@ -869,5 +870,31 @@ func TestParser_CSI_ClearsPendingPrefix(t *testing.T) {
 	}
 	if cmd.Motion != motion.MotionDown {
 		t.Errorf("j motion after CSI: got %v, want MotionDown (not char search)", cmd.Motion)
+	}
+}
+
+func TestParser_SetKeymap(t *testing.T) {
+	km1 := keymap.DefaultKeymap()
+	p := NewParserWithKeymap('L', 'w', km1)
+
+	// Initially 'H' should be screen_top
+	cmd := p.Parse('H')
+	if cmd.Type != CommandMotion || cmd.Motion != motion.MotionScreenTop {
+		t.Errorf("before SetKeymap: H = %+v, want CommandMotion/ScreenTop", cmd)
+	}
+
+	// Swap keymap: rebind H to line_end
+	km2 := km1
+	km2.Direct = make(map[keymap.KeySpec]keymap.Action, len(km1.Direct))
+	for k, v := range km1.Direct {
+		km2.Direct[k] = v
+	}
+	km2.Direct[keymap.Key('H')] = keymap.ActionLineEnd
+	p.SetKeymap(km2)
+
+	// Now H should be line_end
+	cmd = p.Parse('H')
+	if cmd.Type != CommandMotion || cmd.Motion != motion.MotionLineEnd {
+		t.Errorf("after SetKeymap: H = %+v, want CommandMotion/LineEnd", cmd)
 	}
 }

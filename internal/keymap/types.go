@@ -264,3 +264,40 @@ func (km *Keymap) LookupTextObject(prefix, second byte) (Action, bool) {
 	action, ok := km.TextObjects[[2]byte{prefix, second}]
 	return action, ok
 }
+
+// ModeKeymap holds pre-resolved keymaps for normal and visual modes.
+// Both keymaps are fully resolved at construction time (no runtime merge cost).
+type ModeKeymap struct {
+	normal Keymap // default.Merge(shared).Merge(normalOverrides)
+	visual Keymap // default.Merge(shared).Merge(visualOverrides)
+}
+
+// NewModeKeymap constructs a ModeKeymap by merging base defaults with shared
+// overrides and mode-specific overrides. Resolution order:
+// normal = base.Merge(shared).Merge(normalOv)
+// visual = base.Merge(shared).Merge(visualOv)
+func NewModeKeymap(base, shared, normalOv, visualOv Keymap) ModeKeymap {
+	withShared := base.Merge(shared)
+	return ModeKeymap{
+		normal: withShared.Merge(normalOv),
+		visual: withShared.Merge(visualOv),
+	}
+}
+
+// ForMode returns the pre-resolved keymap for the given mode.
+func (mk *ModeKeymap) ForMode(isVisual bool) Keymap {
+	if isVisual {
+		return mk.visual
+	}
+	return mk.normal
+}
+
+// Normal returns the normal-mode keymap.
+func (mk *ModeKeymap) Normal() Keymap {
+	return mk.normal
+}
+
+// Visual returns the visual-mode keymap.
+func (mk *ModeKeymap) Visual() Keymap {
+	return mk.visual
+}

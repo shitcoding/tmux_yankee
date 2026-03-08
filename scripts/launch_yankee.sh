@@ -376,6 +376,60 @@ build_yankee_args() {
         _YANKEE_ARGS+=("--bindings" "$bindings_str")
     fi
 
+    # Collect @yankee_nbind_* and @yankee_nunbind_* options into --nbindings flag.
+    # Same format as --bindings but for normal-mode-specific overrides.
+    local nbindings_str=""
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        if [[ "$line" =~ ^@yankee_nbind_(.+)" "(.+)$ ]]; then
+            key_notation="${BASH_REMATCH[1]}"
+            action="${BASH_REMATCH[2]}"
+            if [ -n "$nbindings_str" ]; then
+                nbindings_str="${nbindings_str},${key_notation}=${action}"
+            else
+                nbindings_str="${key_notation}=${action}"
+            fi
+        elif [[ "$line" =~ ^@yankee_nunbind_(.+)" " ]]; then
+            key_notation="${BASH_REMATCH[1]}"
+            if [ -n "$nbindings_str" ]; then
+                nbindings_str="${nbindings_str},!${key_notation}"
+            else
+                nbindings_str="!${key_notation}"
+            fi
+        fi
+    done <<< "$(printf '%s' "$opts_dump" | grep -E '^@yankee_(nbind|nunbind)_' || true)"
+
+    if [ -n "$nbindings_str" ]; then
+        _YANKEE_ARGS+=("--nbindings" "$nbindings_str")
+    fi
+
+    # Collect @yankee_vbind_* and @yankee_vunbind_* options into --vbindings flag.
+    # Same format as --bindings but for visual-mode-specific overrides.
+    local vbindings_str=""
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        if [[ "$line" =~ ^@yankee_vbind_(.+)" "(.+)$ ]]; then
+            key_notation="${BASH_REMATCH[1]}"
+            action="${BASH_REMATCH[2]}"
+            if [ -n "$vbindings_str" ]; then
+                vbindings_str="${vbindings_str},${key_notation}=${action}"
+            else
+                vbindings_str="${key_notation}=${action}"
+            fi
+        elif [[ "$line" =~ ^@yankee_vunbind_(.+)" " ]]; then
+            key_notation="${BASH_REMATCH[1]}"
+            if [ -n "$vbindings_str" ]; then
+                vbindings_str="${vbindings_str},!${key_notation}"
+            else
+                vbindings_str="!${key_notation}"
+            fi
+        fi
+    done <<< "$(printf '%s' "$opts_dump" | grep -E '^@yankee_(vbind|vunbind)_' || true)"
+
+    if [ -n "$vbindings_str" ]; then
+        _YANKEE_ARGS+=("--vbindings" "$vbindings_str")
+    fi
+
     printf '%s\0' "${_YANKEE_ARGS[@]}"
 }
 

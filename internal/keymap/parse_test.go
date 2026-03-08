@@ -45,6 +45,63 @@ func TestParseKeyNotation(t *testing.T) {
 	}
 }
 
+func TestParseKeyBinding(t *testing.T) {
+	tests := []struct {
+		input       string
+		isPrefixSeq bool
+		prefix      byte
+		second      byte
+		spec        KeySpec
+		wantErr     bool
+	}{
+		// Prefix sequences
+		{"g-g", true, 'g', 'g', KeySpec{}, false},
+		{"z-t", true, 'z', 't', KeySpec{}, false},
+		{"y-y", true, 'y', 'y', KeySpec{}, false},
+		{"g-j", true, 'g', 'j', KeySpec{}, false},
+		{"z-b", true, 'z', 'b', KeySpec{}, false},
+		// Ctrl/Alt are NOT prefix sequences (uppercase and lowercase)
+		{"C-d", false, 0, 0, Ctrl('d'), false},
+		{"M-t", false, 0, 0, Alt('t'), false},
+		{"c-d", false, 0, 0, Ctrl('d'), false},
+		{"m-t", false, 0, 0, Alt('t'), false},
+		// Single keys
+		{"h", false, 0, 0, Key('h'), false},
+		{"H", false, 0, 0, Key('H'), false},
+		{"$", false, 0, 0, Key('$'), false},
+		// Special keys
+		{"Enter", false, 0, 0, Key(13), false},
+		// Errors
+		{"", false, 0, 0, KeySpec{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := ParseKeyBinding(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ParseKeyBinding(%q) expected error, got %+v", tt.input, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseKeyBinding(%q) unexpected error: %v", tt.input, err)
+			}
+			if got.IsPrefixSeq != tt.isPrefixSeq {
+				t.Errorf("IsPrefixSeq = %v, want %v", got.IsPrefixSeq, tt.isPrefixSeq)
+			}
+			if tt.isPrefixSeq {
+				if got.Prefix != tt.prefix || got.Second != tt.second {
+					t.Errorf("prefix=(%c,%c), want (%c,%c)", got.Prefix, got.Second, tt.prefix, tt.second)
+				}
+			} else {
+				if got.Spec != tt.spec {
+					t.Errorf("Spec = %+v, want %+v", got.Spec, tt.spec)
+				}
+			}
+		})
+	}
+}
+
 func TestParseBindings(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -133,6 +190,61 @@ func TestParseBindings(t *testing.T) {
 			name:    "invalid key",
 			input:   "C-=move_left",
 			wantErr: true,
+		},
+		// Prefix sequence bindings
+		{
+			name:  "prefix bind g-g",
+			input: "g-g=last_line",
+			check: func(km Keymap) error {
+				action, ok := km.LookupPrefix('g', 'g')
+				if !ok || action != ActionLastLine {
+					return errorf("Prefix['g']['g'] = (%q, %v), want (%q, true)", action, ok, ActionLastLine)
+				}
+				return nil
+			},
+		},
+		{
+			name:  "prefix unbind g-j",
+			input: "!g-j",
+			check: func(km Keymap) error {
+				// Should have ActionNone in Prefix map (Merge will delete it)
+				inner, ok := km.Prefix['g']
+				if !ok {
+					return errorf("Prefix['g'] not present")
+				}
+				if inner['j'] != ActionNone {
+					return errorf("Prefix['g']['j'] = %q, want %q", inner['j'], ActionNone)
+				}
+				return nil
+			},
+		},
+		{
+			name:  "mixed direct and prefix bindings",
+			input: "H=line_end,g-g=last_line,!g-j",
+			check: func(km Keymap) error {
+				if a, ok := km.Lookup(Key('H')); !ok || a != ActionLineEnd {
+					return errorf("H: (%q, %v)", a, ok)
+				}
+				if a, ok := km.LookupPrefix('g', 'g'); !ok || a != ActionLastLine {
+					return errorf("gg: (%q, %v)", a, ok)
+				}
+				inner := km.Prefix['g']
+				if inner['j'] != ActionNone {
+					return errorf("gj: %q, want %q", inner['j'], ActionNone)
+				}
+				return nil
+			},
+		},
+		{
+			name:  "new prefix group z-a",
+			input: "z-a=viewport_top",
+			check: func(km Keymap) error {
+				action, ok := km.LookupPrefix('z', 'a')
+				if !ok || action != ActionViewportTop {
+					return errorf("Prefix['z']['a'] = (%q, %v), want (%q, true)", action, ok, ActionViewportTop)
+				}
+				return nil
+			},
 		},
 	}
 

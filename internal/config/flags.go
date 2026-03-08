@@ -49,6 +49,8 @@ func RegisterFlags(fs *flag.FlagSet, opts *CLIOptions) {
 	fs.StringVar(&opts.WrapMode, "wrap-mode", DefaultWrapMode, "Long line wrapping (on, off)")
 	fs.StringVar(&opts.StatusBar, "status-bar", DefaultStatusBar, "Powerline status bar (on, off)")
 	fs.StringVar(&opts.Bindings, "bindings", "", "Key binding overrides (comma-separated key=action, !key to unbind)")
+	fs.StringVar(&opts.NormalBindings, "nbindings", "", "Normal-mode binding overrides (comma-separated key=action, !key to unbind)")
+	fs.StringVar(&opts.VisualBindings, "vbindings", "", "Visual-mode binding overrides (comma-separated key=action, !key to unbind)")
 
 	// Flash navigation
 	fs.StringVar(&opts.Flash, "flash", "on", "Flash navigation mode (on, off)")

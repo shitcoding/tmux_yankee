@@ -3,6 +3,8 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"github.com/shitcoding/tmux_yankee/internal/keymap"
 )
 
 // defaultOpts returns a CLIOptions with all required fields set to their defaults.
@@ -155,5 +157,63 @@ func TestResolve_StartPositionTop(t *testing.T) {
 	}
 	if cfg.StartPosition != StartPositionTop {
 		t.Errorf("StartPosition: got %q, want %q", cfg.StartPosition, StartPositionTop)
+	}
+}
+
+func TestResolve_ModeSpecificBindings(t *testing.T) {
+	opts := defaultOpts()
+	opts.Bindings = "H=first_nonblank"        // shared override
+	opts.NormalBindings = "H=line_start"        // normal override wins
+	opts.VisualBindings = "g-g=last_line"       // visual prefix override
+
+	cfg, err := Resolve(opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Normal mode: H should be line_start (normal override wins over shared)
+	nm := cfg.ModeKeymap.Normal()
+	if a, ok := nm.Lookup(keymap.Key('H')); !ok || a != keymap.ActionLineStart {
+		t.Errorf("normal H: got (%q, %v), want line_start", a, ok)
+	}
+
+	// Visual mode: H should be first_nonblank (shared override, no visual override for H)
+	vm := cfg.ModeKeymap.Visual()
+	if a, ok := vm.Lookup(keymap.Key('H')); !ok || a != keymap.ActionFirstNonBlank {
+		t.Errorf("visual H: got (%q, %v), want first_nonblank", a, ok)
+	}
+
+	// Visual mode: gg should be last_line (visual prefix override)
+	if a, ok := vm.LookupPrefix('g', 'g'); !ok || a != keymap.ActionLastLine {
+		t.Errorf("visual gg: got (%q, %v), want last_line", a, ok)
+	}
+
+	// Normal mode: gg should be first_line (default, no normal override)
+	if a, ok := nm.LookupPrefix('g', 'g'); !ok || a != keymap.ActionFirstLine {
+		t.Errorf("normal gg: got (%q, %v), want first_line", a, ok)
+	}
+}
+
+func TestResolve_InvalidNormalBindings(t *testing.T) {
+	opts := defaultOpts()
+	opts.NormalBindings = "H=bogus_action"
+	_, err := Resolve(opts)
+	if err == nil {
+		t.Fatal("expected error for invalid normal binding")
+	}
+	if !strings.Contains(err.Error(), "nbindings") {
+		t.Errorf("error should mention nbindings: %v", err)
+	}
+}
+
+func TestResolve_InvalidVisualBindings(t *testing.T) {
+	opts := defaultOpts()
+	opts.VisualBindings = "x=not_an_action"
+	_, err := Resolve(opts)
+	if err == nil {
+		t.Fatal("expected error for invalid visual binding")
+	}
+	if !strings.Contains(err.Error(), "vbindings") {
+		t.Errorf("error should mention vbindings: %v", err)
 	}
 }

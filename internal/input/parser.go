@@ -47,6 +47,12 @@ func NewParserWithKeymap(toggleKey, wrapKey byte, km keymap.Keymap) *Parser {
 	return &Parser{toggleKey: toggleKey, wrapKey: wrapKey, km: km}
 }
 
+// SetKeymap replaces the parser's keymap. Used by TUI to swap keymaps on mode transitions.
+// Not thread-safe — caller must ensure no concurrent Parse calls (guaranteed by single-threaded TUI loop).
+func (p *Parser) SetKeymap(km keymap.Keymap) {
+	p.km = km
+}
+
 // Parse processes a single byte of input and returns a command if complete.
 // Returns CommandNone if the input is part of an incomplete sequence.
 //
@@ -276,11 +282,6 @@ func (p *Parser) parsePrefixedKey(b byte) Command {
 	prefix := p.pending.Prefix
 	count := p.pending.Count
 
-	// Special case: wrap key after 'g' prefix (backward compat)
-	if prefix == 'g' && b == p.wrapKey {
-		return Command{Type: CommandToggleWrapMode}
-	}
-
 	// Char-capture prefix: the second byte is captured as a parameter
 	if action, ok := p.km.LookupCharCapture(prefix); ok {
 		return ActionToCommand(action, count, b)
@@ -291,9 +292,14 @@ func (p *Parser) parsePrefixedKey(b byte) Command {
 		return ActionToCommand(action, count, 0)
 	}
 
-	// Standard prefix lookup
+	// Standard prefix lookup (user bindings take priority over defaults)
 	if action, ok := p.km.LookupPrefix(prefix, b); ok {
 		return ActionToCommand(action, count, 0)
+	}
+
+	// Fallback: wrap key after 'g' prefix when no explicit binding exists
+	if prefix == 'g' && b == p.wrapKey {
+		return Command{Type: CommandToggleWrapMode}
 	}
 
 	// Invalid sequence

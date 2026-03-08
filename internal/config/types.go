@@ -89,8 +89,10 @@ type CLIOptions struct {
 	ExitOnYank    string
 	StartPosition string
 	WrapMode      string
-	StatusBar     string
-	Bindings      string
+	StatusBar      string
+	Bindings       string
+	NormalBindings string
+	VisualBindings string
 
 	// Flash navigation
 	Flash         string // "on" or "off"
@@ -122,7 +124,7 @@ type Settings struct {
 	StartPosition StartPosition
 	WrapMode      WrapMode
 	StatusBar     StatusBarMode
-	Keymap        keymap.Keymap
+	ModeKeymap    keymap.ModeKeymap
 
 	// Flash navigation
 	FlashEnabled   bool

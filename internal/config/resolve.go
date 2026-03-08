@@ -84,15 +84,31 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		statusBar = StatusBarOn
 	}
 
-	// Build keymap: defaults + user overrides from --bindings flag
-	km := keymap.DefaultKeymap()
+	// Build ModeKeymap: defaults + shared overrides + mode-specific overrides
+	base := keymap.DefaultKeymap()
+	var shared, normalOv, visualOv keymap.Keymap
 	if opts.Bindings != "" {
-		overrides, err := keymap.ParseBindings(opts.Bindings)
+		var err error
+		shared, err = keymap.ParseBindings(opts.Bindings)
 		if err != nil {
 			return Settings{}, fmt.Errorf("bindings: %w", err)
 		}
-		km = km.Merge(overrides)
 	}
+	if opts.NormalBindings != "" {
+		var err error
+		normalOv, err = keymap.ParseBindings(opts.NormalBindings)
+		if err != nil {
+			return Settings{}, fmt.Errorf("nbindings: %w", err)
+		}
+	}
+	if opts.VisualBindings != "" {
+		var err error
+		visualOv, err = keymap.ParseBindings(opts.VisualBindings)
+		if err != nil {
+			return Settings{}, fmt.Errorf("vbindings: %w", err)
+		}
+	}
+	modeKm := keymap.NewModeKeymap(base, shared, normalOv, visualOv)
 
 	// Flash settings
 	flashEnabled := opts.Flash != "off"
@@ -120,7 +136,7 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		StartPosition:   StartPosition(opts.StartPosition),
 		WrapMode:        wrapMode,
 		StatusBar:       statusBar,
-		Keymap:          km,
+		ModeKeymap:      modeKm,
 		FlashEnabled:    flashEnabled,
 		FlashMinChars:   flashMinChars,
 		FlashFTEnabled:  flashFT,
