@@ -549,7 +549,6 @@ func writeSGRNormal(b *strings.Builder, s Style) {
 // maxWidth is the maximum number of terminal display columns to render.
 // cursorCol, selStart, selEnd are absolute (0-based from line start); the renderer
 // maps them to viewport-relative positions internally.
-//
 // Uses style-run optimization: SGR sequences are only emitted when the effective
 // style changes from the previous cell, reducing output size and allocations.
 func RenderCellsWithPalette(cells []Cell, cursorCol, selStart, selEnd int,

@@ -479,13 +479,17 @@ func (t *TUI) clampViewportAndCursor() {
 		t.cursorLine = lineCount - 1
 	}
 
-	// Clamp cursor column to current line width
-	maxCol := t.doc.LineRuneCount(t.cursorLine)
+	// Clamp cursor column to current line width.
+	// In VisualBlock mode, allow the cursor past end-of-line so the
+	// rectangular selection retains its right edge on shorter lines.
 	if t.cursorCol < 0 {
 		t.cursorCol = 0
 	}
-	if t.cursorCol > maxCol {
-		t.cursorCol = maxCol
+	if t.modeMachine.Mode() != vmode.VisualBlock {
+		maxCol := t.doc.LineRuneCount(t.cursorLine)
+		if t.cursorCol > maxCol {
+			t.cursorCol = maxCol
+		}
 	}
 
 	if t.height <= 0 {
@@ -987,6 +991,24 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		// Update cursor and viewport
 		t.cursorLine = result.Cursor.Line
 		t.cursorCol = result.Cursor.Col
+
+		// In VisualBlock mode, allow cursor past end-of-line for horizontal
+		// motions so the rectangular selection can extend beyond shorter lines.
+		if t.modeMachine.Mode() == vmode.VisualBlock {
+			switch cmd.Motion {
+			case motion.MotionRight:
+				t.cursorCol = cursor.Col + cmd.Count
+				if cmd.Count == 0 {
+					t.cursorCol = cursor.Col + 1
+				}
+			case motion.MotionLineEnd:
+				// $ in block mode: allow the full line length (not lineLen-1)
+				lineLen := t.doc.LineRuneCount(t.cursorLine)
+				if t.cursorCol < lineLen {
+					t.cursorCol = lineLen
+				}
+			}
+		}
 		if t.cfg.WrapMode == config.WrapModeOn {
 			// In wrap mode, only accept viewport from motions that intentionally
 			// reposition it. For cursor-only motions, keep the current viewport
