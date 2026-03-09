@@ -1,0 +1,49 @@
+# Stage 1: Build Go binary and run Go tests
+FROM --platform=linux/amd64 golang:1.24-bookworm AS builder
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+# Run Go unit tests on Linux
+RUN go test ./...
+RUN go test -race ./...
+
+# Build binary
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /bin/tmux-yankee ./cmd/tmux-yankee
+
+# Stage 2: Test runtime
+FROM --platform=linux/amd64 ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TERM=xterm-256color
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tmux \
+    bash \
+    zsh \
+    xvfb \
+    xclip \
+    ncurses-bin \
+    procps \
+    locales \
+    && locale-gen C.UTF-8 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/tmux-yankee
+
+# Copy built binary
+COPY --from=builder /bin/tmux-yankee ./bin/tmux-yankee
+
+# Copy shell scripts and tests
+COPY scripts/ ./scripts/
+COPY tests/ ./tests/
+COPY yank.tmux ./yank.tmux
+
+# Make test scripts executable
+RUN find tests -name '*.sh' -exec chmod +x {} +
+
+ENTRYPOINT ["bash", "tests/run_linux_tests.sh"]

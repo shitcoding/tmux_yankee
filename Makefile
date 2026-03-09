@@ -1,4 +1,4 @@
-.PHONY: build release test clean install
+.PHONY: build release test test-linux clean install
 
 # Build targets
 BINARY_NAME=tmux-yankee
@@ -57,3 +57,9 @@ clean:
 install: build
 	@echo "Binary installed at $(BIN_DIR)/$(BINARY_NAME)"
 	@echo "Ensure your plugin path points to this directory"
+
+# Run tests inside Docker (Linux/amd64)
+test-linux:
+	@echo "Building and testing on Linux (Docker)..."
+	docker build --platform linux/amd64 -f Dockerfile.test-linux -t tmux-yankee-test-linux .
+	docker run --rm --platform linux/amd64 tmux-yankee-test-linux
