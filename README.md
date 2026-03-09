@@ -9,7 +9,7 @@ Line numbers for tmux copy-mode. Displays absolute, relative, or hybrid line num
 - **Overlay mode:** Full-pane coverage like tmux copy-mode (requires tmux 3.2+)
 - **Vim motions:** Full vim-style navigation (hjkl, w/b/e, gg/G, ^/$, Ctrl-u/d, zt/zz/zb)
 - **Visual selection:** Character-wise (v) and line-wise (V) visual modes
-- **Mode cycling:** Press `L` to toggle line number modes while viewing
+- **Mode cycling:** Press `Alt+Shift+L` to toggle line number modes while viewing
 - **Color preservation:** Original terminal colors are maintained
 - **Copy filtering:** Line number gutter is automatically stripped when you yank text
 - **Clean keybinding:** Uses separate key (`prefix + N` by default)
@@ -70,7 +70,7 @@ All options use the `@yankee_` prefix. Add these to `~/.tmux.conf` **before** th
 | Option | Default | Valid Values | Description |
 |--------|---------|--------------|-------------|
 | `@yankee_mode` | `hybrid` | `absolute`, `relative`, `hybrid` | Line number display mode |
-| `@yankee_toggle_mode_key` | `L` | single printable ASCII char | Key to cycle line number modes while viewing |
+| `@yankee_toggle_mode_key` | `L` | single printable ASCII char | Legacy fallback key for cycling line number modes (default binding is `Alt+Shift+L`) |
 | `@yankee_scrollback_lines` | `2000` | `100`..`200000` | Lines of scrollback history to capture |
 
 #### Theme
@@ -238,7 +238,7 @@ set -g @yankee_start_position "top"
 
 | Key | Action | Description |
 |-----|--------|-------------|
-| `L` | Toggle mode | Cycle through line number modes |
+| `Alt+Shift+L` | Toggle mode | Cycle through line number modes |
 | `q` | Quit | Exit line numbers view |
 
 #### Count Prefixes

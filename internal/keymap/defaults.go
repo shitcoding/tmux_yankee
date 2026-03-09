@@ -4,9 +4,9 @@ package keymap
 // plus new Tier 1/2/3 defaults.
 //
 // Note: wrapKey is NOT in the keymap. The parser checks it separately.
-// toggleKey is a fallback — keymap bindings take priority. L is bound to
-// screen_bottom in the default keymap. The toggle key ('L' by default)
-// only fires when the key has no keymap binding.
+// toggleKey is a legacy fallback — keymap bindings take priority.
+// Alt+Shift+L (M-L) is the default binding for toggle_line_mode.
+// L is bound to screen_bottom (vim default).
 func DefaultKeymap() Keymap {
 	return Keymap{
 		Direct: map[KeySpec]Action{
@@ -80,6 +80,7 @@ func DefaultKeymap() Keymap {
 
 			// Theme cycling
 			Alt('t'): ActionThemeNext,
+			Alt('L'): ActionToggleLineMode,
 
 			// Demo (Shift-Tab handled via CSI)
 			Key(']'): ActionDemoThemeNext,
