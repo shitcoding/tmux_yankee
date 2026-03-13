@@ -1,311 +1,338 @@
-# tmux-copymode-linenumbers
+# tmux-yankee
 
-Line numbers for tmux copy-mode. Displays absolute, relative, or hybrid line numbers in a snapshot view, similar to Vim's `set number` / `set relativenumber`.
+Vim inside tmux. Kind of.
 
-## Features
+It started as "I just want line numbers in tmux yank mode" and spiraled into rebuilding half of Vim/Neovim and flash.nvim as a tmux plugin. No regrets. YOLO!
 
-- **Three line number modes:** absolute, relative, hybrid (like Vim)
-- **Three display modes:** overlay (default), popup, or split window
-- **Overlay mode:** Full-pane coverage like tmux copy-mode (requires tmux 3.2+)
-- **Vim motions:** Full vim-style navigation (hjkl, w/b/e, gg/G, ^/$, Ctrl-u/d, zt/zz/zb)
-- **Visual selection:** Character-wise (v) and line-wise (V) visual modes
-- **Mode cycling:** Press `Alt+Shift+L` to toggle line number modes while viewing
-- **Color preservation:** Original terminal colors are maintained
-- **Copy filtering:** Line number gutter is automatically stripped when you yank text
-- **Clean keybinding:** Uses separate key (`prefix + N` by default)
-- **Zoom-safe:** Works correctly in zoomed panes
+![tmux-yankee workflow](assets/hero-workflow.gif)
 
-## Requirements
+tmux-yankee captures your pane content into a Go TUI with line numbers, vim motions, visual selection, incremental search, flash navigation, text objects, and block select. You navigate with the same muscle memory as Vim, yank what you need, and it goes straight to your clipboard. The line number gutter is automatically stripped from yanked text.
 
-- tmux 3.2+ (recommended for overlay/popup modes)
-- tmux 3.1+ (minimum, split mode only)
-- Bash 4+
-- Go 1.19+ (for building the binary)
+## How It Actually Works
+
+tmux doesn't let you draw arbitrary UI on top of a running pane. So yankee uses a trick borrowed from [tmux-fingers](https://github.com/Morantron/tmux-fingers): it creates a **temporary helper session**, runs the TUI there, and `swap-pane` puts it where your original pane was. When you quit, it swaps back. Your shell process, history, environment variables, working directory -- everything is exactly where you left it. 
+
+Three display modes are available:
+- **Overlay** (default) -- the swap-pane trick described above. Works on tmux 3.1+.
+- **Popup** -- centered floating window. Requires tmux 3.2+.
+- **Split** -- boring horizontal split. Always works.
 
 ## Installation
 
-### With TPM (Tmux Plugin Manager)
+### With [TPM](https://github.com/tmux-plugins/tpm)
 
-Add to your `~/.tmux.conf`:
+Add to `~/.tmux.conf`:
 
 ```tmux
-set -g @plugin 'your-username/tmux-copymode-linenumbers'
+set -g @plugin 'shitcoding/tmux-yankee'
 ```
 
-Then press `prefix + I` to install.
+Press `prefix + I` to install. The Go binary is downloaded automatically from the latest GitHub release -- no build tools needed.
 
 ### Manual
 
 ```bash
-git clone https://github.com/your-username/tmux-copymode-linenumbers.git ~/.tmux/plugins/tmux-copymode-linenumbers
+git clone https://github.com/shitcoding/tmux-yankee ~/.tmux/plugins/tmux-yankee
 ```
 
 Add to `~/.tmux.conf`:
 
 ```tmux
-run-shell ~/.tmux/plugins/tmux-copymode-linenumbers/plugin.tmux
+run-shell ~/.tmux/plugins/tmux-yankee/yank.tmux
 ```
+
+The binary will be downloaded on first run. To build from source instead:
+
+```bash
+cd ~/.tmux/plugins/tmux-yankee && make build
+```
+
+## Requirements
+
+- tmux 3.1+ (3.2+ recommended for popup mode)
+- Bash 4+
+- `curl` (for automatic binary download)
+- Go 1.19+ (only if building from source)
+
+## Quick Start
+
+1. Press `prefix + N` to launch yankee
+2. Navigate with vim motions (`j`/`k`, `w`/`b`, `gg`/`G`, `/pattern`)
+3. Press `v` for visual select, `V` for line select, `Ctrl-v` for block select
+4. Press `y` to yank and exit
+5. Press `q` to quit without yanking
+
+## Features
+
+### Search and Navigation
+
+Incremental regex search with match highlighting. `n`/`N` to cycle matches, `*`/`#` to search the word under cursor. All the vim motion keys you'd expect: `w`/`b`/`e`, `gg`/`G`, `{`/`}`, `H`/`M`/`L`, `Ctrl-u`/`Ctrl-d`, and count prefixes (`5j`, `10G`, `3w`).
+
+![Search and navigation](assets/search-navigation.gif)
+
+### Flash Jump
+
+Inspired by [flash.nvim](https://github.com/folke/flash.nvim). Press `s`, type a pattern, and labeled jump targets appear on every match. Press the label key to teleport there instantly. Works in normal mode (jump) and visual mode (extend selection to target).
+
+![Flash jump](assets/flash-jump.gif)
+
+### Flash + Visual Select
+
+Enter visual mode with `v`, then use flash (`s`) to extend your selection to a distant target. Chain multiple flash jumps to select exactly the range you need without scrolling.
+
+![Flash visual selection](assets/flash-visual.gif)
+
+### Text Objects
+
+Vim text objects for selecting inside/around quotes, brackets, braces, parentheses, words, and paragraphs. `vi"` to select inside double quotes, `va{` to select around curly braces, `iw` for inner word, etc.
+
+![Text objects](assets/text-objects.gif)
+
+### Block Select
+
+Visual block mode (`Ctrl-v`) for column selection. Select rectangular regions across multiple lines -- useful for grabbing a specific column from tabular output like `ps aux`.
+
+![Block selection](assets/block-select.gif)
+
+### Line Number Modes
+
+Three modes just like Vim: absolute (`set number`), relative (`set relativenumber`), and hybrid (`set number relativenumber`). Toggle with `Alt+Shift+L`.
+
+![Line number modes](assets/line-number-modes.gif)
+
+### Themes
+
+Five built-in themes. Cycle through them at runtime with `Alt+t`.
+
+![Theme cycling](assets/theme-cycling.gif)
+
+![All themes](assets/themes-composite.png)
+
+### Mouse Support
+
+When `set -g mouse on` is set in tmux:
+
+| Action | What happens |
+|--------|-------------|
+| Scroll up in shell | Launches yankee (replaces tmux copy-mode) |
+| Left-click in yankee | Set cursor position |
+| Left-click drag | Character-wise selection |
+| Scroll in yankee | Navigate up/down |
+
+Mouse-aware apps (vim, less, etc.) and alternate-screen programs are detected and left alone.
+
+## Keybindings
+
+### Motions
+
+All motions support count prefixes (`5j`, `3w`, `10G`).
+
+| Key | Action |
+|-----|--------|
+| `h`/`j`/`k`/`l` | Left / Down / Up / Right |
+| `w`/`b`/`e` | Word forward / backward / end |
+| `W`/`B`/`E` | WORD forward / backward / end |
+| `0` / `$` | Line start / end |
+| `^` / `g_` | First / last non-blank character |
+| `gg` / `G` | First / last line (or `{count}G` for goto line) |
+| `{` / `}` | Paragraph backward / forward |
+| `H` / `M` / `L` | Screen top / middle / bottom |
+| `%` | Matching bracket (or `{count}%` for percentage) |
+| `Ctrl-u` / `Ctrl-d` | Half page up / down |
+| `Ctrl-f` / `Ctrl-b` | Full page up / down |
+| `Ctrl-y` / `Ctrl-e` | Scroll viewport one line up / down |
+| `zt` / `zz` / `zb` | Position cursor line at top / center / bottom |
+| `gj` / `gk` | Display line down / up (when wrap mode is on) |
+
+### Search
+
+| Key | Action |
+|-----|--------|
+| `/` | Forward search |
+| `?` | Backward search |
+| `n` / `N` | Next / previous match |
+| `*` / `#` | Search word under cursor forward / backward |
+| `gn` / `gN` | Select next / previous match |
+| `\` | Clear search highlights |
+
+### Character Search
+
+| Key | Action |
+|-----|--------|
+| `f{char}` / `F{char}` | Find char forward / backward |
+| `t{char}` / `T{char}` | Till char forward / backward |
+| `;` / `,` | Repeat / reverse last char search |
+
+### Flash Navigation
+
+| Key | Action |
+|-----|--------|
+| `s` | Enter flash mode -- type a pattern, press label to jump |
+
+Uppercase labels offer an alternative jump position (configurable). Works in both normal and visual mode. In visual mode, flash extends the selection to the target.
+
+### Visual Mode and Yanking
+
+| Key | Action |
+|-----|--------|
+| `v` | Character-wise visual mode |
+| `V` | Line-wise visual mode |
+| `Ctrl-v` | Block-wise (column) visual mode |
+| `o` / `O` | Swap cursor to other end / corner |
+| `y` / `Enter` | Yank selection |
+| `yy` | Yank current line (normal mode) |
+
+### Text Objects (in visual mode)
+
+| Key | Selects |
+|-----|---------|
+| `iw` / `aw` | Inner / around word |
+| `iW` / `aW` | Inner / around WORD |
+| `ip` / `ap` | Inner / around paragraph |
+| `i"` / `a"` | Inside / around double quotes |
+| `i'` / `a'` | Inside / around single quotes |
+| `` i` `` / `` a` `` | Inside / around backticks |
+| `ib` / `ab` or `i(` / `a(` | Inside / around parentheses |
+| `iB` / `aB` or `i{` / `a{` | Inside / around braces |
+| `i[` / `a[` | Inside / around square brackets |
+| `i<` / `a<` | Inside / around angle brackets |
+
+### Marks
+
+| Key | Action |
+|-----|--------|
+| `m{a-z}` | Set mark |
+| `` `{a-z} `` | Jump to mark (exact position) |
+| `'{a-z}` | Jump to mark line |
+
+### Other
+
+| Key | Action |
+|-----|--------|
+| `Alt+Shift+L` | Cycle line number modes |
+| `Alt+t` | Cycle themes |
+| `gw` | Toggle word wrap |
+| `Ctrl-o` / `Ctrl-i` | Jump list backward / forward |
+| `q` / `Ctrl-c` | Quit |
 
 ## Configuration
 
-All options use the `@yankee_` prefix. Add these to `~/.tmux.conf` **before** the plugin is loaded.
+All options go in `~/.tmux.conf` before the plugin is loaded. They use the `@yankee_` prefix.
 
-### Options Reference
+### Display
 
-#### Display
+| Option | Default | Values | Description |
+|--------|---------|--------|-------------|
+| `@yankee_display_mode` | `overlay` | `overlay`, `popup`, `split` | How the TUI appears |
+| `@yankee_key` | `N` | single key | Key to trigger yankee (with prefix) |
+| `@yankee_key_table` | `prefix` | `prefix`, `root` | Key table for the trigger key |
+| `@yankee_start_position` | `bottom` | `top`, `middle`, `bottom` | Initial cursor position |
 
-| Option | Default | Valid Values | Description |
-|--------|---------|--------------|-------------|
-| `@yankee_display_mode` | `overlay` | `overlay`, `popup`, `split` | How the TUI window appears |
-| `@yankee_key` | `N` | single key | Key to trigger the view (with prefix) |
-| `@yankee_start_position` | `bottom` | `top`, `middle`, `bottom` | Where the cursor starts when the view opens |
+### Line Numbers
 
-**Display modes:**
-- **overlay** (default): Covers only the active pane using swap-pane. Preserves shell history and pane contents. Requires tmux 3.1+.
-- **popup**: Centered popup window (90% width/height). Requires tmux 3.2+.
-- **split**: Horizontal split window. Works on tmux 3.1+.
-
-#### Line Numbers
-
-| Option | Default | Valid Values | Description |
-|--------|---------|--------------|-------------|
+| Option | Default | Values | Description |
+|--------|---------|--------|-------------|
 | `@yankee_mode` | `hybrid` | `absolute`, `relative`, `hybrid` | Line number display mode |
-| `@yankee_toggle_mode_key` | `L` | single printable ASCII char | Legacy fallback key for cycling line number modes (default binding is `Alt+Shift+L`) |
-| `@yankee_scrollback_lines` | `2000` | `100`..`200000` | Lines of scrollback history to capture |
+| `@yankee_scrollback_lines` | `2000` | `100`..`200000` | Lines of scrollback to capture |
 
-#### Theme
+### Behavior
 
-| Option | Default | Valid Values | Description |
-|--------|---------|--------------|-------------|
-| `@yankee_theme` | `default` | `default`, `dracula`, `gruvbox`, `nord`, `solarized` | Built-in color theme |
+| Option | Default | Values | Description |
+|--------|---------|--------|-------------|
+| `@yankee_copy_target` | `both` | `both`, `tmux`, `clipboard` | Where yanked text goes |
+| `@yankee_exit_on_yank` | `on` | `on`, `off` | Close after yanking |
+| `@yankee_wrap_mode` | `off` | `on`, `off` | Word wrap for long lines |
+| `@yankee_status_bar` | `on` | `on`, `off` | Show the status bar |
 
-#### Colors (per element)
+### Flash
 
-Individual color overrides are applied on top of the active theme. Any option left empty inherits the theme value.
+| Option | Default | Values | Description |
+|--------|---------|--------|-------------|
+| `@yankee_flash` | `on` | `on`, `off` | Enable flash navigation |
+| `@yankee_flash_min_chars` | `1` | number | Min pattern length before labels appear |
+| `@yankee_flash_ft` | `off` | `on`, `off` | Use flash labels for f/t motions |
+| `@yankee_flash_jump_pos` | `match_end` | `match_start`, `match_end`, `word_start`, `word_end` | Where label jump lands |
+| `@yankee_flash_alt_jump_pos` | `match_start` | same as above | Where uppercase label lands |
 
-| Option | Default | Valid Values | Description |
-|--------|---------|--------------|-------------|
-| `@yankee_cursor_fg` | `""` | `#RRGGBB` | Cursor line foreground |
-| `@yankee_cursor_bg` | `""` | `#RRGGBB` | Cursor line background |
-| `@yankee_selection_fg` | `""` | `#RRGGBB` | Visual selection foreground |
-| `@yankee_selection_bg` | `""` | `#RRGGBB` | Visual selection background |
-| `@yankee_gutter_fg` | `""` | `#RRGGBB` | Gutter area foreground |
-| `@yankee_gutter_bg` | `""` | `#RRGGBB` | Gutter area background |
-| `@yankee_gutter_separator_fg` | `""` | `#RRGGBB` | Separator character between gutter and content |
-| `@yankee_linenum_absolute_fg` | `""` | `#RRGGBB` | Absolute line number foreground |
-| `@yankee_linenum_relative_fg` | `""` | `#RRGGBB` | Relative line number foreground |
-| `@yankee_linenum_cursor_fg` | `""` | `#RRGGBB` | Cursor line number foreground |
-| `@yankee_linenum_cursor_bold` | `""` | `on`, `off` | Bold cursor line number |
+### Theme
 
-#### Behavior
+| Option | Default | Values | Description |
+|--------|---------|--------|-------------|
+| `@yankee_theme` | `default` | `default`, `dracula`, `gruvbox`, `nord`, `solarized` | Color theme |
 
-| Option | Default | Valid Values | Description |
-|--------|---------|--------------|-------------|
-| `@yankee_copy_target` | `both` | `both`, `tmux`, `clipboard` | Where yanked text is sent |
-| `@yankee_exit_on_yank` | `on` | `on`, `off` | Whether to close the TUI after yanking |
+Individual color overrides (`#RRGGBB` format) can be layered on top of any theme:
 
-### Version Requirements
+| Option | Element |
+|--------|---------|
+| `@yankee_cursor_fg` / `_bg` | Cursor line |
+| `@yankee_selection_fg` / `_bg` | Visual selection |
+| `@yankee_gutter_fg` / `_bg` | Gutter background |
+| `@yankee_gutter_separator_fg` | Separator between gutter and content |
+| `@yankee_linenum_absolute_fg` | Absolute line numbers |
+| `@yankee_linenum_relative_fg` | Relative line numbers |
+| `@yankee_linenum_cursor_fg` | Cursor line number |
+| `@yankee_status_fg` / `_bg` | Status bar |
+| `@yankee_flash_label_fg` / `_bg` | Flash labels |
+| `@yankee_flash_match_fg` / `_bg` | Flash matches |
+| `@yankee_flash_backdrop` | Flash dimmed background |
 
-| Display Mode | Minimum tmux Version | Notes |
-|--------------|---------------------|-------|
-| `overlay` | 3.1+ | Uses swap-pane strategy, preserves shell history |
-| `popup` | 3.2+ | Uses centered popup window |
-| `split` | 3.1+ | Uses split window (always works) |
+### Custom Keybindings
 
-If you request `overlay` or `popup` on tmux 3.1, the plugin will automatically fall back to `split` mode with an informative message.
-
-## Themes
-
-The plugin ships with five built-in themes. Set the active theme with `@yankee_theme`:
+Rebind, unbind, or add mode-specific bindings:
 
 ```tmux
-set -g @yankee_theme "nord"
+# Remap Ctrl-d to a different action
+set -g @yankee_bind_C-d half_page_down
+
+# Remove a default binding
+set -g @yankee_unbind_H ""
+
+# Normal-mode only binding
+set -g @yankee_nbind_x some_action
+
+# Visual-mode only binding
+set -g @yankee_vbind_x some_action
 ```
 
-### Built-in Themes
-
-| Theme | Cursor | Selection | Cursor Line Number |
-|-------|--------|-----------|-------------------|
-| `default` | `#fe8018` | `#458588` | `#b8bb26` (green) |
-| `dracula` | `#ffb86c` | `#44475a` | `#50fa7b` (bright green) |
-| `gruvbox` | `#fe8019` | `#458588` | `#b8bb26` (green) |
-| `nord` | `#88c0d0` | `#5e81ac` | `#a3be8c` (sage) |
-| `solarized` | `#cb4b16` | `#073642` | `#2aa198` (teal) |
-
-### Theme Examples
+### Example Config
 
 ```tmux
-# Nord theme
-set -g @yankee_theme "nord"
-
-# Dracula theme with custom gutter color
+# Dracula theme, popup mode, generous scrollback
 set -g @yankee_theme "dracula"
-set -g @yankee_gutter_fg "#6272a4"
-
-# Gruvbox theme
-set -g @yankee_theme "gruvbox"
-
-# Solarized theme
-set -g @yankee_theme "solarized"
-```
-
-### Color Overrides
-
-Individual color options are applied on top of the chosen theme. You can mix a preset theme with custom colors for any element:
-
-```tmux
-# Use nord theme but override the cursor background
-set -g @yankee_theme "nord"
-set -g @yankee_cursor_bg "#ff5555"
-```
-
-Any color option left empty (the default) inherits the value from the active theme.
-
-### Example Configuration
-
-```tmux
-# Use nord theme
-set -g @yankee_theme "nord"
-
-# Custom cursor color only (applied on top of theme)
-set -g @yankee_cursor_bg "#ff5555"
-
-# Dracula with custom gutter
-set -g @yankee_theme "dracula"
-set -g @yankee_gutter_fg "#6272a4"
-
-# Capture 5000 lines of history
+set -g @yankee_display_mode "popup"
 set -g @yankee_scrollback_lines 5000
 
-# Don't close after yank (browse and yank multiple times)
+# Don't close after yank -- browse and yank multiple times
 set -g @yankee_exit_on_yank "off"
 
-# Use a custom key to toggle line number mode
-set -g @yankee_toggle_mode_key "T"
+# Start at top of content
+set -g @yankee_start_position "top"
+
+# Flash with 2-char minimum before labels
+set -g @yankee_flash_min_chars 2
 
 # Copy to clipboard only (skip tmux buffer)
 set -g @yankee_copy_target "clipboard"
-
-# Start at top of content instead of bottom
-set -g @yankee_start_position "top"
 ```
 
-## Usage
+## Clipboard Support
 
-1. Press `prefix + N` (or your configured key) to enter line numbers view
-2. Navigate using vim-style motion keys
-3. Press `L` to cycle between display modes (absolute -> relative -> hybrid)
-4. Select and yank text using visual mode
-5. Press `q` or `Escape` to exit and return to your shell
+Yankee detects your system clipboard automatically:
 
-### Vim-Style Keybindings
+| Platform | Backend |
+|----------|---------|
+| macOS | `pbcopy` |
+| Linux (X11) | `xclip` or `xsel` |
+| Linux (Wayland) | `wl-copy` |
+| WSL | `clip.exe` |
 
-#### Motion Keys
-
-| Key | Motion | Description |
-|-----|--------|-------------|
-| `j` | Down | Move cursor down one line |
-| `k` | Up | Move cursor up one line |
-| `h` | Left | Move cursor left one character |
-| `l` | Right | Move cursor right one character |
-| `w` | Word forward | Jump to start of next word |
-| `b` | Word backward | Jump to start of previous word |
-| `e` | Word end | Jump to end of current/next word |
-| `E` | WORD end | Jump to end of whitespace-separated WORD |
-| `B` | WORD backward | Jump to start of previous whitespace-separated WORD |
-| `0` | Line start | Jump to beginning of line |
-| `^` | First non-blank | Jump to first non-whitespace character |
-| `$` | Line end | Jump to end of line |
-| `gg` | First line | Jump to first line of document |
-| `G` | Last line | Jump to last line of document |
-| `Ctrl-u` | Half page up | Scroll up half a page |
-| `Ctrl-d` | Half page down | Scroll down half a page |
-| `zt` | Viewport top | Position current line at top of viewport |
-| `zz` | Viewport center | Position current line at center of viewport |
-| `zb` | Viewport bottom | Position current line at bottom of viewport |
-
-#### Visual Mode & Yanking
-
-| Key | Action | Description |
-|-----|--------|-------------|
-| `v` | Visual char | Enter character-wise visual mode |
-| `V` | Visual line | Enter line-wise visual mode |
-| `y` | Yank | Yank selected text and exit |
-| `Enter` | Yank | Yank selected text and exit (same as `y`) |
-| `Escape` | Exit visual | Return to normal mode |
-
-#### Other Keys
-
-| Key | Action | Description |
-|-----|--------|-------------|
-| `Alt+Shift+L` | Toggle mode | Cycle through line number modes |
-| `q` | Quit | Exit line numbers view |
-
-#### Count Prefixes
-
-All motion keys support count prefixes (like vim):
-- `5j` - Move down 5 lines
-- `3w` - Jump forward 3 words
-- `10G` - Jump to line 10
-- `2$` - Jump to end of next line
-
-## Mouse Scroll
-
-When `set -g mouse on` is set in your tmux config, trackpad and mouse wheel scrolling integrates with tmux-yankee:
-
-| Action | Behaviour |
-|--------|-----------|
-| Scroll up in shell | Launches tmux-yankee (instead of tmux copy-mode) |
-| Scroll up inside yankee | Moves cursor up |
-| Scroll down inside yankee | Moves cursor down |
-| Scroll down past last line | Exits yankee |
-
-**Requirement:** `set -g mouse on` must be set in `~/.tmux.conf`.
-
-The scroll-up launch binding respects pass-through: panes running vim, less, or other mouse-aware applications are unaffected. Full-screen alternate-screen apps are also excluded.
-
-## How It Works
-
-The plugin uses a **Go TUI** that renders line numbers and handles vim-style navigation:
-
-1. Launcher script (`scripts/launch_yankee.sh`) gathers pane context
-2. Depending on `@yankee_display_mode`:
-   - **overlay**: Creates helper window with TUI, uses `swap-pane` to place it in active pane position. Swaps back on exit to preserve shell state (like tmux-fingers/tmux-thumbs)
-   - **popup**: Launches centered popup (90% width/height)
-   - **split**: Creates horizontal split window
-3. Go binary (`bin/tmux-yankee`) captures pane content and renders realtime TUI
-4. User navigates with vim motions, selects text with visual mode
-5. On yank, text is copied to clipboard and tmux buffer (line numbers stripped)
-6. TUI exits, original pane restored with shell history and contents intact (overlay mode)
-
-The TUI shows a **snapshot** of pane content at launch time. Colors and formatting are preserved via ANSI code parsing.
-
-## Architecture
-
-```
-yank.tmux                   TPM entry point, keybinding setup
-scripts/
-  launch_yankee.sh         Display mode dispatcher and launcher
-  helpers.sh                Vendored tmux-yank clipboard helpers
-  copy_stdin.sh             Clipboard copy wrapper
-  copy_line.sh              Vendored tmux-yank line copy
-  copy_pane_pwd.sh          Vendored tmux-yank pwd copy
-cmd/tmux-yankee/
-  main.go                   Go binary entry point
-internal/
-  ui/                       TUI rendering and event loop
-  input/                    Vim-style input parser
-  motion/                   Vim motion handlers
-  selection/                Visual mode selection logic
-  linenums/                 Line number formatting (absolute/relative/hybrid)
-  tmux/                     Tmux client wrapper
-```
+By default, yanked text goes to both the system clipboard and the tmux paste buffer. Change with `@yankee_copy_target`.
 
 ## Known Limitations
 
-- **Snapshot view:** Content is captured at launch time; live scrolling is not supported
-- **Overlay mode:** Uses swap-pane to cover active pane; shell process and history are preserved
-- **Popup mode:** Requires tmux 3.2+ (auto-falls back to split on tmux 3.1)
+- **Snapshot view** -- content is captured at launch time. If your pane keeps producing output, you won't see it until you relaunch.
+- **Overlay mode on tmux 3.1** -- works, but tmux 3.2+ is smoother.
+- **No true vim registers** -- there's one yank destination (clipboard + tmux buffer), not 26 named registers.
 
 ## License
 

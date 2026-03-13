@@ -144,7 +144,15 @@ tmux set-option -gq @yankee_flash_ft "off"
 tmux set-option -gq @yankee_flash_jump_pos "match_end"
 tmux set-option -gq @yankee_flash_alt_jump_pos "match_start"
 
+ensure_binary() {
+    if [[ ! -x "${CURRENT_DIR}/bin/tmux-yankee" ]]; then
+        "${SCRIPTS_DIR}/install.sh"
+    fi
+}
+
 main() {
+    ensure_binary
+
     # Register yankee bindings first — they don't need a clipboard command
     # and must not be blocked by the early exit in error_handling_if_command_not_present.
     set_yankee_binding
