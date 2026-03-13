@@ -1,4 +1,4 @@
-# Hero Workflow: search → select → yank in server logs
+# Hero Workflow: search + select + yank
 Output assets/hero-workflow.gif
 
 Set Shell bash
@@ -20,7 +20,7 @@ Type "tmux -L vhs-hero kill-server 2>/dev/null; true"
 Enter
 Sleep 500ms
 
-Type "tmux -L vhs-hero new-session -d -s rec 'cat /tmp/yankee-demo-hero.txt; exec bash --norc --noprofile'"
+Type "tmux -L vhs-hero new-session -d -s rec 'cat /tmp/yankee-demo-hero.txt; export PS1=; stty -echo; exec bash --norc --noprofile'"
 Enter
 Sleep 1500ms
 
@@ -71,14 +71,12 @@ Sleep 400ms
 Type "5j"
 Sleep 800ms
 
-# Yank
+# Yank (exits yankee since exit-on-yank is ON)
 Type "y"
-Sleep 2s
+Sleep 1200ms
 
-# === Hidden cleanup ===
+# === Hidden cleanup (cut recording before shell artifacts appear) ===
 Hide
-Type "q"
-Sleep 500ms
 Ctrl+B
 Type "d"
 Sleep 500ms

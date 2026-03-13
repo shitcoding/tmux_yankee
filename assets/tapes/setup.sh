@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Creates content files for VHS demo recordings.
+# Creates content files and launcher scripts for VHS demo recordings.
 # Usage: setup.sh <scenario|all>
-# Only creates the content file — tmux/yankee handled by VHS tapes.
+# Only creates content files in /tmp/ — tmux/yankee handled by VHS tapes.
 set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 create_hero() {
     cat > /tmp/yankee-demo-hero.txt << 'EOF'
@@ -19,9 +21,14 @@ create_hero() {
 [2026-03-02 10:14:18] WARN  handler   │ Retry 2/3 for request_id=9f2c4b (service=payments)
 [2026-03-02 10:14:19] ERROR handler   │ timeout waiting for upstream service=payments (2500ms)
 [2026-03-02 10:14:19] ERROR handler   │ Max retries exceeded for request_id=9f2c4b
-[2026-03-02 10:14:20] INFO  handler   │ GET /api/v1/users (200, 42ms)
-[2026-03-02 10:14:21] INFO  handler   │ POST /api/v1/orders (201, 127ms)
-[2026-03-02 10:14:22] WARN  metrics   │ Latency p99=340ms exceeds limit=200ms
+[2026-03-02 10:14:20] ERROR handler   │ panic: assignment to entry in nil map
+[2026-03-02 10:14:20] ERROR handler   │   goroutine 284 [running]:
+[2026-03-02 10:14:20] ERROR handler   │   main.(*cacheHandler).Invalidate(0x0, {0x7f...})
+[2026-03-02 10:14:20] ERROR handler   │       /app/handlers/cache.go:67
+[2026-03-02 10:14:21] INFO  server    │ Recovered from panic, continuing to serve
+[2026-03-02 10:14:22] INFO  handler   │ GET /api/v1/users (200, 42ms)
+[2026-03-02 10:14:23] INFO  handler   │ POST /api/v1/orders (201, 127ms)
+[2026-03-02 10:14:24] WARN  metrics   │ Latency p99=340ms exceeds limit=200ms
 [2026-03-02 10:14:23] INFO  handler   │ GET /api/v1/health (200, 3ms)
 [2026-03-02 10:14:24] ERROR database  │ Connection pool exhausted (active=10, waiting=3)
 [2026-03-02 10:14:25] WARN  database  │ Scaling pool to max_connections=20
@@ -96,8 +103,9 @@ kube-system     etcd-control-plane-0          1/1     Running
 EOF
 }
 
-create_search() {
-    cat > /tmp/yankee-demo-search.txt << 'EOF'
+create_search_nav() {
+    # Merged search + navigation content: 200+ line config/log with repeated "timeout" token
+    cat > /tmp/yankee-demo-search-nav.txt << 'EOF'
 [10:14:11] INFO  Starting batch processor (batch_id=7a92f)
 [10:14:12] INFO  Loading 2,847 records from staging table
 [10:14:13] INFO  Validating schema: payments_v2
@@ -115,9 +123,9 @@ create_search() {
 [10:14:22] WARN    query=SELECT * FROM payments WHERE status='pending' ORDER BY created_at
 [10:14:23] INFO  Processing chunk 6/12 (237 records)
 [10:14:24] INFO  Processing chunk 7/12 (237 records)
-[10:14:25] ERROR Connection reset by peer: upstream=payment-provider
+[10:14:25] ERROR Connection timeout: upstream=payment-provider (timeout=5000ms)
 [10:14:25] ERROR   retrying in 2s (attempt 1/3)
-[10:14:27] ERROR Connection reset by peer: upstream=payment-provider
+[10:14:27] ERROR Connection timeout: upstream=payment-provider (timeout=5000ms)
 [10:14:27] ERROR   retrying in 4s (attempt 2/3)
 [10:14:31] INFO  Connection restored to payment-provider
 [10:14:32] INFO  Processing chunk 8/12 (237 records)
@@ -135,6 +143,28 @@ create_search() {
 [10:14:41] INFO  Transaction committed successfully
 [10:14:42] INFO  Sending completion webhook to https://hooks.example.com/batch
 [10:14:43] INFO  Webhook delivered (status=200, latency=89ms)
+[10:14:44] INFO  ─────────────────────────────────────────────────
+[10:14:44] INFO  Starting batch processor (batch_id=8b03g)
+[10:14:45] INFO  Loading 1,523 records from staging table
+[10:14:46] INFO  Validating schema: refunds_v1
+[10:14:47] INFO  Processing chunk 1/7 (217 records)
+[10:14:48] INFO  Processing chunk 2/7 (217 records)
+[10:14:49] WARN  Slow query detected: 1247ms (threshold=500ms)
+[10:14:49] WARN    query=SELECT * FROM refunds JOIN orders ON refunds.order_id=orders.id
+[10:14:50] INFO  Processing chunk 3/7 (217 records)
+[10:14:51] ERROR Connection timeout: upstream=refund-service (timeout=3000ms)
+[10:14:51] ERROR   retrying in 2s (attempt 1/3)
+[10:14:53] INFO  Connection restored to refund-service
+[10:14:54] INFO  Processing chunk 4/7 (217 records)
+[10:14:55] INFO  Processing chunk 5/7 (217 records)
+[10:14:56] ERROR Validation failed: refund_amount exceeds original (order=ORD-91234)
+[10:14:56] ERROR   original=150.00, refund_requested=175.00
+[10:14:57] INFO  Processing chunk 6/7 (217 records)
+[10:14:58] INFO  Processing chunk 7/7 (221 records)
+[10:14:59] INFO  Batch complete: 1521/1523 records processed
+[10:14:59] INFO  Duration: 15.2s, throughput: 100.1 records/s
+[10:15:00] INFO  Committing transaction (batch_id=8b03g)
+[10:15:01] INFO  Transaction committed successfully
 EOF
 }
 
@@ -162,32 +192,17 @@ create_text_objects() {
     "pool_size": 20,
     "connection_timeout": "5s"
   },
-  "redis": {
-    "addr": "redis.internal.example.com:6379",
-    "password": "",
-    "db": 0
-  },
-  "auth": {
-    "jwt_secret_path": "/run/secrets/jwt_key",
-    "token_ttl": "24h",
-    "refresh_ttl": "720h",
-    "issuer": "payment-gateway"
-  },
   "rate_limit": {
     "requests_per_minute": 100,
     "burst_size": 20,
-    "whitelist": ["10.0.0.0/8", "172.16.0.0/12"]
-  },
-  "logging": {
-    "level": "info",
-    "format": "json",
-    "output": "/var/log/payment-gateway/app.log"
+    "whitelist": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
   },
   "features": {
-    "enable_webhooks": true,
-    "enable_idempotency": true,
-    "enable_request_signing": false,
-    "maintenance_mode": false
+    "flags": ["enable_webhooks", "enable_idempotency", "request_signing"],
+    "maintenance": {
+      "window": "(02:00-04:00 UTC)",
+      "notify": "(ops-team@example.com, oncall@example.com)"
+    }
   }
 }
 EOF
@@ -322,20 +337,262 @@ func main() {
 EOF
 }
 
+create_flash() {
+    # Dense code/log text with many repeated substrings so flash labels appear everywhere
+    cat > /tmp/yankee-demo-flash.txt << 'EOF'
+func (s *Store) ProcessOrders(ctx context.Context) error {
+    orders, err := s.db.ListPendingOrders(ctx)
+    if err != nil {
+        return fmt.Errorf("list orders: %w", err)
+    }
+
+    for _, order := range orders {
+        if err := s.validateOrder(order); err != nil {
+            s.log.Warnf("invalid order %s: %v", order.ID, err)
+            continue
+        }
+
+        payment, err := s.payments.Charge(ctx, order.Amount, order.Currency)
+        if err != nil {
+            s.log.Errorf("charge failed for order %s: %v", order.ID, err)
+            s.metrics.Inc("payment_failures")
+            continue
+        }
+
+        order.Status = StatusPaid
+        order.PaymentID = payment.ID
+        order.PaidAt = time.Now()
+
+        if err := s.db.UpdateOrder(ctx, order); err != nil {
+            s.log.Errorf("update failed for order %s: %v", order.ID, err)
+            s.refund(ctx, payment.ID, order.Amount)
+            continue
+        }
+
+        s.log.Infof("order %s processed (payment=%s)", order.ID, payment.ID)
+        s.metrics.Inc("orders_processed")
+        s.notify(ctx, order.CustomerID, order.ID)
+    }
+
+    return nil
+}
+
+func (s *Store) validateOrder(o Order) error {
+    if o.Amount <= 0 {
+        return errors.New("amount must be positive")
+    }
+    if o.Currency == "" {
+        return errors.New("currency is required")
+    }
+    if len(o.Items) == 0 {
+        return errors.New("order must have items")
+    }
+    return nil
+}
+
+func (s *Store) refund(ctx context.Context, paymentID string, amount int64) {
+    if err := s.payments.Refund(ctx, paymentID, amount); err != nil {
+        s.log.Errorf("refund failed for payment %s: %v", paymentID, err)
+    }
+}
+
+func (s *Store) notify(ctx context.Context, customerID, orderID string) {
+    msg := Notification{
+        CustomerID: customerID,
+        Type:       "order_confirmed",
+        OrderID:    orderID,
+        CreatedAt:  time.Now(),
+    }
+    if err := s.notifier.Send(ctx, msg); err != nil {
+        s.log.Warnf("notification failed for customer %s: %v", customerID, err)
+    }
+}
+EOF
+}
+
+create_flash_visual() {
+    # Long changelog/function list where extending selection to a distant target is dramatic
+    cat > /tmp/yankee-demo-flash-visual.txt << 'EOF'
+## Changelog
+
+### v2.4.1 (2026-03-08)
+- fix: visual block cursor past end-of-line for rectangular selection
+- fix: pane-swap for zoomed panes, restore tmux keybindings on exit
+- feat: theme cycling via Alt+t in normal mode (5 themes)
+
+### v2.4.0 (2026-03-07)
+- feat: flash navigation with labeled jump targets (s key)
+- feat: flash integration with visual selection extension
+- feat: auto-jump for single-match flash patterns
+- feat: configurable flash jump positions (match-start, match-end)
+- fix: flash label disambiguation with forbidden characters
+- fix: label visibility at line boundaries
+
+### v2.3.0 (2026-03-01)
+- feat: percentage jump ([count]%) for proportional navigation
+- feat: colon go-to-line (:42) for direct line access
+- feat: prefix rebinding with X-Y notation (g-g, z-t, y-y)
+- feat: mode-specific keymaps (@yankee_nbind_*, @yankee_vbind_*)
+- fix: bracket text objects with backward search fallback
+- fix: viewport clamp for text objects and search-select motions
+
+### v2.2.0 (2026-02-26)
+- feat: incremental search (/ and ?) with real-time highlighting
+- feat: search navigation (n/N) from cursor position
+- feat: word search (* and #) under cursor
+- feat: configurable keybindings via @yankee_bindings option
+- fix: text object expansion in visual mode
+- fix: ge/gE word-end backward motion
+
+### v2.1.0 (2026-02-24)
+- feat: Powerline status bar with vim-airline theme integration
+- feat: mouse click-drag text selection with SGR coordinate mapping
+- feat: visual block mode (Ctrl-V) for rectangular selection
+- feat: paragraph motions ({/}) for jumping between blocks
+- perf: zero-alloc SGR parser, render cache, lazy yank
+- perf: gutter sprintf elimination and startup batching
+- fix: zoom pane UX (borderless popup promotion + viewport init)
+
+### v2.0.0 (2026-02-19)
+- feat: word wrap mode with display-line navigation (gj/gk/gw)
+- feat: horizontal scroll for full-width content
+- feat: demo mode with 4 pages and theme preview
+- feat: mouse scroll integration (scroll-up launches yankee)
+- feat: f/t/F/T/;/, character search motions
+- feat: ESC single-press flush (no double-press needed)
+- feat: yy yank-line in normal mode
+
+### v1.0.0 (2026-02-15)
+- feat: three line number modes (absolute, relative, hybrid)
+- feat: overlay display mode with pane-swap
+- feat: vim motions (hjkl, w/b/e, gg/G, 0/$, Ctrl-u/d, zt/zz/zb)
+- feat: visual selection (v, V) with clean gutter stripping
+- feat: clipboard integration (pbcopy, xclip, xsel, wl-copy)
+- feat: count prefixes (5j, 3w, 10G)
+- feat: 5 built-in themes (default, dracula, gruvbox, nord, solarized)
+EOF
+}
+
+create_linenums() {
+    # ~80 line file with cursor around the middle to show relative offsets
+    cat > /tmp/yankee-demo-linenums.txt << 'EOF'
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+)
+
+type Router struct {
+	mux     *http.ServeMux
+	logger  *log.Logger
+	prefix  string
+}
+
+func NewRouter(prefix string) *Router {
+	return &Router{
+		mux:    http.NewServeMux(),
+		logger: log.New(os.Stdout, "[router] ", log.LstdFlags),
+		prefix: strings.TrimRight(prefix, "/"),
+	}
+}
+
+func (r *Router) Handle(pattern string, handler http.Handler) {
+	path := r.prefix + pattern
+	r.logger.Printf("registering route: %s", path)
+	r.mux.Handle(path, r.withLogging(handler))
+}
+
+func (r *Router) HandleFunc(pattern string, fn http.HandlerFunc) {
+	r.Handle(pattern, fn)
+}
+
+func (r *Router) withLogging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, req)
+		r.logger.Printf("%s %s %v", req.Method, req.URL.Path, time.Since(start))
+	})
+}
+
+func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	r.mux.ServeHTTP(w, req)
+}
+
+type APIResponse struct {
+	Status  string      `json:"status"`
+	Data    interface{} `json:"data,omitempty"`
+	Error   string      `json:"error,omitempty"`
+}
+
+func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(APIResponse{
+		Status: "ok",
+		Data:   data,
+	})
+}
+
+func errorResponse(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(APIResponse{
+		Status: "error",
+		Error:  msg,
+	})
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	jsonResponse(w, http.StatusOK, map[string]string{
+		"uptime":  fmt.Sprintf("%v", time.Since(startTime)),
+		"version": "2.4.1",
+	})
+}
+
+var startTime = time.Now()
+
+func main() {
+	router := NewRouter("/api/v1")
+	router.HandleFunc("/health", healthHandler)
+
+	addr := ":8080"
+	log.Printf("listening on %s", addr)
+	if err := http.ListenAndServe(addr, router); err != nil {
+		log.Fatal(err)
+	}
+}
+EOF
+}
+
 create_launcher() {
     local scenario="$1"
     local theme="${2:-dracula}"
     local start_pos="${3:-top}"
     local scrollback="${4:-500}"
-    local project_dir
-    project_dir="$(cd "$(dirname "$0")/../.." && pwd)"
     cat > "/tmp/yankee-launch-${scenario}.sh" << SCRIPT
 #!/usr/bin/env bash
-cd '${project_dir}'
+cd '${PROJECT_DIR}'
 pane=\$(tmux display-message -p '#{pane_id}')
 exec ./bin/tmux-yankee --pane "\$pane" --theme ${theme} --scrollback-lines ${scrollback} --exit-on-yank off --start-position ${start_pos}
 SCRIPT
     chmod +x "/tmp/yankee-launch-${scenario}.sh"
+}
+
+# Hero clipboard-proof launcher: exits after yank so we can run pbpaste
+create_hero_clipboard_launcher() {
+    cat > "/tmp/yankee-launch-hero.sh" << SCRIPT
+#!/usr/bin/env bash
+cd '${PROJECT_DIR}'
+pane=\$(tmux display-message -p '#{pane_id}')
+exec ./bin/tmux-yankee --pane "\$pane" --theme dracula --scrollback-lines 500 --start-position bottom
+SCRIPT
+    chmod +x "/tmp/yankee-launch-hero.sh"
 }
 
 SCENARIO="${1:?Usage: setup.sh <scenario|all>}"
@@ -343,15 +600,15 @@ SCENARIO="${1:?Usage: setup.sh <scenario|all>}"
 case "$SCENARIO" in
     hero)
         create_hero
-        create_launcher hero dracula bottom
+        create_hero_clipboard_launcher
         ;;
     block-select)
         create_block_select
         create_launcher block-select dracula top
         ;;
-    search)
-        create_search
-        create_launcher search dracula top
+    search-nav)
+        create_search_nav
+        create_launcher search-nav dracula top
         ;;
     text-objects)
         create_text_objects
@@ -361,17 +618,35 @@ case "$SCENARIO" in
         create_navigation
         create_launcher navigation dracula top
         ;;
+    flash)
+        create_flash
+        create_launcher flash dracula bottom
+        ;;
+    flash-visual)
+        create_flash_visual
+        create_launcher flash-visual dracula bottom
+        ;;
+    linenums)
+        create_linenums
+        create_launcher linenums dracula top
+        ;;
     all)
         create_hero
         create_block_select
-        create_search
+        create_search_nav
         create_text_objects
         create_navigation
-        create_launcher hero dracula bottom
+        create_flash
+        create_flash_visual
+        create_linenums
+        create_hero_clipboard_launcher
         create_launcher block-select dracula top
-        create_launcher search dracula top
+        create_launcher search-nav dracula top
         create_launcher text-objects dracula top
         create_launcher navigation dracula top
+        create_launcher flash dracula bottom
+        create_launcher flash-visual dracula bottom
+        create_launcher linenums dracula top
         echo "All content files and launchers created in /tmp/"
         ;;
     *)

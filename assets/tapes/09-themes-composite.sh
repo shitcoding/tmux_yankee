@@ -12,7 +12,7 @@ PROJECT_DIR="$(pwd)"
 
 mkdir -p "$ASSETS_DIR"
 
-# Ensure content file and launcher scripts exist
+# Ensure content file exists
 bash assets/tapes/setup.sh text-objects
 
 for theme in "${THEMES[@]}"; do
@@ -119,9 +119,9 @@ TAPE
     # Move screenshot to assets dir
     if [[ -f "$SCREENSHOT_NAME" ]]; then
         mv "$SCREENSHOT_NAME" "$ASSETS_DIR/$SCREENSHOT_NAME"
-        echo "  ✓ $ASSETS_DIR/$SCREENSHOT_NAME"
+        echo "  -> $ASSETS_DIR/$SCREENSHOT_NAME"
     else
-        echo "  ✗ FAILED: $SCREENSHOT_NAME not created by VHS" >&2
+        echo "  FAILED: $SCREENSHOT_NAME not created by VHS" >&2
         exit 1
     fi
 done
@@ -147,7 +147,7 @@ montage \
 # Resize for README
 magick "$ASSETS_DIR/themes-composite.png" -resize 2400x -depth 8 -quality 95 "$ASSETS_DIR/themes-composite.png"
 
-echo "  → $ASSETS_DIR/themes-composite.png"
+echo "  -> $ASSETS_DIR/themes-composite.png"
 echo ""
 echo "Done!"
 ls -lh "$ASSETS_DIR"/theme-*.png "$ASSETS_DIR/themes-composite.png"

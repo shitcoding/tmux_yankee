@@ -1,4 +1,4 @@
-# Text Objects: vi" and va{ on JSON config
+# Text Objects: vi", va{, vi[, vi( on JSON config
 Output assets/text-objects.gif
 
 Set Shell bash
@@ -20,7 +20,7 @@ Type "tmux -L vhs-textobj kill-server 2>/dev/null; true"
 Enter
 Sleep 500ms
 
-Type "tmux -L vhs-textobj new-session -d -s rec 'cat /tmp/yankee-demo-text-objects.txt; exec bash --norc --noprofile'"
+Type "tmux -L vhs-textobj new-session -d -s rec '/opt/homebrew/bin/bat --color=always --plain --paging=never --theme=Dracula --language=json /tmp/yankee-demo-text-objects.txt; exec bash --norc --noprofile'"
 Enter
 Sleep 1500ms
 
@@ -52,41 +52,77 @@ Show
 # === Visible demo ===
 Sleep 600ms
 
-# Search for a string value
-Type@200ms "/payment-gateway"
-Sleep 400ms
+# Demo 1: vi" — select inside quotes
+# Navigate to "payment-gateway" line
+Type@250ms ":3"
+Sleep 200ms
 Enter
-Sleep 500ms
+Sleep 400ms
 
-# Select inside quotes (vi")
+# Move to the quoted value
+Type "f-"
+Sleep 300ms
+
+# Select inside quotes
 Type@150ms "vi"
 Sleep 100ms
 Type '"'
-Sleep 1500ms
+Sleep 1200ms
 
 # Escape back to normal
 Escape
-Sleep 400ms
-
-# Now demo va{ — select around the "tls" block
-Type@200ms "/tls"
-Sleep 400ms
-Enter
 Sleep 500ms
 
-# Select around braces
-Type@150ms "va{"
-Sleep 1500ms
-
-# Escape
-Escape
+# Demo 2: va{ — select around braces
+# Go to the tls block
+Type@250ms ":10"
+Sleep 200ms
+Enter
 Sleep 400ms
 
-# One more: select inner paragraph (vip) on a config section
-Type "}"
-Sleep 300ms
-Type@150ms "vip"
-Sleep 1500ms
+# Select around braces (whole tls object)
+Type@150ms "va"
+Sleep 100ms
+Type "{"
+Sleep 1200ms
+
+# Escape back
+Escape
+Sleep 500ms
+
+# Demo 3: vi[ — select inside square brackets
+# Navigate to whitelist line
+Type@250ms ":26"
+Sleep 200ms
+Enter
+Sleep 400ms
+
+# Select inside brackets
+Type@150ms "vi"
+Sleep 100ms
+Type "["
+Sleep 1200ms
+
+# Escape back
+Escape
+Sleep 500ms
+
+# Demo 4: vi( — select inside parentheses
+# Navigate to maintenance window line
+Type@250ms ":31"
+Sleep 200ms
+Enter
+Sleep 400ms
+
+# Select inside parens
+Type@150ms "vi"
+Sleep 100ms
+Type "("
+Sleep 1200ms
+
+# Yank the last selection
+Type "y"
+Sleep 1000ms
 
 # === Hidden cleanup ===
 Hide

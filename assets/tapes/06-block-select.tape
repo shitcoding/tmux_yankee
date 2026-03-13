@@ -52,13 +52,14 @@ Show
 # === Visible demo ===
 Sleep 600ms
 
-# Position on first data row, CMD column
-Type ":2"
+# Go to first data row
+Type@250ms ":2"
+Sleep 200ms
 Enter
 Sleep 400ms
 
 # Move to the CMD column
-Type "f-"
+Type "fa"
 Sleep 300ms
 
 # Enter visual block mode
@@ -69,7 +70,7 @@ Sleep 600ms
 Type "7j"
 Sleep 400ms
 
-# Extend to end of CMD value
+# Extend to end of line (cursor past EOL on shorter lines)
 Type "$"
 Sleep 800ms
 
