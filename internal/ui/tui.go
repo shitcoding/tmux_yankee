@@ -2082,6 +2082,17 @@ func (t *TUI) computeSearchMatches(pattern string) {
 		return
 	}
 
+	// Strip empty alternatives (e.g. "timeout|" or "|panic" or "a||b")
+	// that would otherwise match every position as empty strings.
+	pattern = strings.Trim(pattern, "|")
+	for strings.Contains(pattern, "||") {
+		pattern = strings.ReplaceAll(pattern, "||", "|")
+	}
+	if pattern == "" {
+		t.searchRegex = nil
+		return
+	}
+
 	// Smart case: if pattern has any uppercase letter, case-sensitive; else case-insensitive.
 	hasUpper := false
 	for _, r := range pattern {
