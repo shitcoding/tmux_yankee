@@ -625,8 +625,6 @@ launch_overlay() {
     trap '_yankee_cleanup_from_state "'"$state_file"'"; _yankee_clear_busy "'"$PANE_ID"'" "'"$helper_pane_id"'"; yankee_lock_release "'"$helper_pane_lock_dir"'"; yankee_lock_release "'"$pane_lock_dir"'"' EXIT INT TERM HUP
 
     # Swap helper into original pane position.
-    # No pre-swap wait needed: the atomic @yankee_busy gate in the tmux binding
-    # prevents reentry before the TUI sets alternate_on and mouse_any_flag.
     if ! tmux swap-pane -d -s "$orig_pane_id" -t "$helper_pane_id" -Z; then
         yankee_lock_release "$helper_pane_lock_dir"
         tmux display-message "Error: tmux-yankee swap-pane failed" 2>/dev/null || true

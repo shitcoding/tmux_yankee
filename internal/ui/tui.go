@@ -11,8 +11,9 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"unicode"
 	"syscall"
+	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/shitcoding/tmux_yankee/internal/config"
@@ -368,6 +369,19 @@ func (t *TUI) Run() error {
 		}
 	}()
 
+	// Debounce SIGWINCH: during zoomed pane swaps, tmux delivers SIGWINCH at
+	// the unzoomed height followed by SIGWINCH at the zoomed height within a
+	// few milliseconds.  Without debounce, the TUI re-renders at the wrong
+	// (half) height before correcting itself.  By waiting 50ms after the last
+	// SIGWINCH before re-rendering, we skip the intermediate size entirely.
+	var resizeTimer *time.Timer
+	resizeRenderCh := make(chan struct{}, 1)
+	defer func() {
+		if resizeTimer != nil {
+			resizeTimer.Stop()
+		}
+	}()
+
 	for {
 		select {
 		case event := <-inputCh:
@@ -407,7 +421,19 @@ func (t *TUI) Run() error {
 			}
 
 		case <-resizeCh:
-			// Re-read terminal size on SIGWINCH and keep cursor/viewport in bounds
+			// Debounce: reset timer on each SIGWINCH, render only after 50ms of quiet
+			if resizeTimer != nil {
+				resizeTimer.Stop()
+			}
+			resizeTimer = time.AfterFunc(50*time.Millisecond, func() {
+				select {
+				case resizeRenderCh <- struct{}{}:
+				default:
+				}
+			})
+
+		case <-resizeRenderCh:
+			// Re-read terminal size after SIGWINCH debounce settles
 			if err := t.updateSize(); err != nil {
 				return fmt.Errorf("get terminal size failed: %w", err)
 			}
