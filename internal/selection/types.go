@@ -71,6 +71,13 @@ func ExtractRegion(lines []string, region Region) (string, error) {
 	case KindChar:
 		return extractCharWise(lines, start, end)
 	case KindBlock:
+		// Clamp negative column values to 0 to prevent panic in rune slicing
+		if start.Col < 0 {
+			start.Col = 0
+		}
+		if end.Col < 0 {
+			end.Col = 0
+		}
 		return extractBlockWise(lines, start, end)
 	default:
 		return "", fmt.Errorf("invalid selection kind: %v", region.Kind)

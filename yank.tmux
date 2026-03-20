@@ -92,7 +92,7 @@ set_yankee_binding() {
     # Atomic busy gate: set-option -o fails if @yankee_busy already exists,
     # preventing concurrent launches on the same pane.
     local gate_cond="tmux set-option -opq -t #{pane_id} @yankee_busy 1"
-    local gate_then="run-shell -b '${SCRIPTS_DIR}/launch_yankee.sh #{pane_id} #{window_id} #{pane_index}'"
+    local gate_then="run-shell -b \"${SCRIPTS_DIR}/launch_yankee.sh #{pane_id} #{window_id} #{pane_index}\""
     if [[ "$yankee_table" == "root" ]]; then
         tmux bind-key -n "$yankee_key" if-shell "$gate_cond" "$gate_then"
     else
@@ -118,7 +118,7 @@ set_scroll_bindings() {
     # Note: tmux's #{||:A,B,C} with 3 operands is broken (always truthy); use
     # nested #{||:A,#{||:B,C}} instead.
     local gate_cond="tmux set-option -opq -t #{pane_id} @yankee_busy 1"
-    local gate_then="run-shell -b '${SCRIPTS_DIR}/launch_yankee.sh #{pane_id} #{window_id} #{pane_index}'"
+    local gate_then="run-shell -b \"${SCRIPTS_DIR}/launch_yankee.sh #{pane_id} #{window_id} #{pane_index}\""
     # Build nested if-shell as the else branch of the outer format guard.
     # When the outer guard passes (no mode/mouse/alt), the inner gate atomically
     # sets @yankee_busy — if it already exists, the launch is rejected.

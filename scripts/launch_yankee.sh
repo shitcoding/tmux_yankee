@@ -93,9 +93,16 @@ yankee_lock_acquire() {
     if kill -0 "$lock_pid" 2>/dev/null; then
         return 1  # Holder alive: genuinely locked, skip this launch.
     fi
-    # Holder dead: steal the lock.
-    echo $$ > "$pid_file"
-    return 0
+    # Holder dead: reclaim atomically — remove and re-create the lock dir
+    # so that concurrent contenders don't both believe they own the lock.
+    rmdir "$lock_dir" 2>/dev/null  # may fail if pid file still there
+    rm -f "$pid_file" 2>/dev/null || true
+    rmdir "$lock_dir" 2>/dev/null || true
+    if mkdir "$lock_dir" 2>/dev/null; then
+        echo $$ > "$pid_file"
+        return 0
+    fi
+    return 1  # another contender won the race
 }
 
 yankee_lock_release() {
@@ -163,8 +170,13 @@ _yankee_startup_sweep() {
             if kill -0 "$existing_pid" 2>/dev/null; then
                 continue  # Active overlay, skip.
             fi
-            # Dead owner — steal lock for recovery.
-            echo $$ > "${pane_lock}/pid" 2>/dev/null || true
+            # Dead owner — reclaim atomically for recovery.
+            rm -f "${pane_lock}/pid" 2>/dev/null || true
+            rmdir "$pane_lock" 2>/dev/null || true
+            if ! mkdir "$pane_lock" 2>/dev/null; then
+                continue  # another process won the race
+            fi
+            echo $$ > "${pane_lock}/pid"
         else
             echo $$ > "${pane_lock}/pid"
         fi

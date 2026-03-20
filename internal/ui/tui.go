@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unicode"
@@ -102,6 +104,10 @@ type TUI struct {
 
 	// Flash navigation state (nil when disabled by config)
 	flash *flash.State
+
+	// Shutdown coordination
+	quitCh   chan struct{} // closed by Stop() to signal Run() to exit
+	quitOnce sync.Once    // ensures quitCh is closed exactly once
 
 	// Demo mode fields
 	isDemo         bool
@@ -204,13 +210,14 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 		formatter:     linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, cfg.Palette.Gutter, cfg.Palette.LineNum),
 		palette:       cfg.Palette,
 		modeMachine:   vmode.NewMachine(),
-		client:        tmux.NewClient(),
+		client:        tmux.NewClient(context.Background()),
 		parser:        parser,
 		motionHandler: motion.NewVimHandler(),
 		cursorLine:    initialCursorLine,
 		cursorCol:     0,
 		viewportTop:   0,
 		flash:         flashState,
+		quitCh:        make(chan struct{}),
 	}
 }
 
@@ -285,6 +292,7 @@ func NewDemoTUI(cfg config.Settings, pages [][]string, pageNames []string) *TUI 
 		demoPageNames:  pageNames,
 		demoThemeIndex: themeIndex,
 		demoThemeName:  startThemeName,
+		quitCh:         make(chan struct{}),
 	}
 }
 
@@ -348,15 +356,21 @@ func (t *TUI) Run() error {
 	// Initial render
 	t.render()
 
-	// Read stdin in a goroutine so the main loop can select on both input and SIGWINCH
+	// Read stdin in a goroutine so the main loop can select on both input and SIGWINCH.
+	// doneCh is closed when Run() exits so the goroutine can unpark from its send.
 	const maxKeySequenceBytes = 64 // SGR mouse sequences can be up to ~20 bytes
 	inputCh := make(chan inputEvent)
+	doneCh := make(chan struct{})
+	defer close(doneCh)
 	go func() {
 		buf := make([]byte, maxKeySequenceBytes)
 		for {
 			n, err := os.Stdin.Read(buf)
 			if err != nil {
-				inputCh <- inputEvent{err: err}
+				select {
+				case inputCh <- inputEvent{err: err}:
+				case <-doneCh:
+				}
 				return
 			}
 			if n == 0 {
@@ -365,7 +379,11 @@ func (t *TUI) Run() error {
 
 			data := make([]byte, n)
 			copy(data, buf[:n])
-			inputCh <- inputEvent{data: data}
+			select {
+			case inputCh <- inputEvent{data: data}:
+			case <-doneCh:
+				return
+			}
 		}
 	}()
 
@@ -438,6 +456,9 @@ func (t *TUI) Run() error {
 				return fmt.Errorf("get terminal size failed: %w", err)
 			}
 			t.render()
+
+		case <-t.quitCh:
+			return nil
 		}
 	}
 }
@@ -467,8 +488,16 @@ func (t *TUI) restoreTerminal() {
 		fmt.Print("\x1b[?25h\x1b[2J\x1b[H")
 		// Leave alternate screen buffer
 		fmt.Print("\x1b[?1049l")
-		term.Restore(int(os.Stdin.Fd()), t.oldState)
+		if err := term.Restore(int(os.Stdin.Fd()), t.oldState); err != nil {
+			fmt.Fprintf(os.Stderr, "restoreTerminal: term.Restore failed: %v\n", err)
+		}
 	}
+}
+
+// Stop signals the TUI event loop to exit. Safe to call from any goroutine.
+// The caller should wait for Run() to return to ensure terminal cleanup completes.
+func (t *TUI) Stop() {
+	t.quitOnce.Do(func() { close(t.quitCh) })
 }
 
 // updateSize refreshes terminal dimensions and clamps viewport/cursor
@@ -2348,10 +2377,13 @@ func (t *TUI) shouldShowStatusBar() bool {
 // render draws the TUI
 func (t *TUI) render() {
 	showStatus := t.shouldShowStatusBar()
-	contentHeight := t.height
 	if showStatus {
-		contentHeight = t.height - 1 // reserve last row for status bar
-		t.height = contentHeight
+		// Temporarily reduce height for content rendering, then restore.
+		// Use save/restore instead of a local to keep renderScroll/renderWrap
+		// seeing the reduced height through t.height (they read it directly).
+		savedHeight := t.height
+		t.height = savedHeight - 1
+		defer func() { t.height = savedHeight }()
 	}
 
 	if t.cfg.WrapMode == config.WrapModeOn {
@@ -2361,7 +2393,6 @@ func (t *TUI) render() {
 	}
 
 	if showStatus {
-		t.height = contentHeight + 1 // restore full height
 		t.renderStatusBar()
 	} else if t.flash != nil && t.flash.Active {
 		// No status bar but flash is active -- render inline prompt on last row
@@ -2695,6 +2726,34 @@ func (t *TUI) LineRuneCount(index int) int {
 	return t.doc.LineRuneCount(index)
 }
 
+// dispatchCopy sends text to tmux buffer and/or system clipboard based on CopyTarget config.
+func (t *TUI) dispatchCopy(text, caller string) {
+	clipboardCopy := func(s string) error {
+		if t.clipboardFunc != nil {
+			return t.clipboardFunc(s)
+		}
+		return t.copyToClipboard(s)
+	}
+
+	switch t.cfg.CopyTarget {
+	case config.CopyTargetTmux:
+		if err := t.client.SetBuffer(text); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: SetBuffer failed: %v\n", caller, err)
+		}
+	case config.CopyTargetClipboard:
+		if err := clipboardCopy(text); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: copyToClipboard failed: %v\n", caller, err)
+		}
+	default: // CopyTargetBoth or unset
+		if err := t.client.SetBuffer(text); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: SetBuffer failed: %v\n", caller, err)
+		}
+		if err := clipboardCopy(text); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: copyToClipboard failed: %v\n", caller, err)
+		}
+	}
+}
+
 // yank extracts selected text, copies to clipboard and tmux buffer
 // Returns true to quit TUI after yank
 func (t *TUI) yank() bool {
@@ -2713,35 +2772,7 @@ func (t *TUI) yank() bool {
 		return false
 	}
 
-	// clipboardCopy dispatches to injected clipboardFunc (for tests) or real impl
-	clipboardCopy := func(s string) error {
-		if t.clipboardFunc != nil {
-			return t.clipboardFunc(s)
-		}
-		return t.copyToClipboard(s)
-	}
-
-	// Route copy operations based on CopyTarget setting
-	switch t.cfg.CopyTarget {
-	case config.CopyTargetTmux:
-		// tmux buffer only, skip clipboard
-		if err := t.client.SetBuffer(text); err != nil {
-			fmt.Fprintf(os.Stderr, "yank: SetBuffer failed: %v\n", err)
-		}
-	case config.CopyTargetClipboard:
-		// clipboard only, skip tmux buffer
-		if err := clipboardCopy(text); err != nil {
-			fmt.Fprintf(os.Stderr, "yank: copyToClipboard failed: %v\n", err)
-		}
-	default: // CopyTargetBoth or unset
-		// Set tmux buffer first (reliable fallback), then clipboard
-		if err := t.client.SetBuffer(text); err != nil {
-			fmt.Fprintf(os.Stderr, "yank: SetBuffer failed: %v\n", err)
-		}
-		if err := clipboardCopy(text); err != nil {
-			fmt.Fprintf(os.Stderr, "yank: copyToClipboard failed: %v\n", err)
-		}
-	}
+	t.dispatchCopy(text, "yank")
 
 	// Exit visual mode and return to Normal mode (vim behavior)
 	pos := selection.Pos{Line: t.cursorLine, Col: t.cursorCol}
@@ -2764,30 +2795,7 @@ func (t *TUI) yankLine() bool {
 	}
 	text := t.doc.Line(t.cursorLine)
 
-	clipboardCopy := func(s string) error {
-		if t.clipboardFunc != nil {
-			return t.clipboardFunc(s)
-		}
-		return t.copyToClipboard(s)
-	}
-
-	switch t.cfg.CopyTarget {
-	case config.CopyTargetTmux:
-		if err := t.client.SetBuffer(text); err != nil {
-			fmt.Fprintf(os.Stderr, "yankLine: SetBuffer failed: %v\n", err)
-		}
-	case config.CopyTargetClipboard:
-		if err := clipboardCopy(text); err != nil {
-			fmt.Fprintf(os.Stderr, "yankLine: copyToClipboard failed: %v\n", err)
-		}
-	default: // CopyTargetBoth or unset
-		if err := t.client.SetBuffer(text); err != nil {
-			fmt.Fprintf(os.Stderr, "yankLine: SetBuffer failed: %v\n", err)
-		}
-		if err := clipboardCopy(text); err != nil {
-			fmt.Fprintf(os.Stderr, "yankLine: copyToClipboard failed: %v\n", err)
-		}
-	}
+	t.dispatchCopy(text, "yankLine")
 
 	if !t.cfg.ExitOnYank {
 		return false

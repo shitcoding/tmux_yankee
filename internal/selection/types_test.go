@@ -380,3 +380,40 @@ func TestExtractRegion_EdgeCases(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractRegion_BlockNegativeColumns(t *testing.T) {
+	// M6: Negative column values must not panic in block mode.
+	lines := []string{"hello", "world"}
+	region := Region{
+		Kind:  KindBlock,
+		Start: Pos{Line: 0, Col: -1},
+		End:   Pos{Line: 1, Col: 2},
+	}
+	got, err := ExtractRegion(lines, region)
+	if err != nil {
+		t.Fatalf("ExtractRegion() error = %v", err)
+	}
+	// With col -1 clamped to 0, should extract cols [0, 2] inclusive
+	want := "hel\nwor"
+	if got != want {
+		t.Errorf("ExtractRegion() = %q, want %q", got, want)
+	}
+}
+
+func TestExtractRegion_BlockBothNegativeColumns(t *testing.T) {
+	lines := []string{"hello"}
+	region := Region{
+		Kind:  KindBlock,
+		Start: Pos{Line: 0, Col: -3},
+		End:   Pos{Line: 0, Col: -1},
+	}
+	got, err := ExtractRegion(lines, region)
+	if err != nil {
+		t.Fatalf("ExtractRegion() error = %v", err)
+	}
+	// Both clamped to 0, so extract col [0, 0] = single char
+	want := "h"
+	if got != want {
+		t.Errorf("ExtractRegion() = %q, want %q", got, want)
+	}
+}

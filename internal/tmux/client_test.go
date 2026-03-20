@@ -1,11 +1,12 @@
 package tmux
 
 import (
+	"context"
 	"testing"
 )
 
 func TestNewClient(t *testing.T) {
-	client := NewClient()
+	client := NewClient(context.Background())
 	if client == nil {
 		t.Fatal("NewClient returned nil")
 	}
@@ -16,7 +17,7 @@ func TestNewClient(t *testing.T) {
 // For now, we verify the API contract exists
 
 func TestClientHasRequiredMethods(t *testing.T) {
-	client := NewClient()
+	client := NewClient(context.Background())
 
 	// Verify methods exist (compilation check)
 	_ = client.CapturePane

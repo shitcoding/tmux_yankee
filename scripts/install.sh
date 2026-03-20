@@ -62,7 +62,12 @@ download_binary() {
     echo "tmux-yankee: fetching latest release from ${repo}..."
 
     # Query GitHub API for the download URL of the matching asset
-    download_url="$(curl -fsSL "$api_url" 2>/dev/null \
+    local api_response
+    if ! api_response="$(curl -fsSL "$api_url" 2>&1)"; then
+        echo "tmux-yankee: GitHub API request failed: ${api_response}" >&2
+        return 1
+    fi
+    download_url="$(printf '%s' "$api_response" \
         | grep -o "\"browser_download_url\": *\"[^\"]*${asset_name}\"" \
         | head -1 \
         | sed 's/.*"browser_download_url": *"//' \

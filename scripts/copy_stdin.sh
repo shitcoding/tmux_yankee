@@ -21,6 +21,11 @@ fi
 
 # Copy stdin to clipboard with error handling.
 # eval is needed because $copy_command may contain shell operators (e.g., "cat | clip.exe" on WSL).
+# SECURITY NOTE: @custom_copy_command and @override_copy_command are executed
+# verbatim via eval. This is inherited from upstream tmux-yank and by design —
+# users explicitly configure these tmux options. The trust boundary is the tmux
+# option namespace: any actor able to set tmux options can execute arbitrary
+# commands through the copy path.
 if ! eval "$copy_command"; then
     display_message "tmux-yankee: Clipboard copy failed. Text saved to tmux buffer only."
     exit 1

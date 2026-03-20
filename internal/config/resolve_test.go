@@ -20,6 +20,7 @@ func defaultOpts() CLIOptions {
 		ExitOnYank:      DefaultExitOnYank,
 		StartPosition:   DefaultStartPosition,
 		StatusBar:       DefaultStatusBar,
+		WrapMode:        DefaultWrapMode,
 	}
 }
 
@@ -215,5 +216,53 @@ func TestResolve_InvalidVisualBindings(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "vbindings") {
 		t.Errorf("error should mention vbindings: %v", err)
+	}
+}
+
+func TestResolve_InvalidWrapMode(t *testing.T) {
+	opts := defaultOpts()
+	opts.WrapMode = "auto"
+	_, err := Resolve(opts)
+	if err == nil {
+		t.Fatal("expected error for invalid wrap-mode")
+	}
+	if !strings.Contains(err.Error(), "wrap-mode") {
+		t.Errorf("error should mention wrap-mode: %v", err)
+	}
+}
+
+func TestResolve_InvalidFlashMinChars(t *testing.T) {
+	opts := defaultOpts()
+	opts.FlashMinChars = "abc"
+	_, err := Resolve(opts)
+	if err == nil {
+		t.Fatal("expected error for invalid flash-min-chars")
+	}
+	if !strings.Contains(err.Error(), "flash-min-chars") {
+		t.Errorf("error should mention flash-min-chars: %v", err)
+	}
+}
+
+func TestResolve_InvalidFlashJumpPos(t *testing.T) {
+	opts := defaultOpts()
+	opts.FlashJumpPos = "bogus"
+	_, err := Resolve(opts)
+	if err == nil {
+		t.Fatal("expected error for invalid flash-jump-pos")
+	}
+	if !strings.Contains(err.Error(), "flash-jump-pos") {
+		t.Errorf("error should mention flash-jump-pos: %v", err)
+	}
+}
+
+func TestResolve_InvalidFlashAltJumpPos(t *testing.T) {
+	opts := defaultOpts()
+	opts.FlashAltJumpPos = "bogus"
+	_, err := Resolve(opts)
+	if err == nil {
+		t.Fatal("expected error for invalid flash-alt-jump-pos")
+	}
+	if !strings.Contains(err.Error(), "flash-alt-jump-pos") {
+		t.Errorf("error should mention flash-alt-jump-pos: %v", err)
 	}
 }

@@ -3,6 +3,7 @@ package input
 import (
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/shitcoding/tmux_yankee/internal/keymap"
 	"github.com/shitcoding/tmux_yankee/internal/motion"
@@ -25,6 +26,7 @@ type Parser struct {
 	searchDir    byte    // '/' or '?'
 	colonBuf     []rune  // accumulates colon command digits
 	inColon      bool    // true while collecting colon input
+	searchUTF8   []byte  // accumulates bytes of an in-progress multi-byte UTF-8 rune
 }
 
 // NewParser creates a new input parser with the default toggle key ('L') and default keymap.
@@ -387,8 +389,11 @@ func (p *Parser) Flush() Command {
 	}
 	if p.inCSI {
 		// Incomplete CSI parameter sequence — discard silently.
+		// Clear pending count/prefix so stale state doesn't leak into
+		// subsequent keystrokes.
 		p.inCSI = false
 		p.mouseBuf = nil
+		p.clearPending()
 		return Command{Type: CommandNone}
 	}
 	if !p.inMouse && len(p.mouseBuf) > 0 {
@@ -414,6 +419,27 @@ func (p *Parser) Flush() Command {
 
 // parseSearchByte handles a single byte while in search input mode.
 func (p *Parser) parseSearchByte(b byte) Command {
+	// If we're accumulating a multi-byte UTF-8 sequence, continue it.
+	if len(p.searchUTF8) > 0 {
+		if b&0xC0 != 0x80 {
+			// Not a continuation byte — discard partial sequence and
+			// fall through to process this byte normally.
+			p.searchUTF8 = p.searchUTF8[:0]
+		} else {
+			p.searchUTF8 = append(p.searchUTF8, b)
+			if utf8.FullRune(p.searchUTF8) {
+				r, _ := utf8.DecodeRune(p.searchUTF8)
+				p.searchUTF8 = p.searchUTF8[:0]
+				if r != utf8.RuneError {
+					p.searchBuf = append(p.searchBuf, r)
+					return Command{Type: CommandSearchUpdate, SearchPattern: string(p.searchBuf)}
+				}
+			}
+			// Still accumulating — need more bytes.
+			return Command{Type: CommandNone}
+		}
+	}
+
 	switch b {
 	case 13: // Enter → confirm search
 		pattern := string(p.searchBuf)
@@ -430,7 +456,12 @@ func (p *Parser) parseSearchByte(b byte) Command {
 			p.searchBuf = append(p.searchBuf, rune(b))
 			return Command{Type: CommandSearchUpdate, SearchPattern: string(p.searchBuf)}
 		}
-		// Non-printable (Ctrl-codes, etc.) → ignore
+		if b&0xC0 == 0xC0 {
+			// Start of a multi-byte UTF-8 sequence (leading byte)
+			p.searchUTF8 = append(p.searchUTF8[:0], b)
+			return Command{Type: CommandNone}
+		}
+		// Non-printable (Ctrl-codes, lone continuation bytes, etc.) → ignore
 		return Command{Type: CommandNone}
 	}
 }

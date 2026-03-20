@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -43,7 +44,7 @@ func main() {
 		tui = ui.NewDemoTUI(cfg, pages, ui.DemoPageNames)
 	} else {
 		// Normal mode: capture pane content from tmux
-		client := tmux.NewClient()
+		client := tmux.NewClient(context.Background())
 		content, err := client.CapturePane(cfg.PaneID, -cfg.ScrollbackLines, -1, true)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error capturing pane: %v\n", err)
@@ -67,7 +68,9 @@ func main() {
 			os.Exit(1)
 		}
 	case <-sigChan:
-		// Signal received, exit cleanly
-		// TUI cleanup happens via defer in tui.Run()
+		// Signal received — tell TUI to exit and wait for Run() to return.
+		// This ensures restoreTerminal() runs via deferred cleanup in Run().
+		tui.Stop()
+		<-errChan
 	}
 }

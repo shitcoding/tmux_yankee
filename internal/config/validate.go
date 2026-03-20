@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"unicode"
 	"unicode/utf8"
 )
@@ -117,6 +118,35 @@ func Validate(opts CLIOptions) error {
 		// valid
 	default:
 		return fmt.Errorf("invalid status-bar %q: must be on or off", opts.StatusBar)
+	}
+
+	// WrapMode
+	switch opts.WrapMode {
+	case "on", "off":
+		// valid
+	default:
+		return fmt.Errorf("invalid wrap-mode %q: must be on or off", opts.WrapMode)
+	}
+
+	// FlashMinChars: must be a positive integer when non-empty
+	if opts.FlashMinChars != "" {
+		n, err := strconv.Atoi(opts.FlashMinChars)
+		if err != nil || n < 1 {
+			return fmt.Errorf("invalid flash-min-chars %q: must be a positive integer", opts.FlashMinChars)
+		}
+	}
+
+	// Flash jump positions
+	validJumpPos := map[string]bool{
+		"match_end": true, "match_start": true,
+		"word_start": true, "word_end": true,
+		"off": true, "": true,
+	}
+	if !validJumpPos[opts.FlashJumpPos] {
+		return fmt.Errorf("invalid flash-jump-pos %q: must be one of match_end, match_start, word_start, word_end, off", opts.FlashJumpPos)
+	}
+	if !validJumpPos[opts.FlashAltJumpPos] {
+		return fmt.Errorf("invalid flash-alt-jump-pos %q: must be one of match_end, match_start, word_start, word_end, off", opts.FlashAltJumpPos)
 	}
 
 	// On/off boolean style fields

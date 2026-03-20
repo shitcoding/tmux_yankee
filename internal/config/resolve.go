@@ -75,9 +75,6 @@ func Resolve(opts CLIOptions) (Settings, error) {
 	}
 
 	wrapMode := WrapMode(opts.WrapMode)
-	if wrapMode != WrapModeOff && wrapMode != WrapModeOn {
-		wrapMode = WrapModeOff
-	}
 
 	statusBar := StatusBarMode(opts.StatusBar)
 	if statusBar != StatusBarOn && statusBar != StatusBarOff {
@@ -110,13 +107,11 @@ func Resolve(opts CLIOptions) (Settings, error) {
 	}
 	modeKm := keymap.NewModeKeymap(base, shared, normalOv, visualOv)
 
-	// Flash settings
+	// Flash settings (values already validated by Validate)
 	flashEnabled := opts.Flash != "off"
 	flashMinChars := 1
 	if opts.FlashMinChars != "" {
-		if n, err := strconv.Atoi(opts.FlashMinChars); err == nil && n > 0 {
-			flashMinChars = n
-		}
+		flashMinChars, _ = strconv.Atoi(opts.FlashMinChars)
 	}
 	flashFT := opts.FlashFT == "on"
 	flashJumpPos := int(flash.ParseJumpPos(opts.FlashJumpPos, flash.JumpPosMatchEnd))

@@ -1,18 +1,32 @@
 package tmux
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
-// Client wraps tmux command execution
-type Client struct{}
+const cmdTimeout = 10 * time.Second
 
-// NewClient creates a new tmux client
-func NewClient() *Client {
-	return &Client{}
+// Client wraps tmux command execution
+type Client struct {
+	ctx context.Context
+}
+
+// NewClient creates a new tmux client. The context is used as a parent
+// for per-command timeouts (10s) and allows external cancellation.
+func NewClient(ctx context.Context) *Client {
+	return &Client{ctx: ctx}
+}
+
+// command creates an exec.Cmd with a 10-second timeout derived from
+// the client's parent context.
+func (c *Client) command(name string, args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(c.ctx, cmdTimeout)
+	return exec.CommandContext(ctx, name, args...), cancel
 }
 
 // capturePaneArgs builds the argument slice for a tmux capture-pane command.
@@ -49,7 +63,8 @@ func capturePaneArgs(paneID string, start, end int, preserveColors bool) []strin
 func (c *Client) CapturePane(paneID string, start, end int, preserveColors bool) ([]string, error) {
 	args := capturePaneArgs(paneID, start, end, preserveColors)
 
-	cmd := exec.Command("tmux", args...)
+	cmd, cancel := c.command("tmux", args...)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("capture-pane failed: %w", err)
@@ -66,9 +81,11 @@ func (c *Client) CapturePane(paneID string, start, end int, preserveColors bool)
 	return content, nil
 }
 
-// GetFormatVar queries a tmux format variable
+// GetFormatVar queries a tmux format variable.
+// NOTE: Only called with hardcoded format strings — do not pass user input.
 func (c *Client) GetFormatVar(paneID, formatVar string) (string, error) {
-	cmd := exec.Command("tmux", "display-message", "-p", "-t", paneID, formatVar)
+	cmd, cancel := c.command("tmux", "display-message", "-p", "-t", paneID, formatVar)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("display-message failed: %w", err)
@@ -109,7 +126,8 @@ func (c *Client) GetScrollPosition(paneID string) (int, error) {
 
 // SetBuffer sets the tmux paste buffer
 func (c *Client) SetBuffer(text string) error {
-	cmd := exec.Command("tmux", "set-buffer", "--", text)
+	cmd, cancel := c.command("tmux", "set-buffer", "--", text)
+	defer cancel()
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("set-buffer failed: %w", err)
 	}

@@ -898,3 +898,79 @@ func TestParser_SetKeymap(t *testing.T) {
 		t.Errorf("after SetKeymap: H = %+v, want CommandMotion/LineEnd", cmd)
 	}
 }
+
+func TestFlush_ClearsCSIPendingState(t *testing.T) {
+	// M3: Flush() must clear pending count/prefix when discarding incomplete CSI.
+	// Simulate: user types "3" (count), then ESC [ 5 (incomplete CSI param), then Flush.
+	// After flush, the pending count must be zero so the next key isn't affected.
+	p := NewParserWithKeys('L', 'w')
+
+	// Type a count prefix
+	p.Parse('3')
+	ps := p.PendingState()
+	if ps.Count != 3 {
+		t.Fatalf("expected pending count 3, got %d", ps.Count)
+	}
+
+	// Start a CSI sequence with a parameter byte to enter inCSI mode:
+	// ESC → mouseBuf=[ESC], [ → mouseBuf=[ESC,[], 5 → inCSI=true
+	p.Parse(0x1b) // ESC
+	p.Parse('[')   // ESC [
+	p.Parse('5')   // CSI parameter byte → enters inCSI mode
+
+	// Flush discards incomplete CSI
+	cmd := p.Flush()
+	if cmd.Type != CommandNone {
+		t.Errorf("Flush() returned %v, want CommandNone", cmd.Type)
+	}
+
+	// Pending state must be cleared
+	ps = p.PendingState()
+	if ps.Count != 0 {
+		t.Errorf("after Flush of incomplete CSI, pending count = %d, want 0", ps.Count)
+	}
+}
+
+func TestParseSearchByte_Unicode(t *testing.T) {
+	// M7: Unicode search input must work (multi-byte UTF-8 sequences).
+	p := NewParserWithKeys('L', 'w')
+
+	// Enter search mode
+	cmd := p.Parse('/')
+	if cmd.Type != CommandSearchForward {
+		t.Fatalf("expected CommandSearchForward, got %v", cmd.Type)
+	}
+
+	// Type a 2-byte UTF-8 character: ñ (U+00F1 = 0xC3 0xB1)
+	cmd = p.Parse(0xC3)
+	if cmd.Type != CommandNone {
+		t.Errorf("first byte of ñ: got %v, want CommandNone", cmd.Type)
+	}
+	cmd = p.Parse(0xB1)
+	if cmd.Type != CommandSearchUpdate {
+		t.Fatalf("second byte of ñ: got %v, want CommandSearchUpdate", cmd.Type)
+	}
+	if cmd.SearchPattern != "ñ" {
+		t.Errorf("search pattern = %q, want %q", cmd.SearchPattern, "ñ")
+	}
+
+	// Type a 3-byte UTF-8 character: 日 (U+65E5 = 0xE6 0x97 0xA5)
+	p.Parse(0xE6)
+	p.Parse(0x97)
+	cmd = p.Parse(0xA5)
+	if cmd.Type != CommandSearchUpdate {
+		t.Fatalf("third byte of 日: got %v, want CommandSearchUpdate", cmd.Type)
+	}
+	if cmd.SearchPattern != "ñ日" {
+		t.Errorf("search pattern = %q, want %q", cmd.SearchPattern, "ñ日")
+	}
+
+	// Confirm search
+	cmd = p.Parse(13) // Enter
+	if cmd.Type != CommandSearchConfirm {
+		t.Fatalf("Enter: got %v, want CommandSearchConfirm", cmd.Type)
+	}
+	if cmd.SearchPattern != "ñ日" {
+		t.Errorf("confirmed pattern = %q, want %q", cmd.SearchPattern, "ñ日")
+	}
+}
