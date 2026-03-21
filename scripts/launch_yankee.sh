@@ -450,7 +450,7 @@ build_yankee_args() {
 wait_for_helper_completion() {
     local signal="$1"
     local helper_pane_id="$2"
-    local timeout_ticks=1200   # 120 seconds at 0.1s/tick
+    local timeout_ticks=36000  # 3600 seconds (1 hour) at 0.1s/tick
     local ticks=0
     local waiter_pid
 
