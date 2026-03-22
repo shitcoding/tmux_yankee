@@ -633,6 +633,29 @@ func (t *TUI) wrapContentWidth() int {
 	return cw
 }
 
+// lastVisibleLineWrap returns the index of the last logical line whose first
+// wrapped row is visible in the current viewport. Used by scroll-up to clamp
+// the cursor correctly in wrap mode, where viewportTop+ch-1 overestimates the
+// visible bottom because wrapped lines consume multiple display rows.
+func (t *TUI) lastVisibleLineWrap(contentWidth int) int {
+	ch := t.contentHeight()
+	if ch <= 0 || contentWidth <= 0 {
+		return t.viewportTop
+	}
+	rowsUsed := 0
+	lastFit := t.viewportTop
+	lineCount := t.doc.LineCount()
+	for i := t.viewportTop; i < lineCount; i++ {
+		chunks := t.cachedWrapChunks(i, t.doc.Cells(i), contentWidth)
+		rowsUsed += len(chunks)
+		if rowsUsed > ch {
+			break
+		}
+		lastFit = i
+	}
+	return lastFit
+}
+
 // visibleDocLineRange returns the (top, height) of document lines that have
 // at least one display row visible in the current viewport. Used for flash
 // matching in wrap mode where document lines may span multiple display rows.
@@ -1896,7 +1919,14 @@ func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
 				t.viewportTop = 0
 			}
 			// Cursor must stay within the (now higher) viewport window.
-			if newBottom := t.viewportTop + ch - 1; t.cursorLine > newBottom {
+			if t.cfg.WrapMode == config.WrapModeOn {
+				// In wrap mode, wrapped lines consume multiple display rows,
+				// so viewportTop+ch-1 overestimates the visible bottom.
+				contentWidth := t.wrapContentWidth()
+				if lastVis := t.lastVisibleLineWrap(contentWidth); t.cursorLine > lastVis {
+					t.cursorLine = lastVis
+				}
+			} else if newBottom := t.viewportTop + ch - 1; t.cursorLine > newBottom {
 				t.cursorLine = newBottom
 			}
 			t.clampViewportAndCursor()
