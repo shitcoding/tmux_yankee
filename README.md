@@ -242,6 +242,7 @@ All options go in `~/.tmux.conf` before the plugin is loaded. They use the `@yan
 | `@yankee_copy_target` | `both` | `both`, `tmux`, `clipboard` | Where yanked text goes |
 | `@yankee_exit_on_yank` | `on` | `on`, `off` | Close after yanking |
 | `@yankee_wrap_mode` | `off` | `on`, `off` | Word wrap for long lines |
+| `@yankee_mouse` | `off` | `on`, `off` | Mouse support (click, drag, scroll) |
 | `@yankee_status_bar` | `on` | `on`, `off` | Show the status bar |
 
 ### Flash

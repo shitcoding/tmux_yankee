@@ -333,6 +333,7 @@ build_yankee_args() {
         "@yankee_exit_on_yank"        "--exit-on-yank"
         "@yankee_start_position"      "--start-position"
         "@yankee_wrap_mode"           "--wrap-mode"
+        "@yankee_mouse"               "--mouse"
         "@yankee_status_bar"          "--status-bar"
         "@yankee_flash"               "--flash"
         "@yankee_flash_min_chars"     "--flash-min-chars"

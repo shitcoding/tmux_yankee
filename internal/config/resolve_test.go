@@ -21,6 +21,7 @@ func defaultOpts() CLIOptions {
 		StartPosition:   DefaultStartPosition,
 		StatusBar:       DefaultStatusBar,
 		WrapMode:        DefaultWrapMode,
+		Mouse:           DefaultMouse,
 	}
 }
 

@@ -128,6 +128,14 @@ func Validate(opts CLIOptions) error {
 		return fmt.Errorf("invalid wrap-mode %q: must be on or off", opts.WrapMode)
 	}
 
+	// Mouse
+	switch opts.Mouse {
+	case "on", "off":
+		// valid
+	default:
+		return fmt.Errorf("invalid mouse %q: must be on or off", opts.Mouse)
+	}
+
 	// FlashMinChars: must be a positive integer when non-empty
 	if opts.FlashMinChars != "" {
 		n, err := strconv.Atoi(opts.FlashMinChars)

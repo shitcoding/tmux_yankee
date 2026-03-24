@@ -9,6 +9,7 @@ const (
 	DefaultExitOnYank      = "on"
 	DefaultStartPosition   = "bottom"
 	DefaultWrapMode        = "off"
+	DefaultMouse           = "off"
 	DefaultWrapKey         = "w"
 	DefaultStatusBar       = "on"
 	MinScrollbackLines     = 100

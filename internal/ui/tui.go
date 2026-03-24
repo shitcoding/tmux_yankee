@@ -350,8 +350,10 @@ func (t *TUI) Run() error {
 	// Clear screen and hide cursor
 	fmt.Print("\x1b[2J\x1b[?25l")
 
-	// Enable mouse reporting: basic tracking + button-event (drag) + SGR extended format
-	fmt.Print("\x1b[?1000h\x1b[?1002h\x1b[?1006h")
+	// Enable mouse reporting if configured: basic tracking + button-event (drag) + SGR extended format
+	if t.cfg.Mouse {
+		fmt.Print("\x1b[?1000h\x1b[?1002h\x1b[?1006h")
+	}
 
 	// Initial render
 	t.render()
@@ -482,8 +484,10 @@ func (t *TUI) initTerminal() error {
 // restoreTerminal restores terminal state
 func (t *TUI) restoreTerminal() {
 	if t.oldState != nil {
-		// Disable mouse reporting
-		fmt.Print("\x1b[?1006l\x1b[?1002l\x1b[?1000l")
+		// Disable mouse reporting (only if it was enabled)
+		if t.cfg.Mouse {
+			fmt.Print("\x1b[?1006l\x1b[?1002l\x1b[?1000l")
+		}
 		// Show cursor and clear screen
 		fmt.Print("\x1b[?25h\x1b[2J\x1b[H")
 		// Leave alternate screen buffer

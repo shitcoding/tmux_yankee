@@ -89,6 +89,7 @@ type CLIOptions struct {
 	ExitOnYank    string
 	StartPosition string
 	WrapMode      string
+	Mouse         string
 	StatusBar      string
 	Bindings       string
 	NormalBindings string
@@ -123,6 +124,7 @@ type Settings struct {
 	ExitOnYank    bool
 	StartPosition StartPosition
 	WrapMode      WrapMode
+	Mouse         bool
 	StatusBar     StatusBarMode
 	ModeKeymap    keymap.ModeKeymap
 

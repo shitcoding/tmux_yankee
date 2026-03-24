@@ -130,6 +130,7 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		ExitOnYank:      exitOnYank,
 		StartPosition:   StartPosition(opts.StartPosition),
 		WrapMode:        wrapMode,
+		Mouse:           opts.Mouse == "on",
 		StatusBar:       statusBar,
 		ModeKeymap:      modeKm,
 		FlashEnabled:    flashEnabled,
