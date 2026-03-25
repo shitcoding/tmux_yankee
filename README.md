@@ -72,7 +72,7 @@ Incremental regex search with match highlighting. `n`/`N` to cycle matches, `*`/
 
 ### Flash Jump
 
-Inspired by [flash.nvim](https://github.com/folke/flash.nvim). Press `s`, type a pattern, and labeled jump targets appear on every match. Press the label key to teleport there instantly. Works in normal mode (jump) and visual mode (extend selection to target).
+Inspired by [flash.nvim](https://github.com/folke/flash.nvim). Press `s`, type a pattern, and labeled jump targets appear on every match. Press the lowercase label to jump to end of match, or the uppercase (Shift) label to jump to start of match. Both positions are configurable.
 
 ![Flash jump](assets/flash-jump.gif)
 
@@ -167,9 +167,26 @@ All motions support count prefixes (`5j`, `3w`, `10G`).
 
 | Key | Action |
 |-----|--------|
-| `s` | Enter flash mode -- type a pattern, press label to jump |
+| `s` | Enter flash mode -- type a pattern, and labeled jump targets appear |
+| lowercase label (e.g. `a`) | Jump to target at primary position (default: end of match) |
+| uppercase label (e.g. `A`) | Jump to target at alternate position (default: start of match) |
+| `Esc` / `Enter` | Exit flash mode |
 
-Uppercase labels offer an alternative jump position (configurable). Works in both normal and visual mode. In visual mode, flash extends the selection to the target.
+Every match on screen gets a label. Press the **lowercase** label key to jump to the primary position, or the **uppercase** (Shift) version of the same label to jump to the alternate position. This lets you land on either side of a match without reconfiguring.
+
+Primary and alternate jump positions are configurable via `@yankee_flash_jump_pos` and `@yankee_flash_alt_jump_pos`:
+
+| Value | Lands on |
+|-------|----------|
+| `match_end` | Last character of the match (default for lowercase) |
+| `match_start` | First character of the match (default for uppercase) |
+| `word_start` | Start of the word containing the match |
+| `word_end` | End of the word containing the match |
+| `off` | Disable alternate jump (uppercase labels ignored) |
+
+Search is smartcase: all-lowercase patterns match case-insensitively, patterns with any uppercase character match exactly.
+
+Works in both normal and visual mode. In visual mode, flash extends the selection to the jump target.
 
 ### Visual Mode and Yanking
 
@@ -251,9 +268,38 @@ All options go in `~/.tmux.conf` before the plugin is loaded. They use the `@yan
 |--------|---------|--------|-------------|
 | `@yankee_flash` | `on` | `on`, `off` | Enable flash navigation |
 | `@yankee_flash_min_chars` | `1` | number | Min pattern length before labels appear |
-| `@yankee_flash_ft` | `off` | `on`, `off` | Use flash labels for f/t motions |
-| `@yankee_flash_jump_pos` | `match_end` | `match_start`, `match_end`, `word_start`, `word_end` | Where label jump lands |
-| `@yankee_flash_alt_jump_pos` | `match_start` | same as above | Where uppercase label lands |
+| `@yankee_flash_ft` | `off` | `on`, `off` | Use flash labels for `f`/`t`/`F`/`T` motions |
+| `@yankee_flash_jump_pos` | `match_end` | `match_start`, `match_end`, `word_start`, `word_end` | Where lowercase label lands |
+| `@yankee_flash_alt_jump_pos` | `match_start` | same as above, plus `off` | Where uppercase label lands |
+
+**`@yankee_flash_min_chars`** — Controls how many characters you must type before labels appear. Default `1` shows labels after a single character. Set to `2` or `3` to reduce visual noise when searching in dense content.
+
+**`@yankee_flash_ft`** — When `on`, the `f`/`t`/`F`/`T` character search motions also show flash labels when there are multiple matches on the same line. Useful when a character appears many times on a long line.
+
+**`@yankee_flash_jump_pos` / `@yankee_flash_alt_jump_pos`** — Control where the cursor lands when pressing a label. Lowercase label uses `jump_pos`, uppercase (Shift) label uses `alt_jump_pos`. The four positions are:
+
+- `match_end` — last character of the matched text (default for lowercase)
+- `match_start` — first character of the matched text (default for uppercase)
+- `word_start` — beginning of the word containing the match
+- `word_end` — end of the word containing the match
+
+Set `@yankee_flash_alt_jump_pos "off"` to disable uppercase label jumps entirely.
+
+**Flash colors** are configured in the Theme section below (`@yankee_flash_label_fg`, `@yankee_flash_match_fg`, `@yankee_flash_backdrop`).
+
+Example:
+
+```tmux
+# Require 2 chars before showing labels
+set -g @yankee_flash_min_chars 2
+
+# Lowercase label jumps to start of match, uppercase to end
+set -g @yankee_flash_jump_pos "match_start"
+set -g @yankee_flash_alt_jump_pos "match_end"
+
+# Enable flash labels for f/t motions
+set -g @yankee_flash_ft "on"
+```
 
 ### Theme
 
