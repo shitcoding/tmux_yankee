@@ -130,6 +130,8 @@ func DefaultKeymap() Keymap {
 			{'a', '"'}:  ActionTextObjectAQuote,
 			{'i', '\''}: ActionTextObjectInnerQuote,
 			{'a', '\''}: ActionTextObjectAQuote,
+			{'i', '`'}:  ActionTextObjectInnerQuote,
+			{'a', '`'}:  ActionTextObjectAQuote,
 			{'i', '('}:  ActionTextObjectInnerParen,
 			{'a', '('}:  ActionTextObjectAParen,
 			{'i', ')'}:  ActionTextObjectInnerParen,

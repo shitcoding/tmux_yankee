@@ -294,20 +294,22 @@ func findQuotePair(runes []rune, col int, quote rune, line int, includeQuotes bo
 		return Range{}
 	}
 
-	// Find the pair that contains or is nearest to col
+	// Find the pair that contains the cursor, or the nearest pair ahead of it.
 	for i := 0; i+1 < len(positions); i += 2 {
 		open := positions[i]
 		close := positions[i+1]
-		if col >= open && col <= close {
-			if includeQuotes {
-				return Range{StartLine: line, StartCol: open, EndLine: line, EndCol: close, OK: true}
-			}
-			if open+1 <= close-1 {
-				return Range{StartLine: line, StartCol: open + 1, EndLine: line, EndCol: close - 1, OK: true}
-			}
-			// Empty quotes
-			return Range{StartLine: line, StartCol: open + 1, EndLine: line, EndCol: open + 1, OK: true}
+		if col > close {
+			continue // cursor is past this pair, try next
 		}
+		// Cursor is inside or before this pair
+		if includeQuotes {
+			return Range{StartLine: line, StartCol: open, EndLine: line, EndCol: close, OK: true}
+		}
+		if open+1 <= close-1 {
+			return Range{StartLine: line, StartCol: open + 1, EndLine: line, EndCol: close - 1, OK: true}
+		}
+		// Empty quotes
+		return Range{StartLine: line, StartCol: open + 1, EndLine: line, EndCol: open + 1, OK: true}
 	}
 
 	return Range{}
