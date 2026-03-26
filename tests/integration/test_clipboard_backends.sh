@@ -22,20 +22,13 @@ print_test_file_header "Integration Tests: Clipboard Backends"
 # Verify detect_clipboard_command() in copy_stdin.sh returns a valid command
 # ============================================================================
 _test_clipboard_detection_returns_command() {
-    # Source copy_stdin.sh's detect function by extracting it
+    # Extract and run the real detect_clipboard_command from copy_stdin.sh
+    # (not a duplicate) so test stays in sync with production code
+    local func_body
+    func_body=$(sed -n '/^detect_clipboard_command()/,/^}/p' "$SCRIPTS_DIR/copy_stdin.sh")
+
     local copy_cmd
-    copy_cmd=$(bash -c "
-        detect_clipboard_command() {
-            if command -v pbcopy >/dev/null 2>&1; then echo 'pbcopy'
-            elif command -v wl-copy >/dev/null 2>&1; then echo 'wl-copy'
-            elif command -v xsel >/dev/null 2>&1; then echo 'xsel -i --clipboard'
-            elif command -v xclip >/dev/null 2>&1; then echo 'xclip -selection clipboard'
-            elif command -v clip.exe >/dev/null 2>&1; then echo 'cat | clip.exe'
-            elif command -v putclip >/dev/null 2>&1; then echo 'putclip'
-            fi
-        }
-        detect_clipboard_command
-    ")
+    copy_cmd=$(bash -c "$func_body"$'\n'"detect_clipboard_command")
 
     printf "    detected clipboard command: '%s'\n" "$copy_cmd"
 

@@ -79,23 +79,13 @@ _test_clipboard_detection() {
 
     start_xvfb
 
-    # copy_stdin.sh has a self-contained detect_clipboard_command function.
-    # We can verify it detects xclip by running a subshell that sources and
-    # calls the detection logic, or simply run the script and check if it
-    # succeeds with xclip available.
+    # Extract and run the real detect_clipboard_command from copy_stdin.sh
+    # (not a duplicate) so test stays in sync with production code
+    local func_body
+    func_body=$(sed -n '/^detect_clipboard_command()/,/^}/p' "$SCRIPTS_DIR/copy_stdin.sh")
+
     local copy_cmd
-    copy_cmd=$(DISPLAY="$XVFB_DISPLAY" bash -c '
-        detect_clipboard_command() {
-            if command -v pbcopy >/dev/null 2>&1; then echo "pbcopy"
-            elif command -v wl-copy >/dev/null 2>&1; then echo "wl-copy"
-            elif command -v xsel >/dev/null 2>&1; then echo "xsel -i --clipboard"
-            elif command -v xclip >/dev/null 2>&1; then echo "xclip -selection clipboard"
-            elif command -v clip.exe >/dev/null 2>&1; then echo "cat | clip.exe"
-            elif command -v putclip >/dev/null 2>&1; then echo "putclip"
-            fi
-        }
-        detect_clipboard_command
-    ' 2>/dev/null || true)
+    copy_cmd=$(DISPLAY="$XVFB_DISPLAY" bash -c "$func_body"$'\n'"detect_clipboard_command" 2>/dev/null || true)
 
     assert_contains "$copy_cmd" "xclip" \
         "clipboard detection should find xclip on Linux"
