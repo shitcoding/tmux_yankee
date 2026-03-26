@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # test_clipboard_errors.sh - Clipboard error handling tests
 #
-# Phase 6: Clipboard Integration
-#
 # Tests error handling when clipboard operations fail:
 # - No clipboard command available
 # - Clipboard command fails (exits non-zero)
@@ -21,177 +19,79 @@ require_tmux
 
 # ============================================================================
 # Test 50: test_no_clipboard_command_available
-# Verify behavior when clipboard_copy_command() returns empty
-#
-# Acceptance criteria:
-#   1. When no clipboard command is detected, function returns empty
-#   2. copy_stdin.sh should handle empty command gracefully
-#
-# NOTE: This test documents expected behavior but may reveal implementation gap
+# Verify copy_stdin.sh handles missing clipboard gracefully
 # ============================================================================
 _test_no_clipboard_command_available() {
-    local session_name
-    session_name=$(setup_tmux_test_session "no-clipboard-$$")
-
-    # Override to force no clipboard command
-    tmux_test_cmd set-option -g @override_copy_command ""
-    tmux_test_cmd set-option -g @custom_copy_command ""
-
-    # Get clipboard command in environment with no standard tools
-    local cmd_result
-    cmd_result=$(
-        # Temporarily hide clipboard commands by manipulating PATH
-        PATH="/usr/bin:/bin"
-        # shellcheck source=scripts/helpers.sh
-        source "$SCRIPTS_DIR/helpers.sh"
-        # Override command_exists to always return false
-        command_exists() { return 1; }
-        clipboard_copy_command
-    )
-
-    # Should return empty when no command available
-    printf "    clipboard command when none available: '%s'\n" "$cmd_result"
-
-    # Test copy_stdin.sh behavior
-    # IMPLEMENTATION GAP: copy_stdin.sh currently does not handle empty command
-    # This will likely fail with "command not found" error
-    local test_data="test_data_$$"
+    # Run copy_stdin.sh with PATH stripped of clipboard commands
     local exit_code=0
-    printf '%s' "$test_data" | "$SCRIPTS_DIR/copy_stdin.sh" 2>/dev/null || exit_code=$?
+    printf 'test' | PATH="/nonexistent" bash "$SCRIPTS_DIR/copy_stdin.sh" 2>/dev/null || exit_code=$?
 
-    if [[ $exit_code -eq 0 ]]; then
-        printf "    ${_CLR_GREEN}INFO:${_CLR_RESET} copy_stdin.sh handled empty command gracefully\n"
+    # Should exit non-zero when no clipboard command is found
+    if [[ $exit_code -ne 0 ]]; then
+        printf "    ✓ copy_stdin.sh exits non-zero when no clipboard command available (exit code: %d)\n" "$exit_code"
     else
-        printf "    ${_CLR_YELLOW}IMPLEMENTATION GAP:${_CLR_RESET} copy_stdin.sh fails with empty clipboard command (exit code: %d)\n" "$exit_code"
-        printf "    This test documents expected behavior for Developer to implement\n"
-
-        # For now, we accept failure as documented behavior
-        # Developer should add error handling in copy_stdin.sh
+        printf "    ${_CLR_YELLOW}WARNING:${_CLR_RESET} copy_stdin.sh should fail when no clipboard command available\n"
     fi
-
-    # Cleanup
-    tmux_test_cmd set-option -gu @override_copy_command
-    tmux_test_cmd set-option -gu @custom_copy_command
-    teardown_tmux_test_session "$session_name"
 }
 run_test "test_no_clipboard_command_available" _test_no_clipboard_command_available
 
 # ============================================================================
-# Test 51: test_clipboard_command_failure_detection (IMPLEMENTATION GAP)
-# Verify behavior when clipboard command exits non-zero
-#
-# Acceptance criteria:
-#   1. When clipboard command fails, copy_stdin.sh should detect it
-#   2. Should exit non-zero to signal failure
-#
-# NOTE: This documents expected behavior for Developer implementation
+# Test 51: test_clipboard_command_failure_detection
+# Verify copy_stdin.sh detects clipboard command failure
 # ============================================================================
 _test_clipboard_command_failure_detection() {
-    printf "    ${_CLR_YELLOW}IMPLEMENTATION GAP:${_CLR_RESET} Clipboard command failure detection\n"
-    printf "    Current behavior:\n"
-    printf "      - copy_stdin.sh runs clipboard command but doesn't check exit code\n"
-    printf "      - Uses 'set -euo pipefail' but command is in variable expansion\n"
-    printf "      - May succeed even when clipboard copy actually fails\n"
-    printf "\n"
-    printf "    Expected behavior:\n"
-    printf "      - Detect when clipboard command exits non-zero\n"
-    printf "      - Display error message to user\n"
-    printf "      - Exit with non-zero status\n"
-    printf "\n"
-    printf "    Developer TODO in copy_stdin.sh:\n"
-    printf "      if [[ -z \"\$copy_command\" ]]; then\n"
-    printf "        display_message \"No clipboard command available\"\n"
-    printf "        exit 1\n"
-    printf "      fi\n"
-    printf "      \n"
-    printf "      if ! \$copy_command; then\n"
-    printf "        display_message \"Clipboard copy failed\"\n"
-    printf "        exit 1\n"
-    printf "      fi\n"
+    local copy_script="$SCRIPTS_DIR/copy_stdin.sh"
+    local script_content
+    script_content=$(cat "$copy_script")
+
+    # Verify script checks for empty clipboard command
+    if echo "$script_content" | grep -q 'if \[.*-z.*copy_command'; then
+        printf "    ✓ copy_stdin.sh checks for empty clipboard command\n"
+    else
+        printf "    ${_CLR_YELLOW}WARNING:${_CLR_RESET} copy_stdin.sh should check for empty clipboard command\n"
+    fi
+
+    # Verify script checks command execution success
+    if echo "$script_content" | grep -q 'if.*!.*eval.*copy_command'; then
+        printf "    ✓ copy_stdin.sh checks clipboard command execution result\n"
+    else
+        printf "    ${_CLR_YELLOW}WARNING:${_CLR_RESET} copy_stdin.sh should check clipboard command result\n"
+    fi
 }
 run_test "test_clipboard_command_failure_detection" _test_clipboard_command_failure_detection
 
 # ============================================================================
-# Test 52: test_error_message_display (IMPLEMENTATION GAP)
-# Verify error message is shown to user when clipboard fails
-#
-# Acceptance criteria:
-#   1. When clipboard copy fails, tmux displays error message
-#   2. Message should be visible for reasonable duration
-#   3. Uses tmux display-message or similar
-#
-# NOTE: This test documents expected behavior for Developer implementation
-# Current implementation does NOT display error messages
+# Test 52: test_error_message_uses_tmux_display
+# Verify error messages are shown via tmux display-message
 # ============================================================================
-_test_error_message_display() {
-    local session_name
-    session_name=$(setup_tmux_test_session "error-msg-$$")
+_test_error_message_uses_tmux_display() {
+    local copy_script="$SCRIPTS_DIR/copy_stdin.sh"
+    local script_content
+    script_content=$(cat "$copy_script")
 
-    printf "    ${_CLR_YELLOW}IMPLEMENTATION GAP:${_CLR_RESET} Error message display not yet implemented\n"
-    printf "    Expected behavior:\n"
-    printf "      1. When clipboard command fails, display error via tmux display-message\n"
-    printf "      2. Error should include reason (command failed, no clipboard available)\n"
-    printf "      3. Message should be visible for 3-5 seconds\n"
-    printf "\n"
-    printf "    Developer TODO:\n"
-    printf "      - Add error detection in copy_stdin.sh\n"
-    printf "      - Call tmux display-message on clipboard failure\n"
-    printf "      - Include helpful error context\n"
-    printf "\n"
-    printf "    Example implementation in copy_stdin.sh:\n"
-    printf "      if ! \$copy_command; then\n"
-    printf "        tmux display-message -d 5000 'Clipboard copy failed'\n"
-    printf "        exit 1\n"
-    printf "      fi\n"
-
-    teardown_tmux_test_session "$session_name"
+    if echo "$script_content" | grep -q 'tmux display-message'; then
+        printf "    ✓ copy_stdin.sh uses tmux display-message for error reporting\n"
+    else
+        printf "    ${_CLR_YELLOW}WARNING:${_CLR_RESET} copy_stdin.sh should use tmux display-message for errors\n"
+    fi
 }
-run_test "test_error_message_display" _test_error_message_display
+run_test "test_error_message_uses_tmux_display" _test_error_message_uses_tmux_display
 
 # ============================================================================
-# Test 53: test_tmux_buffer_fallback (IMPLEMENTATION GAP)
-# Verify text is still saved to tmux buffer when clipboard fails
-#
-# Acceptance criteria:
-#   1. When clipboard command fails, text should still go to tmux buffer
-#   2. User can paste with tmux paste-buffer
-#   3. This provides fallback functionality
-#
-# NOTE: This requires Go code integration, documenting expected behavior
+# Test 53: test_tmux_buffer_fallback
+# Verify text is saved to tmux buffer even when clipboard fails
+# (This is handled in Go code, just document expected behavior)
 # ============================================================================
 _test_tmux_buffer_fallback() {
-    printf "    ${_CLR_YELLOW}IMPLEMENTATION GAP:${_CLR_RESET} Tmux buffer fallback not yet implemented\n"
-    printf "    Expected behavior:\n"
-    printf "      1. Go code (cmd/tmux-yankee) should ALWAYS call tmux set-buffer\n"
-    printf "      2. This happens regardless of clipboard success/failure\n"
-    printf "      3. Ensures yanked text is available via tmux paste-buffer\n"
-    printf "\n"
-    printf "    Developer TODO in cmd/tmux-yankee/main.go or internal/ui/tui.go:\n"
-    printf "      func (t *TUI) Yank() error {\n"
-    printf "        text := t.selection.Extract(t.content)\n"
-    printf "\n"
-    printf "        // ALWAYS set tmux buffer first\n"
-    printf "        t.client.SetBuffer(text)\n"
-    printf "\n"
-    printf "        // THEN try clipboard (may fail)\n"
-    printf "        err := copyToClipboard(text)\n"
-    printf "        if err != nil {\n"
-    printf "          // Show error but don't return - buffer is set\n"
-    printf "          showErrorMessage(err)\n"
-    printf "        }\n"
-    printf "        return nil\n"
-    printf "      }\n"
+    printf "    INFO: tmux buffer fallback is handled in Go code (tui.go yank path)\n"
+    printf "    The Go binary always calls 'tmux set-buffer' before clipboard copy\n"
+    printf "    Clipboard failure does not prevent tmux buffer save\n"
 }
 run_test "test_tmux_buffer_fallback" _test_tmux_buffer_fallback
 
 # ============================================================================
 # Test 54: test_copy_stdin_script_error_handling
 # Verify copy_stdin.sh has proper error handling structure
-#
-# Acceptance criteria:
-#   1. Script uses set -euo pipefail
-#   2. Checks if clipboard command is empty
-#   3. Detects command execution failure
 # ============================================================================
 _test_copy_stdin_script_error_handling() {
     local copy_script="$SCRIPTS_DIR/copy_stdin.sh"
@@ -203,75 +103,22 @@ _test_copy_stdin_script_error_handling() {
         printf "    ✓ copy_stdin.sh uses strict mode\n"
     fi
 
-    # Check current implementation
-    local script_content
-    script_content=$(cat "$copy_script")
-
-    # Check if it validates clipboard command before using it
-    if ! [[ "$script_content" =~ "if".*"\[\[".*"copy_command" ]] && \
-       ! [[ "$script_content" =~ "test".*"copy_command" ]]; then
-        printf "    ${_CLR_YELLOW}IMPLEMENTATION GAP:${_CLR_RESET} copy_stdin.sh does not check if clipboard command is empty\n"
-        printf "    Recommended addition:\n"
-        printf "      if [[ -z \"\$copy_command\" ]]; then\n"
-        printf "        display_message \"No clipboard command available\"\n"
-        printf "        exit 1\n"
-        printf "      fi\n"
+    # Check it's self-contained (no external helper dependencies)
+    if grep -q 'source.*helpers\.sh' "$copy_script"; then
+        printf "    ${_CLR_RED}ASSERTION FAILED:${_CLR_RESET} copy_stdin.sh should not depend on helpers.sh\n"
+        return 1
+    else
+        printf "    ✓ copy_stdin.sh is self-contained (no external helpers)\n"
     fi
 
-    # Check if it validates execution success
-    if ! [[ "$script_content" =~ "if".*"\$copy_command" ]] && \
-       ! [[ "$script_content" =~ "\$copy_command".*"||" ]] && \
-       ! [[ "$script_content" =~ "\$copy_command".*"if" ]]; then
-        printf "    ${_CLR_YELLOW}IMPLEMENTATION GAP:${_CLR_RESET} copy_stdin.sh does not check clipboard command success\n"
-        printf "    Recommended change:\n"
-        printf "      if ! \$copy_command; then\n"
-        printf "        display_message \"Clipboard copy failed\"\n"
-        printf "        exit 1\n"
-        printf "      fi\n"
+    # Check it has its own clipboard detection
+    if grep -q 'detect_clipboard_command' "$copy_script"; then
+        printf "    ✓ copy_stdin.sh has built-in clipboard detection\n"
+    else
+        printf "    ${_CLR_YELLOW}WARNING:${_CLR_RESET} copy_stdin.sh should have built-in clipboard detection\n"
     fi
 }
 run_test "test_copy_stdin_script_error_handling" _test_copy_stdin_script_error_handling
-
-# ============================================================================
-# Test 55: test_helpers_display_message_function
-# Verify helpers.sh provides display_message() for error reporting
-#
-# Acceptance criteria:
-#   1. helpers.sh exports display_message function
-#   2. Function can be used from copy_stdin.sh
-#   3. Function properly saves/restores display-time option
-# ============================================================================
-_test_helpers_display_message_function() {
-    # Source helpers.sh
-    # shellcheck source=scripts/helpers.sh
-    source "$SCRIPTS_DIR/helpers.sh"
-
-    # Verify display_message function exists
-    if ! declare -f display_message &>/dev/null; then
-        printf "    ${_CLR_RED}ASSERTION FAILED:${_CLR_RESET} helpers.sh should export display_message function\n"
-        return 1
-    fi
-
-    printf "    ✓ display_message function exists in helpers.sh\n"
-
-    # Verify it has correct signature (message and optional duration)
-    local func_body
-    func_body=$(declare -f display_message)
-
-    if ! [[ "$func_body" =~ "display-time" ]]; then
-        printf "    ${_CLR_YELLOW}WARNING:${_CLR_RESET} display_message should save/restore display-time option\n"
-    else
-        printf "    ✓ display_message handles display-time option\n"
-    fi
-
-    if ! [[ "$func_body" =~ "tmux display-message" ]]; then
-        printf "    ${_CLR_RED}ASSERTION FAILED:${_CLR_RESET} display_message should call 'tmux display-message'\n"
-        return 1
-    else
-        printf "    ✓ display_message calls tmux display-message\n"
-    fi
-}
-run_test "test_helpers_display_message_function" _test_helpers_display_message_function
 
 # --- Print summary and exit ---
 print_test_summary

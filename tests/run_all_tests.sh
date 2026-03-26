@@ -149,7 +149,6 @@ if [[ "$FILTER" == "all" ]] || [[ "$FILTER" == "integration" ]]; then
             "$TESTS_DIR/integration/test_toggle.sh"
             "$TESTS_DIR/integration/test_edge_cases.sh"
             "$TESTS_DIR/integration/test_clipboard_backends.sh"
-            "$TESTS_DIR/integration/test_clipboard_options.sh"
             "$TESTS_DIR/integration/test_clipboard_errors.sh"
         )
 

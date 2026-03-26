@@ -33,7 +33,7 @@ _TEMP_FILES+=("$_TMP_FUNCS")
 
 # awk collects function bodies by tracking brace depth.
 awk '
-    /^(_append_yankee_opt|build_yankee_args)\(\)/ { in_fn=1; depth=0 }
+    /^(_append_yankee_opt|_get_yankee_opt_from_dump|build_yankee_args)\(\)/ { in_fn=1; depth=0 }
     in_fn {
         print
         for (i=1; i<=length($0); i++) {
@@ -54,10 +54,17 @@ PANE_ID="%42"
 _YANKEE_ARGS=()
 
 # Mock tmux: simulate set options; all others return empty.
-# show-option -gqv @option_name -> $1=show-option $2=-gqv $3=@option_name
+# build_yankee_args calls "tmux show-options -g" (plural) which returns all options.
 # shellcheck disable=SC2317
 tmux() {
-    if [[ "${1:-}" == "show-option" ]]; then
+    if [[ "${1:-}" == "show-options" ]]; then
+        # Return all mock options as "key value" lines (show-options -g format)
+        printf '%s\n' "@yankee_mode absolute"
+        printf '%s\n' "@yankee_scrollback_lines 5000"
+        printf '%s\n' "@yankee_theme dracula"
+        printf '%s\n' "@yankee_cursor_bg #ff5555"
+        printf '%s\n' "@yankee_toggle_mode_key M"
+    elif [[ "${1:-}" == "show-option" ]]; then
         local opt="${3:-}"
         case "$opt" in
             @yankee_mode)             printf '%s\n' "absolute" ;;

@@ -1,32 +1,40 @@
 #!/usr/bin/env bash
 
-# Clipboard adapter for numbered mode
-# Reads text from stdin and delegates to tmux-yank helpers
+# Clipboard adapter for yankee
+# Reads text from stdin and copies to system clipboard.
+# Self-contained — no external dependencies.
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Detect the appropriate system clipboard command.
+# Returns the command string on stdout; empty if none found.
+detect_clipboard_command() {
+    if command -v pbcopy >/dev/null 2>&1; then
+        echo "pbcopy"
+    elif command -v wl-copy >/dev/null 2>&1; then
+        echo "wl-copy"
+    elif command -v xsel >/dev/null 2>&1; then
+        echo "xsel -i --clipboard"
+    elif command -v xclip >/dev/null 2>&1; then
+        echo "xclip -selection clipboard"
+    elif command -v clip.exe >/dev/null 2>&1; then
+        # WSL
+        echo "cat | clip.exe"
+    elif command -v putclip >/dev/null 2>&1; then
+        # Cygwin
+        echo "putclip"
+    fi
+}
 
-# shellcheck source=scripts/helpers.sh
-source "${SCRIPT_DIR}/helpers.sh"
+copy_command=$(detect_clipboard_command)
 
-# Get clipboard copy command from tmux-yank helpers
-copy_command=$(clipboard_copy_command)
-
-# Validate command exists
 if [ -z "$copy_command" ]; then
-    display_message "tmux-yankee: No clipboard command available. Text saved to tmux buffer only."
+    tmux display-message "tmux-yankee: No clipboard command found. Text saved to tmux buffer only." 2>/dev/null || true
     exit 1
 fi
 
-# Copy stdin to clipboard with error handling.
-# eval is needed because $copy_command may contain shell operators (e.g., "cat | clip.exe" on WSL).
-# SECURITY NOTE: @custom_copy_command and @override_copy_command are executed
-# verbatim via eval. This is inherited from upstream tmux-yank and by design —
-# users explicitly configure these tmux options. The trust boundary is the tmux
-# option namespace: any actor able to set tmux options can execute arbitrary
-# commands through the copy path.
+# eval is needed because some commands contain shell operators (e.g., "cat | clip.exe" on WSL).
 if ! eval "$copy_command"; then
-    display_message "tmux-yankee: Clipboard copy failed. Text saved to tmux buffer only."
+    tmux display-message "tmux-yankee: Clipboard copy failed. Text saved to tmux buffer only." 2>/dev/null || true
     exit 1
 fi
