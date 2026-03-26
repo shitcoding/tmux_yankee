@@ -62,7 +62,7 @@ func DemoShellSession() []string {
 	lines = append(lines, "drwxr-xr-x   3 user staff   96 Feb 18 16:40 "+bold(blue("cmd")))
 	lines = append(lines, "drwxr-xr-x   6 user staff  192 Feb 19 10:30 "+bold(blue("internal")))
 	lines = append(lines, "drwxr-xr-x   4 user staff  128 Feb 17 12:00 "+bold(blue("scripts")))
-	lines = append(lines, "-rwxr-xr-x   1 user staff  3.8K Feb 19 09:45 "+bold(green("yank.tmux")))
+	lines = append(lines, "-rwxr-xr-x   1 user staff  3.8K Feb 19 09:45 "+bold(green("yankee.tmux")))
 	lines = append(lines, "")
 
 	// git status

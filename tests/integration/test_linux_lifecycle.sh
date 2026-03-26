@@ -58,7 +58,7 @@ _test_full_lifecycle() {
     sleep 0.5
 
     # Source the plugin (bash entry point, NOT tmux source-file)
-    tmux_cmd send-keys -t "$session" "bash '$PROJECT_ROOT/yank.tmux'" C-m
+    tmux_cmd send-keys -t "$session" "bash '$PROJECT_ROOT/yankee.tmux'" C-m
     sleep 0.5
 
     # Generate content
@@ -158,7 +158,7 @@ _test_no_orphaned_panes() {
     tmux_cmd send-keys -t "$session" "seq 1 20" C-m
     sleep 0.3
 
-    tmux_cmd send-keys -t "$session" "bash '$PROJECT_ROOT/yank.tmux'" C-m
+    tmux_cmd send-keys -t "$session" "bash '$PROJECT_ROOT/yankee.tmux'" C-m
     sleep 0.3
 
     local pane_id window_id pane_index

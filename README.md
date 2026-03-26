@@ -38,7 +38,7 @@ git clone https://github.com/shitcoding/tmux-yankee ~/.tmux/plugins/tmux-yankee
 Add to `~/.tmux.conf`:
 
 ```tmux
-run-shell ~/.tmux/plugins/tmux-yankee/yank.tmux
+run-shell ~/.tmux/plugins/tmux-yankee/yankee.tmux
 ```
 
 The binary will be downloaded on first run. To build from source instead:

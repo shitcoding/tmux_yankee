@@ -41,7 +41,7 @@ COPY --from=builder /bin/tmux-yankee ./bin/tmux-yankee
 # Copy shell scripts and tests
 COPY scripts/ ./scripts/
 COPY tests/ ./tests/
-COPY yank.tmux ./yank.tmux
+COPY yankee.tmux ./yankee.tmux
 
 # Make test scripts executable
 RUN find tests -name '*.sh' -exec chmod +x {} +
