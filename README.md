@@ -8,9 +8,13 @@ It started as "I just want line numbers in tmux yank mode" and spiraled into reb
 
 tmux-yankee captures your pane content into a Go TUI with line numbers, vim motions, visual selection, incremental search, flash navigation, text objects, and block select. You navigate with the same muscle memory as Vim, yank what you need, and it goes straight to your clipboard. The line number gutter is automatically stripped from yanked text.
 
-## How It Actually Works
+## Quick Start
 
-tmux doesn't let you draw arbitrary UI on top of a running pane. So yankee uses a trick borrowed from [tmux-fingers](https://github.com/Morantron/tmux-fingers): it creates a **temporary helper session**, runs the TUI there, and `swap-pane` puts it where your original pane was. When you quit, it swaps back. Your shell process, history, environment variables, working directory -- everything is exactly where you left it. 
+1. Press `prefix + N` to launch yankee
+2. Navigate with vim motions (`j`/`k`, `w`/`b`, `gg`/`G`, `/pattern`)
+3. Press `v` for visual select, `V` for line select, `Ctrl-v` for block select
+4. Press `y` to yank and exit
+5. Press `q` to quit without yanking
 
 ## Installation
 
@@ -47,15 +51,11 @@ cd ~/.tmux/plugins/tmux-yankee && make build
 - tmux 3.1+
 - Bash 4+
 - `curl` (for automatic binary download)
-- Go 1.19+ (only if building from source)
+- Go 1.24+ (only if building from source)
 
-## Quick Start
+## How It Actually Works
 
-1. Press `prefix + N` to launch yankee
-2. Navigate with vim motions (`j`/`k`, `w`/`b`, `gg`/`G`, `/pattern`)
-3. Press `v` for visual select, `V` for line select, `Ctrl-v` for block select
-4. Press `y` to yank and exit
-5. Press `q` to quit without yanking
+tmux doesn't let you draw arbitrary UI on top of a running pane. So yankee uses a trick borrowed from [tmux-fingers](https://github.com/Morantron/tmux-fingers): it creates a **temporary helper session**, runs the TUI there, and `swap-pane` puts it where your original pane was. When you quit, it swaps back. Your shell process, history, environment variables, working directory -- everything is exactly where you left it.
 
 ## Features
 
@@ -116,6 +116,8 @@ When `set -g mouse on` is set in tmux:
 
 Mouse-aware apps (vim, less, etc.) and alternate-screen programs are detected and left alone.
 
+> **Note:** The `WheelUpPane` binding that launches yankee on scroll-up is always active when the plugin is loaded, regardless of the `@yankee_mouse` setting. The `@yankee_mouse` option only controls mouse interaction inside the yankee TUI.
+
 ## Keybindings
 
 ### Motions
@@ -125,9 +127,12 @@ All motions support count prefixes (`5j`, `3w`, `10G`).
 | Key | Action |
 |-----|--------|
 | `h`/`j`/`k`/`l` | Left / Down / Up / Right |
+| `Left`/`Down`/`Up`/`Right` | Same as `h`/`j`/`k`/`l` |
 | `w`/`b`/`e` | Word forward / backward / end |
+| `ge` / `gE` | Word / WORD end backward |
 | `W`/`B`/`E` | WORD forward / backward / end |
 | `0` / `$` | Line start / end |
+| `Home` / `End` | Line start / end |
 | `^` / `g_` | First / last non-blank character |
 | `gg` / `G` | First / last line (or `{count}G` for goto line) |
 | `{` / `}` | Paragraph backward / forward |
@@ -135,6 +140,7 @@ All motions support count prefixes (`5j`, `3w`, `10G`).
 | `%` | Matching bracket (or `{count}%` for percentage) |
 | `Ctrl-u` / `Ctrl-d` | Half page up / down |
 | `Ctrl-f` / `Ctrl-b` | Full page up / down |
+| `PgUp` / `PgDn` | Page up / down |
 | `Ctrl-y` / `Ctrl-e` | Scroll viewport one line up / down |
 | `zt` / `zz` / `zb` | Position cursor line at top / center / bottom |
 | `gj` / `gk` | Display line down / up (when wrap mode is on) |
@@ -165,9 +171,11 @@ All motions support count prefixes (`5j`, `3w`, `10G`).
 | `s` | Enter flash mode -- type a pattern, and labeled jump targets appear |
 | lowercase label (e.g. `a`) | Jump to target at primary position (default: end of match) |
 | uppercase label (e.g. `A`) | Jump to target at alternate position (default: start of match) |
-| `Esc` / `Enter` | Exit flash mode |
+| `Esc` | Exit flash mode |
 
 Every match on screen gets a label. Press the **lowercase** label key to jump to the primary position, or the **uppercase** (Shift) version of the same label to jump to the alternate position. This lets you land on either side of a match without reconfiguring.
+
+Up to 26 matches get labels (the label pool is `a-z`); additional matches are highlighted but unlabeled.
 
 Primary and alternate jump positions are configurable via `@yankee_flash_jump_pos` and `@yankee_flash_alt_jump_pos`:
 
@@ -182,6 +190,13 @@ Primary and alternate jump positions are configurable via `@yankee_flash_jump_po
 Search is smartcase: all-lowercase patterns match case-insensitively, patterns with any uppercase character match exactly.
 
 Works in both normal and visual mode. In visual mode, flash extends the selection to the jump target.
+
+### Command Line
+
+| Key | Action |
+|-----|--------|
+| `:` | Enter command mode |
+| `:42` + `Enter` | Jump to line 42 |
 
 ### Visual Mode and Yanking
 
@@ -204,10 +219,10 @@ Works in both normal and visual mode. In visual mode, flash extends the selectio
 | `i"` / `a"` | Inside / around double quotes |
 | `i'` / `a'` | Inside / around single quotes |
 | `` i` `` / `` a` `` | Inside / around backticks |
-| `ib` / `ab` or `i(` / `a(` | Inside / around parentheses |
-| `iB` / `aB` or `i{` / `a{` | Inside / around braces |
-| `i[` / `a[` | Inside / around square brackets |
-| `i<` / `a<` | Inside / around angle brackets |
+| `ib` / `ab` or `i(` / `a(` or `i)` / `a)` | Inside / around parentheses |
+| `iB` / `aB` or `i{` / `a{` or `i}` / `a}` | Inside / around braces |
+| `i[` / `a[` or `i]` / `a]` | Inside / around square brackets |
+| `i<` / `a<` or `i>` / `a>` | Inside / around angle brackets |
 
 ### Marks
 
@@ -216,6 +231,7 @@ Works in both normal and visual mode. In visual mode, flash extends the selectio
 | `m{a-z}` | Set mark |
 | `` `{a-z} `` | Jump to mark (exact position) |
 | `'{a-z}` | Jump to mark line |
+| `` `` `` / `''` | Jump to previous position (before last jump) |
 
 ### Other
 
@@ -225,13 +241,14 @@ Works in both normal and visual mode. In visual mode, flash extends the selectio
 | `Alt+t` | Cycle themes |
 | `gw` | Toggle word wrap |
 | `Ctrl-o` / `Ctrl-i` | Jump list backward / forward |
+| `Esc` | Exit visual mode; in normal mode: clear search highlights |
 | `q` / `Ctrl-c` | Quit |
 
 ## Configuration
 
 All options go in `~/.tmux.conf` before the plugin is loaded. They use the `@yankee_` prefix.
 
-### Display
+### Launch
 
 | Option | Default | Values | Description |
 |--------|---------|--------|-------------|
@@ -245,6 +262,7 @@ All options go in `~/.tmux.conf` before the plugin is loaded. They use the `@yan
 |--------|---------|--------|-------------|
 | `@yankee_mode` | `hybrid` | `absolute`, `relative`, `hybrid` | Line number display mode |
 | `@yankee_scrollback_lines` | `2000` | `100`..`200000` | Lines of scrollback to capture |
+| `@yankee_toggle_mode_key` | `L` | single key | Key to cycle line number modes at runtime |
 
 ### Behavior
 
@@ -253,8 +271,9 @@ All options go in `~/.tmux.conf` before the plugin is loaded. They use the `@yan
 | `@yankee_copy_target` | `both` | `both`, `tmux`, `clipboard` | Where yanked text goes |
 | `@yankee_exit_on_yank` | `on` | `on`, `off` | Close after yanking |
 | `@yankee_wrap_mode` | `off` | `on`, `off` | Word wrap for long lines |
-| `@yankee_mouse` | `off` | `on`, `off` | Mouse support (click, drag, scroll) |
-| `@yankee_status_bar` | `on` | `on`, `off` | Show the status bar |
+| `@yankee_wrap_key` | `w` | single key | Key to toggle wrap (after `g` prefix) |
+| `@yankee_mouse` | `off` | `on`, `off` | Mouse support in TUI (click, drag, scroll) |
+| `@yankee_status_bar` | `on` | `on`, `off` | Show the powerline status bar |
 
 ### Flash
 
@@ -312,10 +331,25 @@ Individual color overrides (`#RRGGBB` format) can be layered on top of any theme
 | `@yankee_linenum_absolute_fg` | Absolute line numbers |
 | `@yankee_linenum_relative_fg` | Relative line numbers |
 | `@yankee_linenum_cursor_fg` | Cursor line number |
-| `@yankee_status_fg` / `_bg` | Status bar |
+| `@yankee_status_fg` / `_bg` | Status bar fill area |
 | `@yankee_flash_label_fg` / `_bg` | Flash labels |
 | `@yankee_flash_match_fg` / `_bg` | Flash matches |
 | `@yankee_flash_backdrop` | Flash dimmed background |
+
+### Style Overrides
+
+These use `on`/`off` values and layer on top of any theme:
+
+| Option | Element |
+|--------|---------|
+| `@yankee_linenum_absolute_bold` / `_dim` / `_italic` | Absolute line numbers |
+| `@yankee_linenum_relative_bold` / `_dim` / `_italic` | Relative line numbers |
+| `@yankee_linenum_cursor_bold` / `_dim` / `_italic` | Cursor line number |
+| `@yankee_status_bold` / `_dim` | Status bar fill area |
+| `@yankee_cursor_dim` / `_italic` | Cursor line |
+| `@yankee_selection_dim` / `_italic` | Visual selection |
+| `@yankee_gutter_separator_bg` | Gutter separator background (`#RRGGBB`) |
+| `@yankee_gutter_separator_char` | Gutter separator character |
 
 ### Custom Keybindings
 
@@ -334,6 +368,38 @@ set -g @yankee_nbind_x some_action
 # Visual-mode only binding
 set -g @yankee_vbind_x some_action
 ```
+
+Key notation: single chars (`h`, `j`), Ctrl (`C-d`, `C-f`), Alt (`M-t`), special (`Enter`, `Esc`, `Space`).
+
+Mode-specific unbinding uses `@yankee_nunbind_*` (normal mode) and `@yankee_vunbind_*` (visual mode).
+
+<details>
+<summary>All action names</summary>
+
+```
+move_up, move_down, move_left, move_right, line_start, line_end,
+first_nonblank, last_nonblank, first_line, last_line, word_forward,
+word_backward, word_end, word_end_backward, WORD_forward, WORD_backward,
+WORD_end, WORD_end_backward, paragraph_forward, paragraph_backward,
+half_page_up, half_page_down, page_up, page_down, screen_top,
+screen_middle, screen_bottom, scroll_line_up, scroll_line_down,
+match_bracket, viewport_top, viewport_center, viewport_bottom,
+display_line_down, display_line_up, jump_back, jumplist_back,
+jumplist_forward, set_mark, goto_mark, goto_mark_line, visual_char,
+visual_line, visual_block, swap_end, swap_corner, yank, yank_line,
+search_forward, search_backward, search_next, search_prev,
+search_word_forward, search_word_backward, search_select,
+search_select_back, char_search_f, char_search_t, char_search_F,
+char_search_T, char_search_repeat, char_search_reverse,
+inner_word, a_word, inner_WORD, a_WORD, inner_paragraph, a_paragraph,
+inner_quote, a_quote, inner_single_quote, a_single_quote,
+inner_backtick, a_backtick, inner_paren, a_paren, inner_brace,
+a_brace, inner_bracket, a_bracket, inner_angle, a_angle,
+clear_search, colon_mode, toggle_line_mode, toggle_wrap_mode,
+escape, quit, flash, theme_next, theme_prev
+```
+
+</details>
 
 ### Example Config
 
@@ -365,14 +431,31 @@ Yankee detects your system clipboard automatically:
 | Linux (X11) | `xclip` or `xsel` |
 | Linux (Wayland) | `wl-copy` |
 | WSL | `clip.exe` |
+| Cygwin | `putclip` |
 
 By default, yanked text goes to both the system clipboard and the tmux paste buffer. Change with `@yankee_copy_target`.
 
 ## Known Limitations
 
 - **Snapshot view** -- content is captured at launch time. If your pane keeps producing output, you won't see it until you relaunch.
-- **Overlay mode on tmux 3.1** -- works, but tmux 3.2+ is smoother.
+- **Older tmux versions** -- tmux 3.1-3.1c works but may show brief visual artifacts during overlay swap.
 - **No true vim registers** -- there's one yank destination (clipboard + tmux buffer), not 26 named registers.
+- **Flash label cap** -- labels are limited to 26 (`a-z`). In dense content with many matches, some matches appear highlighted but without jump labels.
+
+## Troubleshooting / FAQ
+
+**Binary not found** -- Run `make build` from the plugin directory, or reinstall via TPM (`prefix + I`).
+
+**Nothing happens on `prefix+N`** -- Check that `@yankee_key` is set correctly. Reload the plugin manually:
+```bash
+bash ~/.tmux/plugins/tmux-yankee/yankee.tmux
+```
+
+**Clipboard not working** -- Verify your platform's clipboard tool is installed: `pbcopy` (macOS), `xclip` or `xsel` (X11), `wl-copy` (Wayland).
+
+**Mouse scroll launches yankee but I want native copy-mode** -- The `WheelUpPane` binding that launches yankee is always active when the plugin is loaded. To get native copy-mode back, unset it in your config: `unbind -n WheelUpPane`.
+
+**Supported platforms** -- macOS (amd64/arm64), Linux (amd64/arm64).
 
 ## License
 
