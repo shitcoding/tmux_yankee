@@ -178,6 +178,8 @@ func isValidAction(a Action) bool {
 		ActionTextObjectInnerWORD, ActionTextObjectAWORD,
 		ActionTextObjectInnerParagraph, ActionTextObjectAParagraph,
 		ActionTextObjectInnerQuote, ActionTextObjectAQuote,
+		ActionTextObjectInnerSingleQuote, ActionTextObjectASingleQuote,
+		ActionTextObjectInnerBacktick, ActionTextObjectABacktick,
 		ActionTextObjectInnerParen, ActionTextObjectAParen,
 		ActionTextObjectInnerBrace, ActionTextObjectABrace,
 		ActionTextObjectInnerBracket, ActionTextObjectABracket,

@@ -37,9 +37,17 @@ func Resolve(doc motion.Document, cursor motion.Cursor, action keymap.Action) Ra
 
 	// Quote text objects
 	case keymap.ActionTextObjectInnerQuote:
-		return innerQuote(doc, cursor)
+		return innerQuote(doc, cursor, '"')
 	case keymap.ActionTextObjectAQuote:
-		return aQuote(doc, cursor)
+		return aQuote(doc, cursor, '"')
+	case keymap.ActionTextObjectInnerSingleQuote:
+		return innerQuote(doc, cursor, '\'')
+	case keymap.ActionTextObjectASingleQuote:
+		return aQuote(doc, cursor, '\'')
+	case keymap.ActionTextObjectInnerBacktick:
+		return innerQuote(doc, cursor, '`')
+	case keymap.ActionTextObjectABacktick:
+		return aQuote(doc, cursor, '`')
 
 	// Paren text objects: i( / a(
 	case keymap.ActionTextObjectInnerParen:
@@ -240,9 +248,8 @@ func aParagraph(doc motion.Document, cursor motion.Cursor) Range {
 
 // --- Quote text objects ---
 
-// innerQuote finds matching quotes on the current line.
-// Supports ", ', and ` quotes.
-func innerQuote(doc motion.Document, cursor motion.Cursor) Range {
+// innerQuote finds matching quotes of the given type on the current line.
+func innerQuote(doc motion.Document, cursor motion.Cursor, quote rune) Range {
 	runes := []rune(doc.Line(cursor.Line))
 	if len(runes) == 0 {
 		return Range{}
@@ -253,16 +260,10 @@ func innerQuote(doc motion.Document, cursor motion.Cursor) Range {
 		col = len(runes) - 1
 	}
 
-	// Try each quote character
-	for _, q := range []rune{'"', '\'', '`'} {
-		if r := findQuotePair(runes, col, q, cursor.Line, false); r.OK {
-			return r
-		}
-	}
-	return Range{}
+	return findQuotePair(runes, col, quote, cursor.Line, false)
 }
 
-func aQuote(doc motion.Document, cursor motion.Cursor) Range {
+func aQuote(doc motion.Document, cursor motion.Cursor, quote rune) Range {
 	runes := []rune(doc.Line(cursor.Line))
 	if len(runes) == 0 {
 		return Range{}
@@ -273,12 +274,7 @@ func aQuote(doc motion.Document, cursor motion.Cursor) Range {
 		col = len(runes) - 1
 	}
 
-	for _, q := range []rune{'"', '\'', '`'} {
-		if r := findQuotePair(runes, col, q, cursor.Line, true); r.OK {
-			return r
-		}
-	}
-	return Range{}
+	return findQuotePair(runes, col, quote, cursor.Line, true)
 }
 
 func findQuotePair(runes []rune, col int, quote rune, line int, includeQuotes bool) Range {

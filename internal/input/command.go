@@ -172,6 +172,8 @@ func ActionToCommand(action keymap.Action, count int, capturedChar byte) Command
 		keymap.ActionTextObjectInnerWORD, keymap.ActionTextObjectAWORD,
 		keymap.ActionTextObjectInnerParagraph, keymap.ActionTextObjectAParagraph,
 		keymap.ActionTextObjectInnerQuote, keymap.ActionTextObjectAQuote,
+		keymap.ActionTextObjectInnerSingleQuote, keymap.ActionTextObjectASingleQuote,
+		keymap.ActionTextObjectInnerBacktick, keymap.ActionTextObjectABacktick,
 		keymap.ActionTextObjectInnerParen, keymap.ActionTextObjectAParen,
 		keymap.ActionTextObjectInnerBrace, keymap.ActionTextObjectABrace,
 		keymap.ActionTextObjectInnerBracket, keymap.ActionTextObjectABracket,

@@ -92,8 +92,12 @@ const (
 	ActionTextObjectAWORD          Action = "a_WORD"          // aW
 	ActionTextObjectInnerParagraph Action = "inner_paragraph" // ip
 	ActionTextObjectAParagraph     Action = "a_paragraph"     // ap
-	ActionTextObjectInnerQuote     Action = "inner_quote"     // i" / i'
-	ActionTextObjectAQuote         Action = "a_quote"         // a" / a'
+	ActionTextObjectInnerQuote       Action = "inner_quote"        // i"
+	ActionTextObjectAQuote           Action = "a_quote"            // a"
+	ActionTextObjectInnerSingleQuote Action = "inner_single_quote" // i'
+	ActionTextObjectASingleQuote     Action = "a_single_quote"     // a'
+	ActionTextObjectInnerBacktick    Action = "inner_backtick"     // i`
+	ActionTextObjectABacktick        Action = "a_backtick"         // a`
 	ActionTextObjectInnerParen     Action = "inner_paren"     // ib / i(
 	ActionTextObjectAParen         Action = "a_paren"         // ab / a(
 	ActionTextObjectInnerBrace     Action = "inner_brace"     // iB / i{
