@@ -35,6 +35,14 @@ set_yankee_binding() {
 }
 
 set_scroll_bindings() {
+    # Only override WheelUpPane when @yankee_mouse is "on".
+    # When off (default), scroll-up uses tmux's native behavior (copy-mode).
+    local mouse_opt
+    mouse_opt=$(get_tmux_option "@yankee_mouse" "off")
+    if [[ "$mouse_opt" != "on" ]]; then
+        return
+    fi
+
     # Override WheelUpPane to launch yankee instead of copy-mode.
     # Pass through if pane is already in a mode (copy-mode, etc.) or if the
     # pane has mouse_any_flag set (e.g., vim, less, or our own yankee TUI).

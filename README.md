@@ -116,7 +116,7 @@ When `set -g mouse on` is set in tmux:
 
 Mouse-aware apps (vim, less, etc.) and alternate-screen programs are detected and left alone.
 
-> **Note:** The `WheelUpPane` binding that launches yankee on scroll-up is always active when the plugin is loaded, regardless of the `@yankee_mouse` setting. The `@yankee_mouse` option only controls mouse interaction inside the yankee TUI.
+> **Note:** The `WheelUpPane` override only activates when `@yankee_mouse` is set to `on`. With the default `off`, scroll-up uses tmux's native copy-mode entry.
 
 ## Keybindings
 
@@ -453,7 +453,7 @@ bash ~/.tmux/plugins/tmux-yankee/yankee.tmux
 
 **Clipboard not working** -- Verify your platform's clipboard tool is installed: `pbcopy` (macOS), `xclip` or `xsel` (X11), `wl-copy` (Wayland).
 
-**Mouse scroll launches yankee but I want native copy-mode** -- The `WheelUpPane` binding that launches yankee is always active when the plugin is loaded. To get native copy-mode back, unset it in your config: `unbind -n WheelUpPane`.
+**Mouse scroll launches yankee but I want native copy-mode** -- Set `@yankee_mouse` to `off` (the default). If you previously set it to `on`, add `set -g @yankee_mouse off` and reload the plugin.
 
 **Supported platforms** -- macOS (amd64/arm64), Linux (amd64/arm64).
 
