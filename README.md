@@ -12,11 +12,6 @@ tmux-yankee captures your pane content into a Go TUI with line numbers, vim moti
 
 tmux doesn't let you draw arbitrary UI on top of a running pane. So yankee uses a trick borrowed from [tmux-fingers](https://github.com/Morantron/tmux-fingers): it creates a **temporary helper session**, runs the TUI there, and `swap-pane` puts it where your original pane was. When you quit, it swaps back. Your shell process, history, environment variables, working directory -- everything is exactly where you left it. 
 
-Three display modes are available:
-- **Overlay** (default) -- the swap-pane trick described above. Works on tmux 3.1+.
-- **Popup** -- centered floating window. Requires tmux 3.2+.
-- **Split** -- boring horizontal split. Always works.
-
 ## Installation
 
 ### With [TPM](https://github.com/tmux-plugins/tpm)
@@ -49,7 +44,7 @@ cd ~/.tmux/plugins/tmux-yankee && make build
 
 ## Requirements
 
-- tmux 3.1+ (3.2+ recommended for popup mode)
+- tmux 3.1+
 - Bash 4+
 - `curl` (for automatic binary download)
 - Go 1.19+ (only if building from source)
@@ -240,7 +235,6 @@ All options go in `~/.tmux.conf` before the plugin is loaded. They use the `@yan
 
 | Option | Default | Values | Description |
 |--------|---------|--------|-------------|
-| `@yankee_display_mode` | `overlay` | `overlay`, `popup`, `split` | How the TUI appears |
 | `@yankee_key` | `N` | single key | Key to trigger yankee (with prefix) |
 | `@yankee_key_table` | `prefix` | `prefix`, `root` | Key table for the trigger key |
 | `@yankee_start_position` | `bottom` | `top`, `middle`, `bottom` | Initial cursor position |
@@ -344,9 +338,8 @@ set -g @yankee_vbind_x some_action
 ### Example Config
 
 ```tmux
-# Dracula theme, popup mode, generous scrollback
+# Dracula theme, generous scrollback
 set -g @yankee_theme "dracula"
-set -g @yankee_display_mode "popup"
 set -g @yankee_scrollback_lines 5000
 
 # Don't close after yank -- browse and yank multiple times

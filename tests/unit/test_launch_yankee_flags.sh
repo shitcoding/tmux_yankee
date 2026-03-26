@@ -64,6 +64,7 @@ tmux() {
         printf '%s\n' "@yankee_theme dracula"
         printf '%s\n' "@yankee_cursor_bg #ff5555"
         printf '%s\n' "@yankee_toggle_mode_key M"
+        printf '%s\n' "@yankee_display_mode popup"
     elif [[ "${1:-}" == "show-option" ]]; then
         local opt="${3:-}"
         case "$opt" in
@@ -132,11 +133,11 @@ _test_cursor_fg_absent() {
 }
 run_test "empty cursor-fg not forwarded" _test_cursor_fg_absent
 
-_test_display_mode_absent() {
+_test_display_mode_ignored() {
     assert_not_contains "$OUTPUT" "--display-mode" \
-        "display-mode is a shell-routing option, must not be forwarded"
+        "display-mode is a legacy shell-routing option, must not be forwarded even when set"
 }
-run_test "display-mode not forwarded" _test_display_mode_absent
+run_test "display-mode not forwarded even when present" _test_display_mode_ignored
 
 _test_key_absent() {
     assert_not_contains "$OUTPUT" "--key " \

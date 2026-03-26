@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Launcher for numbered copy mode
-# Gathers tmux context and launches Go TUI binary with configurable display mode
+# Gathers tmux context and launches Go TUI binary in overlay (pane-swap) mode
 # Supports multiple concurrent Yankee instances (one per pane) via per-pane locks.
 
 set -euo pipefail
@@ -33,10 +33,6 @@ _yankee_clear_busy() {
         [ -n "$pane" ] && tmux set-option -pu -t "$pane" @yankee_busy 2>/dev/null || true
     done
 }
-
-# Shell-routing decisions (not forwarded to binary)
-DISPLAY_MODE=$(tmux show-option -gqv @yankee_display_mode 2>/dev/null || true)
-DISPLAY_MODE="${DISPLAY_MODE:-overlay}"
 
 # Check if binary exists
 if [ ! -f "${BIN_DIR}/tmux-yankee" ]; then
@@ -488,13 +484,7 @@ wait_for_helper_completion() {
     wait "$waiter_pid"
 }
 
-# --- Check if display-popup is supported (tmux 3.2+) ----------------------
-
-popup_supported() {
-    tmux display-popup -E -B -w 1 -h 1 "true" >/dev/null 2>&1
-}
-
-# --- Launch modes ----------------------------------------------------------
+# --- Launch ----------------------------------------------------------------
 
 launch_overlay() {
     local pane_lock_dir state_file
@@ -687,66 +677,4 @@ launch_overlay() {
     trap - EXIT INT TERM HUP
 }
 
-launch_popup() {
-    # Used when @yankee_display_mode is explicitly set to "popup".
-    # Note: tmux key bindings (prefix, root-table) do NOT work inside popups
-    # because the -K flag does not exist in any released tmux version (≤3.5a).
-    # For most users, the default "overlay" mode (pane-swap) is recommended.
-    local popup_flags="-w 90% -h 90%"
-    local pane_lock_dir
-    pane_lock_dir="$(_yankee_lock_dir "$PANE_ID")"
-    if ! yankee_lock_acquire "$pane_lock_dir"; then return 0; fi
-    trap '_yankee_clear_busy "'"$PANE_ID"'"; yankee_lock_release "'"$pane_lock_dir"'"' EXIT INT TERM HUP
-    local yankee_args=()
-    while IFS= read -r -d '' arg; do yankee_args+=("$arg"); done < <(build_yankee_args)
-    # shellcheck disable=SC2086
-    tmux display-popup -E $popup_flags \
-        "${BIN_DIR}/tmux-yankee" "${yankee_args[@]}"
-    _yankee_clear_busy "$PANE_ID"
-    yankee_lock_release "$pane_lock_dir"
-    trap - EXIT INT TERM HUP
-}
-
-launch_split() {
-    local pane_lock_dir
-    pane_lock_dir="$(_yankee_lock_dir "$PANE_ID")"
-    if ! yankee_lock_acquire "$pane_lock_dir"; then return 0; fi
-    trap '_yankee_clear_busy "'"$PANE_ID"'"; yankee_lock_release "'"$pane_lock_dir"'"' EXIT INT TERM HUP
-    local yankee_args=()
-    while IFS= read -r -d '' arg; do yankee_args+=("$arg"); done < <(build_yankee_args)
-    tmux split-window -h \
-        "${BIN_DIR}/tmux-yankee" "${yankee_args[@]}"
-    _yankee_clear_busy "$PANE_ID"
-    yankee_lock_release "$pane_lock_dir"
-    trap - EXIT INT TERM HUP
-}
-
-# --- Dispatch to display mode (sweep runs inside overlay after lock) -------
-
-# Overlay mode always uses pane-swap regardless of zoom state.  This ensures
-# tmux key bindings (prefix, root-table) work inside yankee since it runs in
-# a real pane.  The -K flag (which would let popups forward bindings to tmux)
-# does not exist in any released tmux version as of 3.5a.
-# Trade-off: on zoomed panes with very long scrollback (50K+ lines), the
-# swap-pane unzoom/rezoom cycle may cause a brief visual reflow artifact.
-
-case "$DISPLAY_MODE" in
-    overlay)
-        launch_overlay
-        ;;
-    popup)
-        if popup_supported; then
-            launch_popup
-        else
-            tmux display-message "tmux-yankee: popup requires tmux 3.2+ (display-popup); falling back to split"
-            launch_split
-        fi
-        ;;
-    split)
-        launch_split
-        ;;
-    *)
-        tmux display-message "tmux-yankee: invalid @yankee_display_mode='$DISPLAY_MODE'; using overlay"
-        launch_overlay
-        ;;
-esac
+launch_overlay
