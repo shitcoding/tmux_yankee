@@ -49,10 +49,10 @@ func Resolve(name ThemeName, overrides ThemeOverrides) (Palette, error) {
 	if err := applyColorOverride(overrides.LineNumCursorFG, &p.LineNum.CursorFG); err != nil {
 		return Palette{}, fmt.Errorf("linenum-cursor-fg: %w", err)
 	}
-	if err := applyColorOverride(overrides.StatusFG, &p.Status.FG); err != nil {
+	if err := applyColorOverride(overrides.StatusFG, &p.StatusBar.Fill.FG); err != nil {
 		return Palette{}, fmt.Errorf("status-fg: %w", err)
 	}
-	if err := applyColorOverride(overrides.StatusBG, &p.Status.BG); err != nil {
+	if err := applyColorOverride(overrides.StatusBG, &p.StatusBar.Fill.BG); err != nil {
 		return Palette{}, fmt.Errorf("status-bg: %w", err)
 	}
 
@@ -75,8 +75,8 @@ func Resolve(name ThemeName, overrides ThemeOverrides) (Palette, error) {
 	applyBoolOverride(overrides.LineNumCursorItalic, &p.LineNum.CursorStyle.Italic)
 
 	// Status style overrides
-	applyBoolOverride(overrides.StatusBold, &p.Status.Style.Bold)
-	applyBoolOverride(overrides.StatusDim, &p.Status.Style.Dim)
+	applyBoolOverride(overrides.StatusBold, &p.StatusBar.Fill.Style.Bold)
+	applyBoolOverride(overrides.StatusDim, &p.StatusBar.Fill.Style.Dim)
 
 	// Cursor style overrides
 	applyBoolOverride(overrides.CursorDim, &p.Cursor.Style.Dim)

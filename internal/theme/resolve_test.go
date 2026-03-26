@@ -43,11 +43,11 @@ func TestResolve_DefaultPreset(t *testing.T) {
 	if !p.LineNum.CursorStyle.Bold {
 		t.Errorf("LineNum.CursorStyle.Bold: got false, want true")
 	}
-	if p.Status.FG != "#a89984" {
-		t.Errorf("Status.FG: got %q, want %q", p.Status.FG, "#a89984")
+	if p.StatusBar.Fill.FG != "#fe8019" {
+		t.Errorf("StatusBar.Fill.FG: got %q, want %q", p.StatusBar.Fill.FG, "#fe8019")
 	}
-	if p.Status.BG != "#3c3836" {
-		t.Errorf("Status.BG: got %q, want %q", p.Status.BG, "#3c3836")
+	if p.StatusBar.Fill.BG != "#3c3836" {
+		t.Errorf("StatusBar.Fill.BG: got %q, want %q", p.StatusBar.Fill.BG, "#3c3836")
 	}
 }
 
@@ -177,8 +177,8 @@ func TestResolve_NewStyleOverrides(t *testing.T) {
 	if !p.LineNum.CursorStyle.Dim {
 		t.Error("LineNum.CursorStyle.Dim: got false, want true")
 	}
-	if !p.Status.Style.Bold {
-		t.Error("Status.Style.Bold: got false, want true")
+	if !p.StatusBar.Fill.Style.Bold {
+		t.Error("StatusBar.Fill.Style.Bold: got false, want true")
 	}
 	if !p.Cursor.Style.Dim {
 		t.Error("Cursor.Style.Dim: got false, want true")
