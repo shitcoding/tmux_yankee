@@ -124,12 +124,15 @@ func (c *Client) GetScrollPosition(paneID string) (int, error) {
 	return pos, nil
 }
 
-// SetBuffer sets the tmux paste buffer
+// SetBuffer sets the tmux paste buffer. Text is delivered via stdin
+// (load-buffer -) to avoid ARG_MAX limits on large selections and to keep
+// the buffer contents out of process argv (visible in ps).
 func (c *Client) SetBuffer(text string) error {
-	cmd, cancel := c.command("tmux", "set-buffer", "--", text)
+	cmd, cancel := c.command("tmux", "load-buffer", "-")
 	defer cancel()
+	cmd.Stdin = strings.NewReader(text)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("set-buffer failed: %w", err)
+		return fmt.Errorf("load-buffer failed: %w", err)
 	}
 	return nil
 }
