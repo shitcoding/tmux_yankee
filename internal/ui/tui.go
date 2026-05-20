@@ -89,6 +89,19 @@ type TUI struct {
 	searchSavedLine int            // cursor line before search started
 	searchSavedCol  int            // cursor col before search started
 
+	// Snapshot taken at provisional-search entry (`/` or `?`), restored when
+	// the user presses <Esc>. Without this snapshot, incremental search
+	// would overwrite the live match list / pattern / direction, so canceling
+	// a fresh search would leave n/N navigating the wrong (or no) matches.
+	searchSavedPattern     string
+	searchSavedActive      bool
+	searchSavedRegex       *regexp.Regexp
+	searchSavedMatches     []searchMatch
+	searchSavedMatchIdx    int
+	searchSavedDirection   int
+	searchSavedViewportTop int
+	searchSavedHOffset     int
+
 	// Jump back state (`` / '' — saved position before a jump)
 	prevCursorLine int
 	prevCursorCol  int
@@ -1160,6 +1173,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 			t.searchActive = false
 			t.searchMatches = t.searchMatches[:0]
 			t.searchMatchIdx = -1
+			t.clearSearchSnapshot()
 			t.dirty = true
 		}
 
@@ -1241,14 +1255,12 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
 
 	case input.CommandSearchForward:
-		t.searchSavedLine = t.cursorLine
-		t.searchSavedCol = t.cursorCol
+		t.snapshotSearchState()
 		t.searchDirection = 1
 		t.dirty = true
 
 	case input.CommandSearchBackward:
-		t.searchSavedLine = t.cursorLine
-		t.searchSavedCol = t.cursorCol
+		t.snapshotSearchState()
 		t.searchDirection = -1
 		t.dirty = true
 
@@ -1262,19 +1274,23 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		if len(t.searchMatches) > 0 && t.searchMatchIdx >= 0 {
 			t.jumpToMatch(t.searchMatchIdx)
 		}
+		// Snapshot was for cancel that didn't happen; release the saved
+		// match list backing storage now.
+		t.clearSearchSnapshot()
 		t.dirty = true
 
 	case input.CommandSearchCancel:
-		// Restore cursor to saved position.
-		t.cursorLine = t.searchSavedLine
-		t.cursorCol = t.searchSavedCol
-		// Keep searchActive for n/N if a previous confirmed pattern exists.
+		t.restoreSearchState()
+		// Snapshot consumed by restore; clear so the backing storage isn't
+		// retained beyond this command.
+		t.clearSearchSnapshot()
 		t.dirty = true
 
 	case input.CommandClearSearch:
 		t.searchActive = false
 		t.searchMatches = nil
 		t.searchMatchIdx = -1
+		t.clearSearchSnapshot()
 		t.dirty = true
 
 	case input.CommandColonEnter:
@@ -2295,6 +2311,64 @@ func (t *TUI) incrementalSearch(pattern string) {
 		idx := t.nearestMatch(t.searchSavedLine, t.searchSavedCol, t.searchDirection)
 		t.jumpToMatch(idx)
 	}
+}
+
+// snapshotSearchState records the full search/view state at the moment the
+// user enters provisional search (/ or ?). restoreSearchState reverts to
+// this snapshot on <Esc>, so canceling never destroys the prior confirmed
+// search's pattern, matches, direction, viewport, or cursor.
+func (t *TUI) snapshotSearchState() {
+	t.searchSavedLine = t.cursorLine
+	t.searchSavedCol = t.cursorCol
+	t.searchSavedPattern = t.searchPattern
+	t.searchSavedActive = t.searchActive
+	t.searchSavedRegex = t.searchRegex
+	// Deep-copy the match slice so subsequent incremental searches mutating
+	// t.searchMatches cannot alias the snapshot.
+	if t.searchMatches != nil {
+		t.searchSavedMatches = append([]searchMatch(nil), t.searchMatches...)
+	} else {
+		t.searchSavedMatches = nil
+	}
+	t.searchSavedMatchIdx = t.searchMatchIdx
+	t.searchSavedDirection = t.searchDirection
+	t.searchSavedViewportTop = t.viewportTop
+	t.searchSavedHOffset = t.hOffset
+}
+
+// restoreSearchState reverts every field captured by snapshotSearchState.
+// The compiled regex pointer is shared with the snapshot (regex objects are
+// immutable post-compile, so aliasing is safe). The mode machine is notified
+// of the cursor move so any active visual selection collapses back to the
+// pre-search anchor instead of trailing the provisional match.
+func (t *TUI) restoreSearchState() {
+	t.cursorLine = t.searchSavedLine
+	t.cursorCol = t.searchSavedCol
+	t.searchPattern = t.searchSavedPattern
+	t.searchActive = t.searchSavedActive
+	t.searchRegex = t.searchSavedRegex
+	t.searchMatches = t.searchSavedMatches
+	t.searchMatchIdx = t.searchSavedMatchIdx
+	t.searchDirection = t.searchSavedDirection
+	t.viewportTop = t.searchSavedViewportTop
+	t.hOffset = t.searchSavedHOffset
+	if t.modeMachine != nil {
+		t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
+	}
+}
+
+// clearSearchSnapshot drops the snapshot taken at provisional-search entry.
+// Called from CommandClearSearch so the old saved match list / regex don't
+// hold backing memory after the user has explicitly cleared search state.
+func (t *TUI) clearSearchSnapshot() {
+	t.searchSavedPattern = ""
+	t.searchSavedActive = false
+	t.searchSavedRegex = nil
+	t.searchSavedMatches = nil
+	t.searchSavedMatchIdx = -1
+	t.searchSavedDirection = 0
+	// viewport/hOffset/cursor saved fields are ints — harmless to retain;
+	// they'll be overwritten on the next snapshotSearchState.
 }
 
 // savePrevCursor saves the current cursor position for jump-back (``/'')
