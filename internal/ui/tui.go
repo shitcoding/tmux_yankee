@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -2842,33 +2841,17 @@ func (t *TUI) yankLine() bool {
 	return true
 }
 
-// copyToClipboard copies text to system clipboard via copy_stdin.sh
+// copyToClipboard copies text to system clipboard via copy_stdin.sh.
+// Resolution lives in copy_path.go and excludes any CWD-relative path.
 func (t *TUI) copyToClipboard(text string) error {
-	// Get the directory where the binary is located
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("cannot determine executable path: %w", err)
 	}
-	binDir := filepath.Dir(execPath)
 
-	// Try multiple possible locations relative to binary
-	possiblePaths := []string{
-		filepath.Join(binDir, "..", "scripts", "copy_stdin.sh"), // ../scripts from bin/
-		"scripts/copy_stdin.sh",                                 // From project root (if run from there)
-		"/usr/local/bin/copy_stdin.sh",                          // System-wide install
-	}
-
-	var scriptPath string
-	for _, path := range possiblePaths {
-		absPath, _ := filepath.Abs(path)
-		if _, err := os.Stat(absPath); err == nil {
-			scriptPath = absPath
-			break
-		}
-	}
-
-	if scriptPath == "" {
-		return fmt.Errorf("copy_stdin.sh not found in any of: %v", possiblePaths)
+	scriptPath, err := resolveCopyScriptPath(execPath, statExists)
+	if err != nil {
+		return err
 	}
 
 	cmd := exec.Command(scriptPath)
