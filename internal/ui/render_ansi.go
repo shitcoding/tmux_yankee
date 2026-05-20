@@ -62,27 +62,24 @@ func ParseANSILine(line string) []Cell {
 	i := 0
 
 	for i < len(runes) {
-		if runes[i] == '\x1b' && i+1 < len(runes) && runes[i+1] == '[' {
-			// Parse CSI sequence
-			i += 2 // Skip ESC [
-
-			// Find the end of the sequence (letter)
-			seqStart := i
-			for i < len(runes) && !isCSITerminator(runes[i]) {
-				i++
-			}
-
-			if i < len(runes) {
-				terminator := runes[i]
-				sequence := string(runes[seqStart:i])
-
-				// Handle SGR (Select Graphic Rendition) - 'm' terminator
-				if terminator == 'm' {
-					currentStyle = applySGR(currentStyle, sequence)
+		if runes[i] == '\x1b' {
+			// CSI sequences need inline handling so SGR can update style;
+			// all other escape forms (OSC/DCS/APC/PM/SOS/SS2/SS3/intermediate
+			// /lone-Fp-controls) are skipped by the shared scanner.
+			if i+1 < len(runes) && runes[i+1] == '[' {
+				seqStart := i + 2
+				next := scanCSI(runes, seqStart)
+				if next > seqStart && next <= len(runes) {
+					terminator := runes[next-1]
+					if terminator == 'm' {
+						sequence := string(runes[seqStart : next-1])
+						currentStyle = applySGR(currentStyle, sequence)
+					}
 				}
-
-				i++ // Skip terminator
+				i = next
+				continue
 			}
+			i = scanEscape(runes, i)
 			continue
 		}
 
@@ -106,11 +103,6 @@ func ParseANSILine(line string) []Cell {
 	}
 
 	return cells
-}
-
-// isCSITerminator checks if a rune is a CSI sequence terminator.
-func isCSITerminator(r rune) bool {
-	return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')
 }
 
 // applySGR applies SGR codes to a style.

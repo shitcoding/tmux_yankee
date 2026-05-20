@@ -71,45 +71,33 @@ func (d *Document) LineRuneCount(index int) int {
 	return d.lines[index].RuneCount
 }
 
-// stripANSI removes ANSI escape codes from a string.
-// This is a simple implementation that removes CSI sequences (ESC [ ... m).
+// stripANSI removes ANSI escape sequences from s, returning the plain text
+// that downstream code (search, motion, yank) consumes via Document.Plain.
+//
+// The scanner in escape_scanner.go is the source of truth for which byte
+// ranges constitute an escape sequence. By routing every ESC introducer
+// through scanEscape we ensure stripANSI and ParseANSILine agree exactly on
+// what's "escape" vs "text" — closing escape-injection paths (CSI with
+// non-letter terminators, OSC titles/hyperlinks, DCS/APC/PM/SOS payloads,
+// SS2/SS3 single shifts, charset designations, DEC screen-alignment test,
+// UTF-8 mode switches, and so on) at the parser boundary.
 func stripANSI(s string) string {
 	// Fast path: no escape characters -> return as-is (no allocation).
 	if strings.IndexByte(s, 0x1b) < 0 {
 		return s
 	}
 
-	var result strings.Builder
-	inEscape := false
-	inCSI := false
-
-	for _, r := range s {
-		if r == '\x1b' { // ESC
-			inEscape = true
+	runes := []rune(s)
+	var b strings.Builder
+	b.Grow(len(s))
+	i := 0
+	for i < len(runes) {
+		if runes[i] == '\x1b' {
+			i = scanEscape(runes, i)
 			continue
 		}
-
-		if inEscape {
-			if r == '[' {
-				inCSI = true
-				inEscape = false
-				continue
-			}
-			// Unknown escape sequence, skip this character
-			inEscape = false
-			continue
-		}
-
-		if inCSI {
-			// CSI sequence ends with a letter (A-Z, a-z)
-			if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
-				inCSI = false
-			}
-			continue
-		}
-
-		result.WriteRune(r)
+		b.WriteRune(runes[i])
+		i++
 	}
-
-	return result.String()
+	return b.String()
 }
