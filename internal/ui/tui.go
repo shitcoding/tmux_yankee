@@ -2211,6 +2211,11 @@ func (t *TUI) computeSearchMatches(pattern string) {
 		line := t.doc.Line(i)
 		locs := re.FindAllStringIndex(line, -1)
 		for _, loc := range locs {
+			// Skip zero-width matches (e.g. \b, ^, $, a?): they produce
+			// phantom one-cell highlights at every position otherwise.
+			if loc[0] == loc[1] {
+				continue
+			}
 			// Convert byte offsets to rune offsets.
 			colStart := byteOffsetToRuneOffset(line, loc[0])
 			colEnd := byteOffsetToRuneOffset(line, loc[1]) - 1
