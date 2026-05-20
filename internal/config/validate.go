@@ -52,6 +52,11 @@ func Validate(opts CLIOptions) error {
 		{"linenum-cursor-fg", opts.LineNumCursorFG},
 		{"status-fg", opts.StatusFG},
 		{"status-bg", opts.StatusBG},
+		{"flash-label-fg", opts.FlashLabelFG},
+		{"flash-label-bg", opts.FlashLabelBG},
+		{"flash-match-fg", opts.FlashMatchFG},
+		{"flash-match-bg", opts.FlashMatchBG},
+		{"flash-backdrop", opts.FlashBackdrop},
 	}
 	for _, f := range colorFields {
 		if f.val != "" && !hexColorRe.MatchString(f.val) {
@@ -177,6 +182,8 @@ func Validate(opts CLIOptions) error {
 		{"cursor-italic", opts.CursorItalic},
 		{"selection-dim", opts.SelectionDim},
 		{"selection-italic", opts.SelectionItalic},
+		{"flash", opts.Flash},
+		{"flash-ft", opts.FlashFT},
 	}
 	for _, f := range boolFields {
 		switch f.val {

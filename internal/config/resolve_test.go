@@ -267,3 +267,67 @@ func TestResolve_InvalidFlashAltJumpPos(t *testing.T) {
 		t.Errorf("error should mention flash-alt-jump-pos: %v", err)
 	}
 }
+
+func TestResolve_InvalidFlashOnOff(t *testing.T) {
+	opts := defaultOpts()
+	opts.Flash = "onn"
+	_, err := Resolve(opts)
+	if err == nil {
+		t.Fatal("expected error for invalid flash value")
+	}
+	if !strings.Contains(err.Error(), "flash") || !strings.Contains(err.Error(), "onn") {
+		t.Errorf("error should mention flash + bad value, got: %v", err)
+	}
+}
+
+func TestResolve_InvalidFlashFTOnOff(t *testing.T) {
+	opts := defaultOpts()
+	opts.FlashFT = "yes"
+	_, err := Resolve(opts)
+	if err == nil {
+		t.Fatal("expected error for invalid flash-ft value")
+	}
+	if !strings.Contains(err.Error(), "flash-ft") || !strings.Contains(err.Error(), "yes") {
+		t.Errorf("error should mention flash-ft + bad value, got: %v", err)
+	}
+}
+
+func TestResolve_InvalidFlashColors(t *testing.T) {
+	colors := []struct {
+		field string
+		set   func(*CLIOptions)
+	}{
+		{"flash-label-fg", func(o *CLIOptions) { o.FlashLabelFG = "red" }},
+		{"flash-label-bg", func(o *CLIOptions) { o.FlashLabelBG = "blue" }},
+		{"flash-match-fg", func(o *CLIOptions) { o.FlashMatchFG = "#xxx" }},
+		{"flash-match-bg", func(o *CLIOptions) { o.FlashMatchBG = "rgb(1,2,3)" }},
+		{"flash-backdrop", func(o *CLIOptions) { o.FlashBackdrop = "transparent" }},
+	}
+	for _, tc := range colors {
+		t.Run(tc.field, func(t *testing.T) {
+			opts := defaultOpts()
+			tc.set(&opts)
+			_, err := Resolve(opts)
+			if err == nil {
+				t.Fatalf("expected error for bad %s color", tc.field)
+			}
+			if !strings.Contains(err.Error(), tc.field) {
+				t.Errorf("error should mention %s, got: %v", tc.field, err)
+			}
+		})
+	}
+}
+
+func TestResolve_ValidFlashColorsAndToggles(t *testing.T) {
+	opts := defaultOpts()
+	opts.Flash = "on"
+	opts.FlashFT = "off"
+	opts.FlashLabelFG = "#ff00ff"
+	opts.FlashLabelBG = "#000000"
+	opts.FlashMatchFG = "#abcdef"
+	opts.FlashMatchBG = "#123456"
+	opts.FlashBackdrop = "#808080"
+	if _, err := Resolve(opts); err != nil {
+		t.Fatalf("valid flash settings rejected: %v", err)
+	}
+}
