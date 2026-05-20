@@ -80,14 +80,35 @@ download_binary() {
 
     echo "tmux-yankee: downloading ${asset_name}..."
     mkdir -p "$BIN_DIR"
-    if curl -fsSL -o "$BINARY" "$download_url"; then
-        chmod +x "$BINARY"
+    if install_atomic "$download_url" "$BINARY"; then
         echo "tmux-yankee: installed to ${BINARY}"
         return 0
     else
         echo "tmux-yankee: download failed" >&2
         return 1
     fi
+}
+
+# install_atomic downloads $url to a unique temp file in the same directory
+# as $dest, marks it executable, then renames it onto $dest. A failure in
+# any step (curl exit, chmod, mv) removes the temp file and reports failure
+# without leaving partial state at $dest. The temp file uses mktemp so
+# concurrent installs cannot share a predictable path.
+install_atomic() {
+    local url="$1"
+    local dest="$2"
+    local tmpfile
+    tmpfile=$(mktemp "${dest}.XXXXXX") || return 1
+    # Chain so any step's failure short-circuits to the cleanup path. Inside
+    # `if`, bash disables errexit, so explicit chaining is the only reliable
+    # way to catch a failed mv after a successful curl.
+    if curl -fsSL -o "$tmpfile" "$url" \
+        && chmod +x "$tmpfile" \
+        && mv "$tmpfile" "$dest"; then
+        return 0
+    fi
+    rm -f "$tmpfile"
+    return 1
 }
 
 build_from_source() {
@@ -119,4 +140,8 @@ main() {
     exit 1
 }
 
-main "$@"
+# Only execute main when run as a script. Sourcing this file (e.g. from
+# tests) exposes the helpers without invoking main.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
