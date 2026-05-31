@@ -360,6 +360,74 @@ func TestHalfPageDown_WrapMode_ClampsCursorColToShorterVisibleLine(t *testing.T)
 	}
 }
 
+func TestZb_WrapMode_PlacesCursorLineAtVisibleBottom(t *testing.T) {
+	// zb (MotionViewportBottom): cursor line should end up as the last
+	// FULLY-visible source line. With wrap on, motion handler computes
+	// newTop = cursorLine - ch + 1 (source-line arithmetic) and clamps to
+	// lineCount - ch. Both are wrong for wrap mode.
+	long := strings.Repeat("abcdefghij ", 12)
+	lines := []string{long, long, long, long, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 3 // somewhere in the middle
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionViewportBottom})
+
+	// After zb, the cursorLine should be the last fully-visible line of
+	// the new viewport.
+	lastVis := ti.lastVisibleLineWrap(ti.wrapContentWidth())
+	if lastVis != ti.cursorLine {
+		t.Errorf("zb wrap mode: cursorLine=%d should equal lastVisibleLineWrap=%d (cursor on visible-bottom row)",
+			ti.cursorLine, lastVis)
+	}
+}
+
+func TestZb_WrapMode_MixedHeight_CursorVisibleArchitecturalLimit(t *testing.T) {
+	// Architectural-limit doc test (source-line viewportTop). Mixed setup:
+	// the line BEFORE target is very tall; target itself is short. The
+	// helper cannot place target at the absolute visible bottom (would
+	// require intra-line offset). It DOES guarantee:
+	//   * cursor is in the visible window;
+	//   * viewportTop is the closest source-line approximation.
+	long := strings.Repeat("abcdefghij ", 12) // ~7 wrap rows on 20-wide
+	short := "x"
+	lines := []string{short, long, short, short}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 2 // short, preceded by tall
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionViewportBottom})
+
+	if ti.cursorLine < ti.viewportTop {
+		t.Errorf("zb mixed-height: cursor (%d) above viewportTop (%d)", ti.cursorLine, ti.viewportTop)
+	}
+	lastVis := ti.lastVisibleLineWrap(ti.wrapContentWidth())
+	if ti.cursorLine > lastVis {
+		t.Errorf("zb mixed-height: cursor (%d) past lastVisibleLineWrap (%d)", ti.cursorLine, lastVis)
+	}
+}
+
+func TestZt_WrapMode_PlacesCursorLineAtViewportTop(t *testing.T) {
+	// zt (MotionViewportTop): cursor line should equal viewportTop. The
+	// motion handler clamps to maxTop = lineCount - ch which can prevent
+	// putting cursor at top when near end of doc (wrong for wrap mode where
+	// the wrap-aware max is different).
+	long := strings.Repeat("abcdefghij ", 12)
+	lines := []string{long, long, long, long, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 2
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionViewportTop})
+
+	if ti.cursorLine != ti.viewportTop {
+		t.Errorf("zt wrap mode: cursorLine=%d should equal viewportTop=%d", ti.cursorLine, ti.viewportTop)
+	}
+}
+
 func TestHandleMouseScroll_NonWrapMode_LongDoc_ScrollsViewport(t *testing.T) {
 	// Regression guard: non-wrap mode with lineCount > ch still scrolls
 	// the viewport (existing behavior).

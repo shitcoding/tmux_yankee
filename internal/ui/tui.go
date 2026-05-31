@@ -700,6 +700,55 @@ func (t *TUI) contentNeedsScrollWrap(contentWidth, rows int) bool {
 	return t.maxViewportTopWrap(contentWidth, rows) > 0
 }
 
+// maxViewportTopWrapToFit returns the largest viewportTop value for which
+// `targetLine` fits in the viewport with as much preceding content visible
+// as the row budget allows. Used by zb (cursor at bottom of viewport) in
+// wrap mode. Walks backward from `targetLine` summing wrap chunks until
+// adding the next line would overflow.
+//
+// Architectural limit: viewportTop is source-line indexed (no intra-line
+// row offset). In mixed-height cases — e.g. preceding line is very tall
+// but `targetLine` is short — the returned top can leave spare rows below
+// `targetLine`, and the renderer will fill them with the next source line.
+// So `targetLine` may not be EXACTLY the last visible line; it's the
+// closest source-line-indexed approximation. The cursor is always visible
+// (callers should follow up with clampCursorIntoWrapViewport).
+func (t *TUI) maxViewportTopWrapToFit(targetLine, contentWidth, rows int) int {
+	if contentWidth <= 0 || rows <= 0 {
+		return 0
+	}
+	lineCount := t.doc.LineCount()
+	if lineCount <= 0 {
+		return 0
+	}
+	if targetLine < 0 {
+		targetLine = 0
+	}
+	if targetLine >= lineCount {
+		targetLine = lineCount - 1
+	}
+	used := 0
+	for i := targetLine; i >= 0; i-- {
+		chunks := t.cachedWrapChunks(i, t.doc.Cells(i), contentWidth)
+		n := len(chunks)
+		if n == 0 {
+			n = 1
+		}
+		if used+n > rows {
+			// Adding this line would overflow. The viewport top is one line
+			// below i. Cap at targetLine so the helper never returns a top
+			// past the target itself.
+			top := i + 1
+			if top > targetLine {
+				top = targetLine
+			}
+			return top
+		}
+		used += n
+	}
+	return 0
+}
+
 // advanceViewportByDisplayRows returns a new viewportTop after scrolling
 // forward by `rows` display rows in wrap mode. Walks lines forward from
 // the current viewportTop, summing wrap chunks, until `rows` have been
@@ -1268,8 +1317,32 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 				cw := t.wrapContentWidth()
 				t.viewportTop = t.retreatViewportByDisplayRows(t.contentHeight(), cw)
 				t.clampCursorIntoWrapViewport(cw)
-			case motion.MotionViewportTop, motion.MotionViewportBottom:
-				t.viewportTop = result.Viewport.Top
+			case motion.MotionViewportTop:
+				// zt: put cursor at viewport top. In wrap mode just set
+				// viewportTop = cursorLine, but clamp to the wrap-aware max
+				// so we never leave less than a full screen of content
+				// behind the cursor.
+				cw := t.wrapContentWidth()
+				if cw > 0 {
+					maxTop := t.maxViewportTopWrap(cw, t.contentHeight())
+					t.viewportTop = t.cursorLine
+					if t.viewportTop > maxTop {
+						t.viewportTop = maxTop
+					}
+					t.clampCursorIntoWrapViewport(cw)
+				} else {
+					t.viewportTop = result.Viewport.Top
+				}
+			case motion.MotionViewportBottom:
+				// zb: put cursor at the wrap-aware visible bottom by
+				// walking backward from cursorLine summing wrap chunks.
+				cw := t.wrapContentWidth()
+				if cw > 0 {
+					t.viewportTop = t.maxViewportTopWrapToFit(t.cursorLine, cw, t.contentHeight())
+					t.clampCursorIntoWrapViewport(cw)
+				} else {
+					t.viewportTop = result.Viewport.Top
+				}
 			}
 		} else {
 			t.viewportTop = result.Viewport.Top
