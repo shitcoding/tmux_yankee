@@ -700,10 +700,13 @@ func (t *TUI) contentNeedsScrollWrap(contentWidth, rows int) bool {
 	return t.maxViewportTopWrap(contentWidth, rows) > 0
 }
 
-// lastVisibleLineWrap returns the index of the last logical line whose first
-// wrapped row is visible in the current viewport. Used by scroll-up to clamp
-// the cursor correctly in wrap mode, where viewportTop+ch-1 overestimates the
-// visible bottom because wrapped lines consume multiple display rows.
+// lastVisibleLineWrap returns the index of the last logical line whose
+// wrapped rows entirely fit within the current viewport (from viewportTop
+// downward, summing each line's wrap chunk count up to ch). Used to clamp
+// the cursor to a fully-visible source line after wrap-mode scroll-up
+// operations. Note: a line whose first row IS visible but later wrapped
+// rows are clipped is NOT included; use that semantic if cursor needs to
+// remain on a partially-visible line.
 func (t *TUI) lastVisibleLineWrap(contentWidth int) int {
 	ch := t.contentHeight()
 	if ch <= 0 || contentWidth <= 0 {
@@ -1418,11 +1421,18 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		}
 
 	case input.CommandScrollLineUp:
-		// Ctrl-Y: scroll viewport up one line, cursor stays (clamp if off-screen)
+		// Ctrl-Y: scroll viewport up one line, cursor stays (clamp if off-screen).
+		// In wrap mode, the bottom-of-viewport line index is computed via
+		// lastVisibleLineWrap because wrapped lines consume multiple display
+		// rows; the source-line `viewportTop + ch - 1` formula overcounts.
 		if t.viewportTop > 0 {
 			t.viewportTop--
-			// If cursor is below viewport, pull it up
-			maxVisible := t.viewportTop + t.contentHeight() - 1
+			var maxVisible int
+			if t.cfg.WrapMode == config.WrapModeOn {
+				maxVisible = t.lastVisibleLineWrap(t.wrapContentWidth())
+			} else {
+				maxVisible = t.viewportTop + t.contentHeight() - 1
+			}
 			if t.cursorLine > maxVisible {
 				t.cursorLine = maxVisible
 				t.modeMachine.OnCursorMoved(selection.Pos{Line: t.cursorLine, Col: t.cursorCol})
@@ -1430,11 +1440,17 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		}
 
 	case input.CommandScrollLineDown:
-		// Ctrl-E: scroll viewport down one line, cursor stays (clamp if off-screen)
-		lineCount := t.doc.LineCount()
-		maxTop := lineCount - t.contentHeight()
-		if maxTop < 0 {
-			maxTop = 0
+		// Ctrl-E: scroll viewport down one line, cursor stays (clamp if off-screen).
+		// In wrap mode, maxTop is computed wrap-aware so that short source
+		// documents whose lines wrap past the viewport can still be scrolled.
+		var maxTop int
+		if t.cfg.WrapMode == config.WrapModeOn {
+			maxTop = t.maxViewportTopWrap(t.wrapContentWidth(), t.contentHeight())
+		} else {
+			maxTop = t.doc.LineCount() - t.contentHeight()
+			if maxTop < 0 {
+				maxTop = 0
+			}
 		}
 		if t.viewportTop < maxTop {
 			t.viewportTop++

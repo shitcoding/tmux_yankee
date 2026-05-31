@@ -141,6 +141,90 @@ func TestMaxViewportTopWrap_LastLineTallerThanViewport_NeverReturnsPastEOF(t *te
 	}
 }
 
+func TestCtrlE_WrapMode_ShortDocLongLines_AdvancesViewport(t *testing.T) {
+	// Ctrl-E (scroll-line-down) uses `lineCount - contentHeight` for maxTop
+	// which is wrong in wrap mode. With 5 short source lines that each wrap
+	// past ch, scrolling down with Ctrl-E should still advance viewportTop.
+	long := strings.Repeat("abcdefghij ", 12)
+	lines := []string{long, long, long, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 0
+
+	ti.handleCommand(input.Command{Type: input.CommandScrollLineDown})
+
+	if ti.viewportTop == 0 {
+		t.Errorf("Ctrl-E in wrap mode with wrapped-display-rows > ch should advance viewportTop; still 0")
+	}
+}
+
+func TestCtrlY_WrapMode_ClampsCursorToWrapAwareBottom(t *testing.T) {
+	// Pre-W2: Ctrl-Y clamped the cursor to `viewportTop + ch - 1` (source-
+	// line arithmetic). In wrap mode that overshoots — it can leave the
+	// cursor on a source line whose wrapped rows lie BELOW the visible
+	// display rows. Post-W2 the clamp uses lastVisibleLineWrap so the
+	// cursor lands on the last fully-visible source line.
+	//
+	// Setup: 10 source lines, each wrapping to ~3 display rows on a 20-col
+	// terminal, ch=10. From viewportTop=5 only lines 5..~8 are visible.
+	long := strings.Repeat("abcd ", 10) // 50 chars → wraps to ~3 rows on 20 cols
+	lines := make([]string, 10)
+	for i := range lines {
+		lines[i] = long
+	}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 5
+	ti.cursorLine = 8 // sits inside the visible window at viewportTop=5
+
+	ti.handleCommand(input.Command{Type: input.CommandScrollLineUp})
+
+	if ti.viewportTop != 4 {
+		t.Fatalf("Ctrl-Y should decrement viewportTop 5→4, got %d", ti.viewportTop)
+	}
+	// After viewportTop=4, the wrap-aware last fully-visible source line
+	// must NOT exclude the cursor. Either cursor is unchanged (if still
+	// fully visible) or clamped to lastVisibleLineWrap (if pushed off).
+	wantCap := ti.lastVisibleLineWrap(ti.wrapContentWidth())
+	if ti.cursorLine > wantCap {
+		t.Errorf("Ctrl-Y left cursor (%d) past wrap-aware visible bottom (%d)", ti.cursorLine, wantCap)
+	}
+}
+
+func TestCtrlE_NonWrapMode_LongDoc_AdvancesViewport(t *testing.T) {
+	// Regression guard.
+	lines := make([]string, 50)
+	for i := range lines {
+		lines[i] = "line"
+	}
+	cfg := config.Settings{
+		Mode:     config.LineNumberModeAbsolute,
+		WrapMode: config.WrapModeOff,
+	}
+	doc := NewDocument(lines)
+	ti := &TUI{
+		cfg:            cfg,
+		doc:            doc,
+		lineNumMode:    string(cfg.Mode),
+		formatter:      linenums.NewFormatter(linenums.ModeAbsolute, 50),
+		modeMachine:    vmode.NewMachine(),
+		motionHandler:  motion.NewVimHandler(),
+		parser:         input.NewParser(),
+		width:          40,
+		height:         20,
+		viewportTop:    0,
+		cursorLine:     0,
+		searchMatchIdx: -1,
+	}
+
+	ti.handleCommand(input.Command{Type: input.CommandScrollLineDown})
+
+	if ti.viewportTop != 1 {
+		t.Errorf("non-wrap Ctrl-E should advance viewportTop 0→1, got %d", ti.viewportTop)
+	}
+}
+
 func TestHandleMouseScroll_NonWrapMode_LongDoc_ScrollsViewport(t *testing.T) {
 	// Regression guard: non-wrap mode with lineCount > ch still scrolls
 	// the viewport (existing behavior).
