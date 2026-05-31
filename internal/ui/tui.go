@@ -700,6 +700,59 @@ func (t *TUI) contentNeedsScrollWrap(contentWidth, rows int) bool {
 	return t.maxViewportTopWrap(contentWidth, rows) > 0
 }
 
+// firstNonBlankRuneCol returns the rune column of the first non-blank
+// rune on `line`. Used by wrap-mode H/M/L cursor overrides so the new
+// cursor column matches vim semantics (cursor lands on first non-blank
+// of the target line). Returns 0 for empty or all-blank lines.
+func firstNonBlankRuneCol(line string) int {
+	rcol := 0
+	for _, r := range line {
+		if r != ' ' && r != '\t' {
+			return rcol
+		}
+		rcol++
+	}
+	return 0
+}
+
+// middleVisibleLineWrap returns the source line at approximately the
+// middle display row of the current viewport, accounting for wrapped
+// lines. Used by M (MotionScreenMiddle) in wrap mode. Walks forward
+// from viewportTop summing wrap chunks until the cumulative row count
+// reaches ch/2; that source line is the return value.
+func (t *TUI) middleVisibleLineWrap(contentWidth int) int {
+	if contentWidth <= 0 {
+		return t.viewportTop
+	}
+	ch := t.contentHeight()
+	if ch <= 0 {
+		return t.viewportTop
+	}
+	target := ch / 2
+	used := 0
+	lineCount := t.doc.LineCount()
+	line := t.viewportTop
+	for line < lineCount {
+		chunks := t.cachedWrapChunks(line, t.doc.Cells(line), contentWidth)
+		n := len(chunks)
+		if n == 0 {
+			n = 1
+		}
+		if used+n > target {
+			return line
+		}
+		used += n
+		line++
+	}
+	if line >= lineCount {
+		line = lineCount - 1
+	}
+	if line < 0 {
+		line = 0
+	}
+	return line
+}
+
 // maxViewportTopWrapToFit returns the largest viewportTop value for which
 // `targetLine` fits in the viewport with as much preceding content visible
 // as the row budget allows. Used by zb (cursor at bottom of viewport) in
@@ -1342,6 +1395,55 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 					t.clampCursorIntoWrapViewport(cw)
 				} else {
 					t.viewportTop = result.Viewport.Top
+				}
+			}
+
+			// Wrap-mode cursor override for screen-relative motions (H/M/L).
+			// The motion handler computes targets using viewport.Top +
+			// viewport.Height arithmetic (source-line), which overshoots in
+			// wrap mode where wrapped rows consume many display rows. Override
+			// the cursor here using the wrap-aware helpers, then place
+			// cursorCol at the first non-blank of the new line (vim semantic).
+			switch cmd.Motion {
+			case motion.MotionScreenTop:
+				cw := t.wrapContentWidth()
+				if cw > 0 {
+					lastVis := t.lastVisibleLineWrap(cw)
+					target := t.viewportTop
+					if cmd.Count > 0 {
+						target = t.viewportTop + cmd.Count - 1
+					}
+					if target > lastVis {
+						target = lastVis
+					}
+					if target < t.viewportTop {
+						target = t.viewportTop
+					}
+					t.cursorLine = target
+					t.cursorCol = firstNonBlankRuneCol(t.doc.Line(target))
+				}
+			case motion.MotionScreenBottom:
+				cw := t.wrapContentWidth()
+				if cw > 0 {
+					lastVis := t.lastVisibleLineWrap(cw)
+					target := lastVis
+					if cmd.Count > 0 {
+						target = lastVis - cmd.Count + 1
+					}
+					if target < t.viewportTop {
+						target = t.viewportTop
+					}
+					if target > lastVis {
+						target = lastVis
+					}
+					t.cursorLine = target
+					t.cursorCol = firstNonBlankRuneCol(t.doc.Line(target))
+				}
+			case motion.MotionScreenMiddle:
+				cw := t.wrapContentWidth()
+				if cw > 0 {
+					t.cursorLine = t.middleVisibleLineWrap(cw)
+					t.cursorCol = firstNonBlankRuneCol(t.doc.Line(t.cursorLine))
 				}
 			}
 		} else {

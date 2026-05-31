@@ -428,6 +428,128 @@ func TestZt_WrapMode_PlacesCursorLineAtViewportTop(t *testing.T) {
 	}
 }
 
+func TestL_WrapMode_CursorLandsOnLastVisibleSourceLine(t *testing.T) {
+	// L (MotionScreenBottom) should put cursor on the last fully-visible
+	// source line. Motion handler uses viewportTop+height-1 which in wrap
+	// mode overshoots into invisible source lines.
+	long := strings.Repeat("abcdefghij ", 12)
+	lines := []string{long, long, long, long, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 0
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionScreenBottom})
+
+	lastVis := ti.lastVisibleLineWrap(ti.wrapContentWidth())
+	if ti.cursorLine != lastVis {
+		t.Errorf("L wrap mode: cursorLine=%d, want lastVisibleLineWrap=%d", ti.cursorLine, lastVis)
+	}
+}
+
+func TestM_WrapMode_CursorLandsOnSourceLineAtMiddleDisplayRow(t *testing.T) {
+	// M (MotionScreenMiddle) should put cursor on the source line at
+	// ~middle display row. Motion handler uses viewportTop+height/2 which
+	// is wrong in wrap mode.
+	long := strings.Repeat("abcdefghij ", 12)
+	lines := []string{long, long, long, long, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 0
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionScreenMiddle})
+
+	want := ti.middleVisibleLineWrap(ti.wrapContentWidth())
+	if ti.cursorLine != want {
+		t.Errorf("M wrap mode: cursorLine=%d, want middleVisibleLineWrap=%d", ti.cursorLine, want)
+	}
+}
+
+func TestCountedL_WrapMode_CountsFromWrapAwareBottom(t *testing.T) {
+	// L 2 should land on the 2nd source line FROM the wrap-aware visible
+	// bottom (1-indexed). With 6 long lines wrapping past ch, lastVis is
+	// some small index N near viewportTop; L 2 → cursor = N - 1.
+	long := strings.Repeat("abcdefghij ", 12)
+	lines := []string{long, long, long, long, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 0
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionScreenBottom, Count: 2})
+
+	lastVis := ti.lastVisibleLineWrap(ti.wrapContentWidth())
+	want := lastVis - 1
+	if want < ti.viewportTop {
+		want = ti.viewportTop
+	}
+	if ti.cursorLine != want {
+		t.Errorf("L 2 wrap mode: cursorLine=%d, want %d (lastVis=%d - count(2) + 1, clamped to viewportTop)",
+			ti.cursorLine, want, lastVis)
+	}
+}
+
+func TestL_WrapMode_CursorColAtFirstNonBlankOfOverriddenLine(t *testing.T) {
+	// L should set cursorCol to the first non-blank rune of THE LINE WE
+	// LAND ON. To prove the override recomputes first-nonblank for the
+	// override-chosen line (not the motion handler's target line), pick
+	// a doc where:
+	//   - Motion handler targets the LAST line (long, no indent, col=0).
+	//   - Wrap override clamps cursor to a MIDDLE line that IS indented.
+	// The cursor must land on the indented line at its first non-blank.
+	long := strings.Repeat("abcdefghij ", 12) // ~7 wrap rows on 20 cols
+	indented := "  hello world"               // first non-blank at rune col 2
+	lines := []string{long, indented, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 0
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionScreenBottom})
+
+	lastVis := ti.lastVisibleLineWrap(ti.wrapContentWidth())
+	if ti.cursorLine != lastVis {
+		t.Fatalf("L wrap mode: cursorLine=%d, want lastVisibleLineWrap=%d", ti.cursorLine, lastVis)
+	}
+	// Whatever line wrap-clamping picked, cursorCol must be first non-blank
+	// of THAT line, not the motion handler's target (line 3, col 0).
+	wantCol := firstNonBlankRuneCol(ti.doc.Line(ti.cursorLine))
+	if ti.cursorCol != wantCol {
+		t.Errorf("L wrap mode: cursorCol=%d, want first-non-blank of line %d (%q) = %d",
+			ti.cursorCol, ti.cursorLine, ti.doc.Line(ti.cursorLine), wantCol)
+	}
+}
+
+func TestH_WrapMode_CursorClampedToLastVisible(t *testing.T) {
+	// H N (MotionScreenTop with count) should jump N source lines from top
+	// but never past the wrap-aware visible bottom.
+	long := strings.Repeat("abcdefghij ", 12)
+	lines := []string{long, long, long, long, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 0
+
+	// H 5: motion handler says viewportTop + 5 - 1 = 4. Wrap-aware visible
+	// bottom is much lower (only ~1-2 lines visible at ch=10 with ~7-row
+	// wrap). Override must compute min(viewportTop+5-1, lastVisibleLineWrap).
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionScreenTop, Count: 5})
+
+	lastVis := ti.lastVisibleLineWrap(ti.wrapContentWidth())
+	want := ti.viewportTop + 5 - 1
+	if want > lastVis {
+		want = lastVis
+	}
+	if want < ti.viewportTop {
+		want = ti.viewportTop
+	}
+	if ti.cursorLine != want {
+		t.Errorf("H 5 wrap mode: cursorLine=%d, want min(viewportTop+count-1, lastVis)=%d (lastVis=%d)",
+			ti.cursorLine, want, lastVis)
+	}
+}
+
 func TestHandleMouseScroll_NonWrapMode_LongDoc_ScrollsViewport(t *testing.T) {
 	// Regression guard: non-wrap mode with lineCount > ch still scrolls
 	// the viewport (existing behavior).
