@@ -649,6 +649,57 @@ func (t *TUI) wrapContentWidth() int {
 	return cw
 }
 
+// maxViewportTopWrap returns the largest viewportTop value for which the
+// document's last source line is still visible in the viewport, accounting
+// for wrapped display rows. Walks backward from the last line, summing each
+// line's wrap chunk count, until adding the next line would overflow `rows`.
+//
+// Returns 0 when the entire wrapped document fits in `rows`. Returns
+// `lineCount-1` (the last source line) when even the last line alone wraps
+// past `rows` — viewportTop is source-line indexed so we cannot point
+// inside a single overheight line. Otherwise returns the largest valid
+// viewportTop — symmetric with non-wrap mode's `lineCount - ch`.
+func (t *TUI) maxViewportTopWrap(contentWidth, rows int) int {
+	lineCount := t.doc.LineCount()
+	if lineCount <= 0 || contentWidth <= 0 || rows <= 0 {
+		return 0
+	}
+	used := 0
+	for i := lineCount - 1; i >= 0; i-- {
+		chunks := t.cachedWrapChunks(i, t.doc.Cells(i), contentWidth)
+		n := len(chunks)
+		if n == 0 {
+			n = 1
+		}
+		if used+n > rows {
+			// Adding this line would overflow — it becomes the line just
+			// above the viewport top. Clamp so we never return a value past
+			// the last source-line index (architectural limit: viewportTop
+			// is source-line indexed, no intra-line row offset). If the
+			// last line alone wraps taller than `rows`, the largest sane
+			// viewport top is `lineCount-1` so that last line is at least
+			// the only visible source line.
+			top := i + 1
+			if top > lineCount-1 {
+				top = lineCount - 1
+			}
+			return top
+		}
+		used += n
+	}
+	return 0
+}
+
+// contentNeedsScrollWrap reports whether wrap-mode content extends beyond
+// the current viewport in either direction (so a wheel/scroll command
+// should move the viewport rather than only the cursor).
+func (t *TUI) contentNeedsScrollWrap(contentWidth, rows int) bool {
+	if t.viewportTop > 0 {
+		return true
+	}
+	return t.maxViewportTopWrap(contentWidth, rows) > 0
+}
+
 // lastVisibleLineWrap returns the index of the last logical line whose first
 // wrapped row is visible in the current viewport. Used by scroll-up to clamp
 // the cursor correctly in wrap mode, where viewportTop+ch-1 overestimates the
@@ -1927,10 +1978,32 @@ func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
 		step = 1
 	}
 
-	// Viewport-scroll path: content is taller than the terminal window.
+	// Decide whether the viewport-scroll path applies. In wrap mode the
+	// source-line check (`lineCount > ch`) is misleading because long lines
+	// wrap into many display rows — the document can need scrolling even
+	// when `lineCount <= ch`. Use a wrap-aware check that asks "is there
+	// content outside the viewport in either direction?"
 	ch := t.contentHeight()
-	if ch > 0 && lineCount > ch {
-		maxViewportTop := lastLine - ch + 1
+	wrapOn := t.cfg.WrapMode == config.WrapModeOn
+	contentWidth := 0
+	maxViewportTop := 0
+	scroll := false
+	if ch > 0 {
+		if wrapOn {
+			contentWidth = t.wrapContentWidth()
+			if contentWidth > 0 {
+				maxViewportTop = t.maxViewportTopWrap(contentWidth, ch)
+				scroll = t.contentNeedsScrollWrap(contentWidth, ch)
+			}
+		} else {
+			if lineCount > ch {
+				maxViewportTop = lastLine - ch + 1
+				scroll = true
+			}
+		}
+	}
+
+	if scroll {
 		switch dir {
 		case input.ScrollUp:
 			t.viewportTop -= step
@@ -1938,10 +2011,7 @@ func (t *TUI) handleMouseScroll(dir input.ScrollDirection) bool {
 				t.viewportTop = 0
 			}
 			// Cursor must stay within the (now higher) viewport window.
-			if t.cfg.WrapMode == config.WrapModeOn {
-				// In wrap mode, wrapped lines consume multiple display rows,
-				// so viewportTop+ch-1 overestimates the visible bottom.
-				contentWidth := t.wrapContentWidth()
+			if wrapOn {
 				if lastVis := t.lastVisibleLineWrap(contentWidth); t.cursorLine > lastVis {
 					t.cursorLine = lastVis
 				}
