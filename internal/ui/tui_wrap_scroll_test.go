@@ -225,6 +225,141 @@ func TestCtrlE_NonWrapMode_LongDoc_AdvancesViewport(t *testing.T) {
 	}
 }
 
+func TestHalfPageDown_WrapMode_AdvancesByDisplayRows(t *testing.T) {
+	// Ctrl-D in wrap mode should scroll by ~half the VISIBLE display rows,
+	// not by half the source-line count. With 5 source lines each wrapping
+	// past ch, the motion handler returns viewportTop = current + ch/2
+	// (source-line), which overshoots — viewportTop lands past the wrap-
+	// aware bottom.
+	long := strings.Repeat("abcdefghij ", 12) // ~130 chars → wraps to many rows on 20 wide
+	lines := []string{long, long, long, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 0
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionHalfPageDown})
+
+	maxTop := ti.maxViewportTopWrap(ti.wrapContentWidth(), ti.contentHeight())
+	if ti.viewportTop > maxTop {
+		t.Errorf("Ctrl-D in wrap mode: viewportTop=%d, exceeds wrap-aware maxTop=%d", ti.viewportTop, maxTop)
+	}
+	if ti.viewportTop == 0 {
+		t.Errorf("Ctrl-D in wrap mode: viewportTop unchanged (still 0); should advance by display rows")
+	}
+
+	// Simulate the render-time ensureCursorVisibleWrap pass and assert it
+	// does NOT pull viewportTop forward to chase a stale source-line cursor.
+	postDispatchTop := ti.viewportTop
+	ti.ensureCursorVisibleWrap(ti.wrapContentWidth())
+	if ti.viewportTop != postDispatchTop {
+		t.Errorf("ensureCursorVisibleWrap re-overshot the wrap-aware viewport: before=%d after=%d", postDispatchTop, ti.viewportTop)
+	}
+}
+
+func TestHalfPageUp_WrapMode_RetreatsByDisplayRows(t *testing.T) {
+	// Symmetric to HalfPageDown. From viewportTop=4 (last line), Ctrl-U
+	// should retreat by ~ch/2 display rows.
+	long := strings.Repeat("abcdefghij ", 12)
+	lines := []string{long, long, long, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 4
+	ti.cursorLine = 4
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionHalfPageUp})
+
+	if ti.viewportTop >= 4 {
+		t.Errorf("Ctrl-U in wrap mode: viewportTop=%d, expected to decrease from 4", ti.viewportTop)
+	}
+	if ti.viewportTop < 0 {
+		t.Errorf("Ctrl-U in wrap mode: viewportTop=%d, must not go negative", ti.viewportTop)
+	}
+	postDispatchTop := ti.viewportTop
+	ti.ensureCursorVisibleWrap(ti.wrapContentWidth())
+	if ti.viewportTop != postDispatchTop {
+		t.Errorf("Ctrl-U: ensureCursorVisibleWrap pulled viewportTop back: before=%d after=%d", postDispatchTop, ti.viewportTop)
+	}
+}
+
+func TestPageDown_WrapMode_AdvancesByFullScreenDisplayRows(t *testing.T) {
+	long := strings.Repeat("abcdefghij ", 12)
+	lines := []string{long, long, long, long, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 0
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionPageDown})
+
+	if ti.viewportTop == 0 {
+		t.Errorf("Ctrl-F in wrap mode: viewportTop still 0; should advance by one screenful of display rows")
+	}
+	maxTop := ti.maxViewportTopWrap(ti.wrapContentWidth(), ti.contentHeight())
+	if ti.viewportTop > maxTop {
+		t.Errorf("Ctrl-F overshot wrap-aware maxTop: viewportTop=%d, maxTop=%d", ti.viewportTop, maxTop)
+	}
+	postDispatchTop := ti.viewportTop
+	ti.ensureCursorVisibleWrap(ti.wrapContentWidth())
+	if ti.viewportTop != postDispatchTop {
+		t.Errorf("Ctrl-F: ensureCursorVisibleWrap re-overshot: before=%d after=%d", postDispatchTop, ti.viewportTop)
+	}
+}
+
+func TestPageUp_WrapMode_RetreatsByFullScreenDisplayRows(t *testing.T) {
+	long := strings.Repeat("abcdefghij ", 12)
+	lines := []string{long, long, long, long, long, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 5
+	ti.cursorLine = 5
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionPageUp})
+
+	if ti.viewportTop >= 5 {
+		t.Errorf("Ctrl-B in wrap mode: viewportTop=%d, expected to decrease from 5", ti.viewportTop)
+	}
+	postDispatchTop := ti.viewportTop
+	ti.ensureCursorVisibleWrap(ti.wrapContentWidth())
+	if ti.viewportTop != postDispatchTop {
+		t.Errorf("Ctrl-B: ensureCursorVisibleWrap pulled viewportTop back: before=%d after=%d", postDispatchTop, ti.viewportTop)
+	}
+}
+
+func TestHalfPageDown_WrapMode_ClampsCursorColToShorterVisibleLine(t *testing.T) {
+	// Goal: motion handler picks a LONG target line (so its cursorCol clamp
+	// keeps cursorCol large), and our wrap-aware helper then pulls cursor
+	// BACK onto a SHORTER visible line. The helper must re-clamp cursorCol.
+	//
+	// Setup: 6 lines = long, x, x, x, x, long. ch=10, width=20. Halfpage
+	// down moves cursor by 5 source lines → lands on the trailing long
+	// (index 5). But viewportTop only advances a few display rows because
+	// the FIRST long wraps to several rows. The wrap-aware visible window
+	// from the new viewportTop excludes index 5 (out of view), so the
+	// helper clamps cursor down to a short line (~index 4). Without the
+	// col clamp, cursorCol would remain at the long line's value (e.g. 50),
+	// past the short line's EOL (rune count 1).
+	long := strings.Repeat("abcdefghij ", 12) // 132 chars, wraps to many rows
+	short := "x"
+	// First line long (so viewportTop moves only ~1 source line per Ctrl-D),
+	// trailing long line as the motion handler's target so cursorCol stays
+	// large, intervening short lines so the wrap-clamp lands on a short line.
+	lines := []string{long, short, short, short, short, long}
+	ti := makeWrapScrollTUI(t, lines, 20, 10)
+
+	ti.viewportTop = 0
+	ti.cursorLine = 0
+	ti.cursorCol = 50 // valid for `long`, invalid for `short`
+
+	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionHalfPageDown})
+
+	maxCol := ti.doc.LineRuneCount(ti.cursorLine)
+	if ti.cursorCol > maxCol {
+		t.Errorf("after Ctrl-D wrap-clamp to line %d (rune-len=%d), cursorCol=%d (must be ≤ %d)",
+			ti.cursorLine, maxCol, ti.cursorCol, maxCol)
+	}
+}
+
 func TestHandleMouseScroll_NonWrapMode_LongDoc_ScrollsViewport(t *testing.T) {
 	// Regression guard: non-wrap mode with lineCount > ch still scrolls
 	// the viewport (existing behavior).

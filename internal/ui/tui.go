@@ -700,6 +700,83 @@ func (t *TUI) contentNeedsScrollWrap(contentWidth, rows int) bool {
 	return t.maxViewportTopWrap(contentWidth, rows) > 0
 }
 
+// advanceViewportByDisplayRows returns a new viewportTop after scrolling
+// forward by `rows` display rows in wrap mode. Walks lines forward from
+// the current viewportTop, summing wrap chunks, until `rows` have been
+// consumed or the wrap-aware bottom is reached. Used by Ctrl-D/F-style
+// page motions where the canonical vim distance is "N display rows", not
+// "N source lines".
+func (t *TUI) advanceViewportByDisplayRows(rows, contentWidth int) int {
+	if rows <= 0 || contentWidth <= 0 {
+		return t.viewportTop
+	}
+	maxTop := t.maxViewportTopWrap(contentWidth, t.contentHeight())
+	lineCount := t.doc.LineCount()
+	used := 0
+	top := t.viewportTop
+	for top < lineCount-1 && top < maxTop && used < rows {
+		chunks := t.cachedWrapChunks(top, t.doc.Cells(top), contentWidth)
+		n := len(chunks)
+		if n == 0 {
+			n = 1
+		}
+		used += n
+		top++
+	}
+	if top > maxTop {
+		top = maxTop
+	}
+	return top
+}
+
+// clampCursorIntoWrapViewport pulls cursorLine into the wrap-aware visible
+// window: not above viewportTop, not past lastVisibleLineWrap. Called after
+// a wrap-aware viewport reposition (page motions, etc.) so the render-time
+// ensureCursorVisibleWrap pass cannot tug viewportTop forward/back to keep
+// a now-out-of-view cursor visible, which would undo the deliberate move.
+// If cursorLine changes the cursorCol is re-clamped to the new line's
+// rune count so callers don't see a stale-out-of-range column (except in
+// VisualBlock mode, where post-EOL cursors are intentional for selection).
+func (t *TUI) clampCursorIntoWrapViewport(contentWidth int) {
+	if contentWidth <= 0 {
+		return
+	}
+	startLine := t.cursorLine
+	if t.cursorLine < t.viewportTop {
+		t.cursorLine = t.viewportTop
+	}
+	if lastVis := t.lastVisibleLineWrap(contentWidth); t.cursorLine > lastVis {
+		t.cursorLine = lastVis
+	}
+	if t.cursorLine != startLine && t.modeMachine != nil && t.modeMachine.Mode() != vmode.VisualBlock {
+		maxCol := t.doc.LineRuneCount(t.cursorLine)
+		if t.cursorCol > maxCol {
+			t.cursorCol = maxCol
+		}
+	}
+}
+
+// retreatViewportByDisplayRows returns a new viewportTop after scrolling
+// backward by `rows` display rows in wrap mode. Symmetric counterpart to
+// advanceViewportByDisplayRows.
+func (t *TUI) retreatViewportByDisplayRows(rows, contentWidth int) int {
+	if rows <= 0 || contentWidth <= 0 {
+		return t.viewportTop
+	}
+	used := 0
+	top := t.viewportTop
+	for top > 0 && used < rows {
+		top--
+		chunks := t.cachedWrapChunks(top, t.doc.Cells(top), contentWidth)
+		n := len(chunks)
+		if n == 0 {
+			n = 1
+		}
+		used += n
+	}
+	return top
+}
+
 // lastVisibleLineWrap returns the index of the last logical line whose
 // wrapped rows entirely fit within the current viewport (from viewportTop
 // downward, summing each line's wrap chunk count up to ch). Used to clamp
@@ -1175,9 +1252,23 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 			case motion.MotionViewportCenter:
 				// zz: wrap-aware centering (the motion handler assumes 1 line = 1 row)
 				t.centerViewportWrap(t.wrapContentWidth())
-			case motion.MotionHalfPageUp, motion.MotionHalfPageDown,
-				motion.MotionPageUp, motion.MotionPageDown,
-				motion.MotionViewportTop, motion.MotionViewportBottom:
+			case motion.MotionHalfPageDown:
+				cw := t.wrapContentWidth()
+				t.viewportTop = t.advanceViewportByDisplayRows(t.contentHeight()/2, cw)
+				t.clampCursorIntoWrapViewport(cw)
+			case motion.MotionHalfPageUp:
+				cw := t.wrapContentWidth()
+				t.viewportTop = t.retreatViewportByDisplayRows(t.contentHeight()/2, cw)
+				t.clampCursorIntoWrapViewport(cw)
+			case motion.MotionPageDown:
+				cw := t.wrapContentWidth()
+				t.viewportTop = t.advanceViewportByDisplayRows(t.contentHeight(), cw)
+				t.clampCursorIntoWrapViewport(cw)
+			case motion.MotionPageUp:
+				cw := t.wrapContentWidth()
+				t.viewportTop = t.retreatViewportByDisplayRows(t.contentHeight(), cw)
+				t.clampCursorIntoWrapViewport(cw)
+			case motion.MotionViewportTop, motion.MotionViewportBottom:
 				t.viewportTop = result.Viewport.Top
 			}
 		} else {
