@@ -22,7 +22,7 @@ integration.
 - Jump list: `Ctrl-O` / `Ctrl-I`
 - Paragraph motions: `{` / `}`
 - Wrap-mode display-line navigation: `gj`/`gk`, `gw` to toggle wrap
-- Cursor counts on all motions (`5j`, `42gg`, `H 3`, `L 2`, …)
+- Numeric count prefixes on most motions (`5j`, `42gg`, `H 3`, `L 2`, …)
 - Horizontal scroll for long unwrapped lines with `<`/`>` indicators
 
 #### Selection & yank
@@ -42,7 +42,7 @@ integration.
 
 - Three modes: `absolute`, `relative`, `hybrid` (cursor absolute, others relative)
 - Configurable per-element styling (FG, BG, bold, dim, italic)
-- Toggle mode key (default `L`, configurable via `@yankee_toggle_mode_key`)
+- Cycle line-number modes with `Alt+Shift+L` (rebindable via `@yankee_bind_<key>` / `@yankee_nbind_<key>` overrides)
 - Configurable separator character and color
 - Demo mode (`--demo`) cycles four content fixtures
 
@@ -56,7 +56,7 @@ integration.
 
 #### Flash navigation (port of flash.nvim)
 
-- `s` / `S` flash jump forward/backward
+- `s` enters flash search mode — type any character to label all visible matches; press a label letter to jump
 - `f` / `t` / `F` / `T` optionally augmented with flash labels for multi-match disambiguation
 - Configurable jump positions (`match_start`, `match_end`, `word_start`, `word_end`)
 - Smartcase, label-vs-pattern disambiguation, wrap-aware visible matcher
@@ -64,6 +64,7 @@ integration.
 #### Text objects
 
 - `iw`/`aw` word, `iW`/`aW` WORD
+- `ip`/`ap` paragraph
 - Quote objects: `i"`, `a"`, `i'`, `a'`, `` i` ``, `` a` ``
 - Bracket objects: `i(`, `a(`, `i[`, `a[`, `i{`, `a{`, `i<`, `a<`
 - Multi-strategy bracket search with backward fallback (Neovim-faithful)

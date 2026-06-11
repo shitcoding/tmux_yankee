@@ -23,7 +23,7 @@ tmux-yankee captures your pane content into a Go TUI with line numbers, vim moti
 Add to `~/.tmux.conf`:
 
 ```tmux
-set -g @plugin 'shitcoding/tmux-yankee'
+set -g @plugin 'shitcoding/tmux_yankee'
 ```
 
 Press `prefix + I` to install. The Go binary is downloaded automatically from the latest GitHub release -- no build tools needed.
@@ -31,19 +31,19 @@ Press `prefix + I` to install. The Go binary is downloaded automatically from th
 ### Manual
 
 ```bash
-git clone https://github.com/shitcoding/tmux-yankee ~/.tmux/plugins/tmux-yankee
+git clone https://github.com/shitcoding/tmux_yankee ~/.tmux/plugins/tmux_yankee
 ```
 
 Add to `~/.tmux.conf`:
 
 ```tmux
-run-shell ~/.tmux/plugins/tmux-yankee/yankee.tmux
+run-shell ~/.tmux/plugins/tmux_yankee/yankee.tmux
 ```
 
 The binary will be downloaded on first run. To build from source instead:
 
 ```bash
-cd ~/.tmux/plugins/tmux-yankee && make build
+cd ~/.tmux/plugins/tmux_yankee && make build
 ```
 
 ## Requirements
@@ -448,7 +448,7 @@ By default, yanked text goes to both the system clipboard and the tmux paste buf
 
 **Nothing happens on `prefix+N`** -- Check that `@yankee_key` is set correctly. Reload the plugin manually:
 ```bash
-bash ~/.tmux/plugins/tmux-yankee/yankee.tmux
+bash ~/.tmux/plugins/tmux_yankee/yankee.tmux
 ```
 
 **Clipboard not working** -- Verify your platform's clipboard tool is installed: `pbcopy` (macOS), `xclip` or `xsel` (X11), `wl-copy` (Wayland).
