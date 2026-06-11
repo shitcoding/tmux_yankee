@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test_helpers.sh - Shared test framework for tmux-copymode-linenumbers
+# test_helpers.sh - Shared test framework for tmux-yankee
 #
 # Provides: assert functions, test lifecycle, pass/fail tracking, tmux session helpers
 # Usage: source this file at the top of every test script

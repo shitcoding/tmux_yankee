@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_all_tests.sh - Main test runner for tmux-copymode-linenumbers
+# run_all_tests.sh - Main test runner for tmux-yankee
 #
 # Runs all unit tests first, then integration tests.
 # Reports pass/fail summary and exits with proper code.
@@ -86,7 +86,7 @@ run_test_file() {
 
 # --- Banner ---
 printf "\n${CLR_BOLD}${CLR_CYAN}========================================${CLR_RESET}\n"
-printf "${CLR_BOLD}${CLR_CYAN}  tmux-copymode-linenumbers test suite${CLR_RESET}\n"
+printf "${CLR_BOLD}${CLR_CYAN}  tmux-yankee test suite${CLR_RESET}\n"
 printf "${CLR_BOLD}${CLR_CYAN}========================================${CLR_RESET}\n"
 printf "  Filter: %s\n" "$FILTER"
 printf "  Project: %s\n" "$PROJECT_ROOT"

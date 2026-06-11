@@ -1,6 +1,8 @@
 # Build output
 bin/
-tmux-numcopy
+
+# Go test binaries
+*.test
 
 # macOS
 .DS_Store
