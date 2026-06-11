@@ -48,8 +48,8 @@ cd ~/.tmux/plugins/tmux_yankee && make build
 
 ## Requirements
 
-- tmux 3.1+
-- Bash 4+
+- tmux 3.2+
+- Bash 3.2+ (macOS) — Bash 4+ recommended on Linux
 - `curl` (for automatic binary download)
 - Go 1.24+ (only if building from source)
 
@@ -122,7 +122,9 @@ Mouse-aware apps (vim, less, etc.) and alternate-screen programs are detected an
 
 ### Motions
 
-All motions support count prefixes (`5j`, `3w`, `10G`).
+Most motions support count prefixes (`5j`, `3w`, `10G`). A few motions
+(e.g. `Ctrl-d`/`u`/`f`/`b`, `Ctrl-y`/`e`) use fixed step sizes regardless
+of count.
 
 | Key | Action |
 |-----|--------|
@@ -262,7 +264,7 @@ All options go in `~/.tmux.conf` before the plugin is loaded. They use the `@yan
 |--------|---------|--------|-------------|
 | `@yankee_mode` | `hybrid` | `absolute`, `relative`, `hybrid` | Line number display mode |
 | `@yankee_scrollback_lines` | `2000` | `100`..`200000` | Lines of scrollback to capture |
-| `@yankee_toggle_mode_key` | `L` | single key | Key to cycle line number modes at runtime |
+| `@yankee_toggle_mode_key` | `L` | single key | Legacy fallback key for the cycle action. The real default keybinding is `Alt+Shift+L` (defined in the keymap); plain `L` is bound to `screen_bottom`. Most users should rebind via `@yankee_bind_<key>` instead. |
 
 ### Behavior
 
@@ -338,7 +340,7 @@ Individual color overrides (`#RRGGBB` format) can be layered on top of any theme
 
 ### Style Overrides
 
-These use `on`/`off` values and layer on top of any theme:
+These take `on`/`off` values and layer on top of any theme:
 
 | Option | Element |
 |--------|---------|
@@ -348,8 +350,15 @@ These use `on`/`off` values and layer on top of any theme:
 | `@yankee_status_bold` / `_dim` | Status bar fill area |
 | `@yankee_cursor_dim` / `_italic` | Cursor line |
 | `@yankee_selection_dim` / `_italic` | Visual selection |
-| `@yankee_gutter_separator_bg` | Gutter separator background (`#RRGGBB`) |
-| `@yankee_gutter_separator_char` | Gutter separator character |
+
+### Gutter Separator
+
+The narrow column between the line-number gutter and the content area:
+
+| Option | Default | Value type | Description |
+|--------|---------|------------|-------------|
+| `@yankee_gutter_separator_char` | `│` | single printable rune | Character drawn in the separator column |
+| `@yankee_gutter_separator_bg` | (theme) | `#RRGGBB` | Background color of the separator column |
 
 ### Custom Keybindings
 
@@ -369,9 +378,11 @@ set -g @yankee_nbind_x some_action
 set -g @yankee_vbind_x some_action
 ```
 
-Key notation: single chars (`h`, `j`), Ctrl (`C-d`, `C-f`), Alt (`M-t`), special (`Enter`, `Esc`, `Space`).
+Key notation: single chars (`h`, `j`), Ctrl (`C-d`, `C-f`), Alt (`M-t`), special (`Enter`, `Space`). Multi-key prefix sequences (`g-g`, `z-t`, `y-y`) are also accepted.
 
 Mode-specific unbinding uses `@yankee_nunbind_*` (normal mode) and `@yankee_vunbind_*` (visual mode).
+
+> **Note:** Bare `Esc` is reserved by the input parser (it always exits visual mode, then clears search highlights, then quits) and cannot be rebound through `@yankee_bind_Esc`.
 
 <details>
 <summary>All action names</summary>
@@ -438,7 +449,7 @@ By default, yanked text goes to both the system clipboard and the tmux paste buf
 ## Known Limitations
 
 - **Snapshot view** -- content is captured at launch time. If your pane keeps producing output, you won't see it until you relaunch.
-- **Older tmux versions** -- tmux 3.1-3.1c works but may show brief visual artifacts during overlay swap.
+- **tmux < 3.2 unsupported** -- features like `swap-pane -Z` and atomic format expansions used by the overlay require 3.2 or later.
 - **No true vim registers** -- there's one yank destination (clipboard + tmux buffer), not 26 named registers.
 - **Flash label cap** -- labels are limited to 26 (`a-z`). In dense content with many matches, some matches appear highlighted but without jump labels.
 
