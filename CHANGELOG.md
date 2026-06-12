@@ -4,7 +4,7 @@ All notable changes to tmux-yankee are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 loosely follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] — 2026-06-12
 
 First public release. Replaces tmux's native copy-mode with a Go TUI overlay
 featuring vim motions, visual selection (char/line/block), incremental search,
@@ -121,7 +121,7 @@ integration.
 - `display-popup -K` flag does not exist in any released tmux; yankee uses the overlay (swap-pane) display mode exclusively
 - CJK rune-width handling in horizontal scroll is out of scope (use wrap mode for full-width content)
 
-## 0.1.0 — 2026-02-14
+## [0.1.0] — 2026-02-14
 
 Initial shell-only prototype (superseded the same day by the Go TUI rewrite
 under ADR-002). Kept here only for historical reference; no published artifact.
