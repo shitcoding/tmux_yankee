@@ -164,9 +164,9 @@ func TestResolve_StartPositionTop(t *testing.T) {
 
 func TestResolve_ModeSpecificBindings(t *testing.T) {
 	opts := defaultOpts()
-	opts.Bindings = "H=first_nonblank"        // shared override
-	opts.NormalBindings = "H=line_start"        // normal override wins
-	opts.VisualBindings = "g-g=last_line"       // visual prefix override
+	opts.Bindings = "H=first_nonblank"    // shared override
+	opts.NormalBindings = "H=line_start"  // normal override wins
+	opts.VisualBindings = "g-g=last_line" // visual prefix override
 
 	cfg, err := Resolve(opts)
 	if err != nil {

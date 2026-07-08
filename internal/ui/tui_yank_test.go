@@ -131,8 +131,8 @@ func TestYankNoSelection(t *testing.T) {
 
 // mockTmuxClient is a mock implementation of tmux.Client for testing
 type mockTmuxClient struct {
-	bufferContent string
-	setBufferErr  error
+	bufferContent  string
+	setBufferErr   error
 	setBufferCalls int
 }
 
@@ -151,11 +151,11 @@ func newTestTUIWithSettings(cfg config.Settings, content []string) *TUI {
 func TestYank_CopyTargetTmuxOnly(t *testing.T) {
 	content := []string{"line 1", "line 2"}
 	cfg := config.Settings{
-		PaneID:      "test-pane",
-		Mode:        config.LineNumberModeAbsolute,
-		Palette:     theme.Presets[theme.ThemeDefault],
-		CopyTarget:  config.CopyTargetTmux,
-		ExitOnYank:  true,
+		PaneID:        "test-pane",
+		Mode:          config.LineNumberModeAbsolute,
+		Palette:       theme.Presets[theme.ThemeDefault],
+		CopyTarget:    config.CopyTargetTmux,
+		ExitOnYank:    true,
 		StartPosition: config.StartPositionBottom,
 		ToggleModeKey: 'L',
 	}
@@ -188,11 +188,11 @@ func TestYank_CopyTargetTmuxOnly(t *testing.T) {
 func TestYank_CopyTargetClipboardOnly(t *testing.T) {
 	content := []string{"line 1", "line 2"}
 	cfg := config.Settings{
-		PaneID:      "test-pane",
-		Mode:        config.LineNumberModeAbsolute,
-		Palette:     theme.Presets[theme.ThemeDefault],
-		CopyTarget:  config.CopyTargetClipboard,
-		ExitOnYank:  true,
+		PaneID:        "test-pane",
+		Mode:          config.LineNumberModeAbsolute,
+		Palette:       theme.Presets[theme.ThemeDefault],
+		CopyTarget:    config.CopyTargetClipboard,
+		ExitOnYank:    true,
 		StartPosition: config.StartPositionBottom,
 		ToggleModeKey: 'L',
 	}
@@ -225,11 +225,11 @@ func TestYank_CopyTargetClipboardOnly(t *testing.T) {
 func TestYank_ExitOnYankFalse(t *testing.T) {
 	content := []string{"line 1", "line 2"}
 	cfg := config.Settings{
-		PaneID:      "test-pane",
-		Mode:        config.LineNumberModeAbsolute,
-		Palette:     theme.Presets[theme.ThemeDefault],
-		CopyTarget:  config.CopyTargetTmux,
-		ExitOnYank:  false,
+		PaneID:        "test-pane",
+		Mode:          config.LineNumberModeAbsolute,
+		Palette:       theme.Presets[theme.ThemeDefault],
+		CopyTarget:    config.CopyTargetTmux,
+		ExitOnYank:    false,
 		StartPosition: config.StartPositionBottom,
 		ToggleModeKey: 'L',
 	}

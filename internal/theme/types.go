@@ -54,13 +54,13 @@ type LineNumPalette struct {
 
 // StatusBarPalette holds per-mode colors for the powerline status bar.
 type StatusBarPalette struct {
-	ModeNormal     CellPalette // NORMAL mode segment
-	ModeVisualChar CellPalette // VISUAL mode segment
+	ModeNormal      CellPalette // NORMAL mode segment
+	ModeVisualChar  CellPalette // VISUAL mode segment
 	ModeVisualLine  CellPalette // V-LINE mode segment
 	ModeVisualBlock CellPalette // V-BLOCK mode segment
 	InfoPrimary     CellPalette // position/percentage segments
-	InfoSecondary  CellPalette // secondary info (wrap, line mode)
-	Fill           CellPalette // middle fill area
+	InfoSecondary   CellPalette // secondary info (wrap, line mode)
+	Fill            CellPalette // middle fill area
 }
 
 // Palette is the full set of colors used by the TUI.
@@ -80,21 +80,21 @@ type Palette struct {
 // ThemeOverrides holds per-field color overrides supplied via CLI flags.
 // An empty string means "use the preset value".
 type ThemeOverrides struct {
-	CursorFG          string
-	CursorBG          string
-	SelectionFG       string
-	SelectionBG       string
-	GutterFG          string
-	GutterBG          string
-	GutterSeparatorFG string
-	GutterSeparatorBG string
+	CursorFG            string
+	CursorBG            string
+	SelectionFG         string
+	SelectionBG         string
+	GutterFG            string
+	GutterBG            string
+	GutterSeparatorFG   string
+	GutterSeparatorBG   string
 	GutterSeparatorChar string
-	LineNumAbsoluteFG string
-	LineNumRelativeFG string
-	LineNumCursorFG   string
-	LineNumCursorBold string // "on"/"off"/"" — backward compat, maps to CursorStyle.Bold
-	StatusFG          string
-	StatusBG          string
+	LineNumAbsoluteFG   string
+	LineNumRelativeFG   string
+	LineNumCursorFG     string
+	LineNumCursorBold   string // "on"/"off"/"" — backward compat, maps to CursorStyle.Bold
+	StatusFG            string
+	StatusBG            string
 
 	// TextStyle overrides ("on"/"off"/"")
 	LineNumAbsoluteBold   string

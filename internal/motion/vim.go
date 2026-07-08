@@ -1030,7 +1030,7 @@ func (h *VimHandler) moveParagraphBackward(doc Document, cursor Cursor, count in
 // positionViewportTop positions the cursor line at the top of the viewport (zt motion).
 func (h *VimHandler) positionViewportTop(doc Document, cursor Cursor, viewport Viewport) Viewport {
 	newTop := cursor.Line
-	
+
 	// Ensure viewport doesn't go past document end
 	lineCount := doc.LineCount()
 	maxTop := lineCount - viewport.Height
@@ -1040,12 +1040,12 @@ func (h *VimHandler) positionViewportTop(doc Document, cursor Cursor, viewport V
 	if newTop > maxTop {
 		newTop = maxTop
 	}
-	
+
 	// Ensure viewport doesn't go negative
 	if newTop < 0 {
 		newTop = 0
 	}
-	
+
 	return Viewport{Top: newTop, Height: viewport.Height}
 }
 
@@ -1053,12 +1053,12 @@ func (h *VimHandler) positionViewportTop(doc Document, cursor Cursor, viewport V
 func (h *VimHandler) positionViewportCenter(doc Document, cursor Cursor, viewport Viewport) Viewport {
 	halfHeight := viewport.Height / 2
 	newTop := cursor.Line - halfHeight
-	
+
 	// Ensure viewport doesn't go negative
 	if newTop < 0 {
 		newTop = 0
 	}
-	
+
 	// Ensure viewport doesn't go past document end
 	lineCount := doc.LineCount()
 	maxTop := lineCount - viewport.Height
@@ -1068,7 +1068,7 @@ func (h *VimHandler) positionViewportCenter(doc Document, cursor Cursor, viewpor
 	if newTop > maxTop {
 		newTop = maxTop
 	}
-	
+
 	return Viewport{Top: newTop, Height: viewport.Height}
 }
 

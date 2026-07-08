@@ -30,7 +30,7 @@ const stringControlMaxLen = 1024
 //   - SS2:  ESC N <char>
 //   - SS3:  ESC O <char>
 //   - Intermediate-form (charset designation, DEC tests, locking shifts):
-//           ESC <intermediates 0x20-0x2f>+ <final 0x30-0x7e>
+//     ESC <intermediates 0x20-0x2f>+ <final 0x30-0x7e>
 //   - Generic Fp/Fs/Fe two-byte controls (ESC 6/7/8, ESC c, ESC D/E/H/M etc.)
 //
 // Untermimated string controls (no BEL/ST within stringControlMaxLen) drop

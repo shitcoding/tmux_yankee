@@ -915,8 +915,8 @@ func TestFlush_ClearsCSIPendingState(t *testing.T) {
 	// Start a CSI sequence with a parameter byte to enter inCSI mode:
 	// ESC → mouseBuf=[ESC], [ → mouseBuf=[ESC,[], 5 → inCSI=true
 	p.Parse(0x1b) // ESC
-	p.Parse('[')   // ESC [
-	p.Parse('5')   // CSI parameter byte → enters inCSI mode
+	p.Parse('[')  // ESC [
+	p.Parse('5')  // CSI parameter byte → enters inCSI mode
 
 	// Flush discards incomplete CSI
 	cmd := p.Flush()

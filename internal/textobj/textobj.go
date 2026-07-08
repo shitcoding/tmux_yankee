@@ -317,7 +317,6 @@ func findQuotePair(runes []rune, col int, quote rune, line int, includeQuotes bo
 // Search order: 1) backward for enclosing unmatched bracket, 2) forward for next
 // opening bracket, 3) backward for nearest opening bracket (cursor past the pair).
 
-
 func innerBracket(doc motion.Document, cursor motion.Cursor, open, close rune) Range {
 	// Try each open-bracket strategy, validating with findCloseBracket each time.
 	// A strategy that finds an open bracket but no matching close bracket is useless.

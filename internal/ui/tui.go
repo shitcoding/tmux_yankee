@@ -119,7 +119,7 @@ type TUI struct {
 
 	// Shutdown coordination
 	quitCh   chan struct{} // closed by Stop() to signal Run() to exit
-	quitOnce sync.Once    // ensures quitCh is closed exactly once
+	quitOnce sync.Once     // ensures quitCh is closed exactly once
 
 	// Demo mode fields
 	isDemo         bool
@@ -355,7 +355,7 @@ func (t *TUI) Run() error {
 					t.viewportTop = 0
 				}
 			}
-		// StartPositionTop: viewportTop = 0 (already default)
+			// StartPositionTop: viewportTop = 0 (already default)
 		}
 	}
 
@@ -2723,7 +2723,7 @@ func (t *TUI) clearSearchSnapshot() {
 	// they'll be overwritten on the next snapshotSearchState.
 }
 
-// savePrevCursor saves the current cursor position for jump-back (``/'')
+// savePrevCursor saves the current cursor position for jump-back (“/”)
 // and pushes it onto the jump list.
 // After this call, jumpListIdx == len(jumpList), meaning "at tip" (not
 // navigating backward). The first Ctrl-O will save the current position

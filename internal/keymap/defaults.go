@@ -11,25 +11,25 @@ func DefaultKeymap() Keymap {
 	return Keymap{
 		Direct: map[KeySpec]Action{
 			// Motions
-			Key('h'):  ActionMoveLeft,
-			Key('j'):  ActionMoveDown,
-			Key('k'):  ActionMoveUp,
-			Key('l'):  ActionMoveRight,
-			Key('$'):  ActionLineEnd,
-			Key('^'):  ActionFirstNonBlank,
-			Key('G'):  ActionLastLine,
-			Key('w'):  ActionWordForward,
-			Key('b'):  ActionWordBackward,
-			Key('e'):  ActionWordEnd,
-			Key('W'):  ActionWORDForward,
-			Key('B'):  ActionWORDBackward,
-			Key('E'):  ActionWORDEnd,
-			Key('{'):  ActionParagraphBackward,
-			Key('}'):  ActionParagraphForward,
-			Key('H'):  ActionScreenTop,
-			Key('M'):  ActionScreenMiddle,
-			Key('L'):  ActionScreenBottom,
-			Key('%'):  ActionMatchBracket,
+			Key('h'): ActionMoveLeft,
+			Key('j'): ActionMoveDown,
+			Key('k'): ActionMoveUp,
+			Key('l'): ActionMoveRight,
+			Key('$'): ActionLineEnd,
+			Key('^'): ActionFirstNonBlank,
+			Key('G'): ActionLastLine,
+			Key('w'): ActionWordForward,
+			Key('b'): ActionWordBackward,
+			Key('e'): ActionWordEnd,
+			Key('W'): ActionWORDForward,
+			Key('B'): ActionWORDBackward,
+			Key('E'): ActionWORDEnd,
+			Key('{'): ActionParagraphBackward,
+			Key('}'): ActionParagraphForward,
+			Key('H'): ActionScreenTop,
+			Key('M'): ActionScreenMiddle,
+			Key('L'): ActionScreenBottom,
+			Key('%'): ActionMatchBracket,
 
 			// Scroll/page
 			Ctrl('d'): ActionHalfPageDown,
@@ -54,12 +54,12 @@ func DefaultKeymap() Keymap {
 			Key(13): ActionYank, // Enter
 
 			// Search
-			Key('/'):  ActionSearchForward,
-			Key('?'):  ActionSearchBackward,
-			Key('n'):  ActionSearchNext,
-			Key('N'):  ActionSearchPrev,
-			Key('*'):  ActionSearchWordForward,
-			Key('#'):  ActionSearchWordBackward,
+			Key('/'): ActionSearchForward,
+			Key('?'): ActionSearchBackward,
+			Key('n'): ActionSearchNext,
+			Key('N'): ActionSearchPrev,
+			Key('*'): ActionSearchWordForward,
+			Key('#'): ActionSearchWordBackward,
 
 			// Char search repeat
 			Key(';'): ActionCharSearchRepeat,
@@ -110,13 +110,13 @@ func DefaultKeymap() Keymap {
 		},
 
 		CharCapture: map[byte]Action{
-			'f':    ActionCharSearchF,
-			't':    ActionCharSearchT,
-			'F':    ActionCharSearchFBack,
-			'T':    ActionCharSearchTBack,
-			'm':    ActionSetMark,
-			'`':    ActionGoToMark,
-			'\'':   ActionGoToMarkLine,
+			'f':  ActionCharSearchF,
+			't':  ActionCharSearchT,
+			'F':  ActionCharSearchFBack,
+			'T':  ActionCharSearchTBack,
+			'm':  ActionSetMark,
+			'`':  ActionGoToMark,
+			'\'': ActionGoToMarkLine,
 		},
 
 		TextObjects: map[[2]byte]Action{

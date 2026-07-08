@@ -23,8 +23,8 @@ func TestParseKeyNotation(t *testing.T) {
 		{"Esc", Key(27), false},
 		{"Space", Key(32), false},
 		{"", KeySpec{}, true},
-		{"C-", KeySpec{}, true},  // incomplete
-		{"xx", KeySpec{}, true},  // unknown multi-char
+		{"C-", KeySpec{}, true}, // incomplete
+		{"xx", KeySpec{}, true}, // unknown multi-char
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

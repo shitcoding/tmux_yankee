@@ -12,9 +12,9 @@ type testDoc struct {
 	lines []string
 }
 
-func (d *testDoc) LineCount() int            { return len(d.lines) }
-func (d *testDoc) Line(i int) string         { return d.lines[i] }
-func (d *testDoc) LineRuneCount(i int) int   { return len([]rune(d.lines[i])) }
+func (d *testDoc) LineCount() int          { return len(d.lines) }
+func (d *testDoc) Line(i int) string       { return d.lines[i] }
+func (d *testDoc) LineRuneCount(i int) int { return len([]rune(d.lines[i])) }
 
 func TestInnerBracket_CursorInsideParen(t *testing.T) {
 	doc := &testDoc{lines: []string{"foo (bar) baz"}}

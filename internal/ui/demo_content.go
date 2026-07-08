@@ -140,12 +140,12 @@ func DemoShellSession() []string {
 
 // DemoCodeSnippet returns ~60 lines of Go code with syntax highlighting.
 func DemoCodeSnippet() []string {
-	kw := func(s string) string { return blue(s) }        // keywords
-	str := func(s string) string { return green(s) }      // strings
-	cmt := func(s string) string { return gray(s) }       // comments
-	typ := func(s string) string { return yellow(s) }     // types
-	fn := func(s string) string { return cyan(s) }        // function names
-	num := func(s string) string { return magenta(s) }    // numbers
+	kw := func(s string) string { return blue(s) }     // keywords
+	str := func(s string) string { return green(s) }   // strings
+	cmt := func(s string) string { return gray(s) }    // comments
+	typ := func(s string) string { return yellow(s) }  // types
+	fn := func(s string) string { return cyan(s) }     // function names
+	num := func(s string) string { return magenta(s) } // numbers
 
 	var lines []string
 

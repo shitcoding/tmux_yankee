@@ -12,21 +12,21 @@ import (
 // Parser parses keyboard input into commands, handling multi-key sequences
 // and count prefixes.
 type Parser struct {
-	pending      Pending
-	toggleKey    byte
-	wrapKey      byte
-	km           keymap.Keymap
-	mouseBuf     []byte  // accumulates bytes of an in-progress SGR mouse or CSI sequence
-	inMouse      bool    // true while accumulating \x1b[< ... M/m
-	inCSI        bool    // true while accumulating a non-mouse CSI param sequence
-	deferredCmd  Command // command to emit on next Parse call (used when ESC is held)
-	hasDeferred  bool    // true if a deferred command is waiting
-	searchBuf    []rune  // accumulates search pattern text (rune-aware for UTF-8)
-	inSearch     bool    // true while collecting search input
-	searchDir    byte    // '/' or '?'
-	colonBuf     []rune  // accumulates colon command digits
-	inColon      bool    // true while collecting colon input
-	searchUTF8   []byte  // accumulates bytes of an in-progress multi-byte UTF-8 rune
+	pending     Pending
+	toggleKey   byte
+	wrapKey     byte
+	km          keymap.Keymap
+	mouseBuf    []byte  // accumulates bytes of an in-progress SGR mouse or CSI sequence
+	inMouse     bool    // true while accumulating \x1b[< ... M/m
+	inCSI       bool    // true while accumulating a non-mouse CSI param sequence
+	deferredCmd Command // command to emit on next Parse call (used when ESC is held)
+	hasDeferred bool    // true if a deferred command is waiting
+	searchBuf   []rune  // accumulates search pattern text (rune-aware for UTF-8)
+	inSearch    bool    // true while collecting search input
+	searchDir   byte    // '/' or '?'
+	colonBuf    []rune  // accumulates colon command digits
+	inColon     bool    // true while collecting colon input
+	searchUTF8  []byte  // accumulates bytes of an in-progress multi-byte UTF-8 rune
 }
 
 // NewParser creates a new input parser with the default toggle key ('L') and default keymap.

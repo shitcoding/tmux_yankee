@@ -54,7 +54,7 @@ func (j JumpPos) String() string {
 type flashCharType int
 
 const (
-	flashCharWhitespace  flashCharType = iota
+	flashCharWhitespace flashCharType = iota
 	flashCharWord
 	flashCharPunctuation
 )

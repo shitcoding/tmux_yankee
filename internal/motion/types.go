@@ -8,19 +8,19 @@ const (
 	MotionDown
 	MotionLeft
 	MotionRight
-	MotionLineStart    // 0 - beginning of line
-	MotionLineEnd      // $ - end of line
-	MotionFirstLine    // gg - first line of document
-	MotionLastLine     // G - last line of document
-	MotionHalfPageUp   // Ctrl-U
-	MotionHalfPageDown // Ctrl-D
-	MotionWordForward     // w - next word start
-	MotionWordBackward    // b - previous word start
-	MotionWordEnd         // e - current/next word end
-	MotionFirstNonBlank   // ^ - first non-blank character
-	MotionWORDForward     // W - next WORD start (whitespace-separated)
-	MotionWORDEnd         // E - current/next WORD end (whitespace-separated)
-	MotionWORDBackward    // B - previous WORD start (whitespace-separated)
+	MotionLineStart         // 0 - beginning of line
+	MotionLineEnd           // $ - end of line
+	MotionFirstLine         // gg - first line of document
+	MotionLastLine          // G - last line of document
+	MotionHalfPageUp        // Ctrl-U
+	MotionHalfPageDown      // Ctrl-D
+	MotionWordForward       // w - next word start
+	MotionWordBackward      // b - previous word start
+	MotionWordEnd           // e - current/next word end
+	MotionFirstNonBlank     // ^ - first non-blank character
+	MotionWORDForward       // W - next WORD start (whitespace-separated)
+	MotionWORDEnd           // E - current/next WORD end (whitespace-separated)
+	MotionWORDBackward      // B - previous WORD start (whitespace-separated)
 	MotionParagraphForward  // } - next empty line
 	MotionParagraphBackward // { - previous empty line
 	MotionViewportTop       // zt - position cursor line at top of viewport
@@ -91,10 +91,10 @@ type Handler interface {
 type CharSearchDirection int
 
 const (
-	CharSearchFindForward   CharSearchDirection = iota // f
-	CharSearchTillForward                              // t
-	CharSearchFindBackward                             // F
-	CharSearchTillBackward                             // T
+	CharSearchFindForward  CharSearchDirection = iota // f
+	CharSearchTillForward                             // t
+	CharSearchFindBackward                            // F
+	CharSearchTillBackward                            // T
 )
 
 // CharSearcher extends Handler with character search motions (f/t/F/T/;/,).

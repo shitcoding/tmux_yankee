@@ -49,12 +49,12 @@ const (
 	ActionDisplayLineUp   Action = "display_line_up"   // gk
 
 	// Jump list & marks
-	ActionJumpBack         Action = "jump_back"         // `` or ''
-	ActionJumpListBack     Action = "jumplist_back"     // Ctrl-O
-	ActionJumpListForward  Action = "jumplist_forward"  // Ctrl-I
-	ActionSetMark          Action = "set_mark"          // m{char}
-	ActionGoToMark         Action = "goto_mark"         // `{char}
-	ActionGoToMarkLine     Action = "goto_mark_line"    // '{char}
+	ActionJumpBack        Action = "jump_back"        // `` or ''
+	ActionJumpListBack    Action = "jumplist_back"    // Ctrl-O
+	ActionJumpListForward Action = "jumplist_forward" // Ctrl-I
+	ActionSetMark         Action = "set_mark"         // m{char}
+	ActionGoToMark        Action = "goto_mark"        // `{char}
+	ActionGoToMarkLine    Action = "goto_mark_line"   // '{char}
 
 	// Visual mode
 	ActionVisualChar  Action = "visual_char"  // v
@@ -86,26 +86,26 @@ const (
 	ActionCharSearchReverse Action = "char_search_reverse" // ,
 
 	// Text objects (visual mode only)
-	ActionTextObjectInnerWord      Action = "inner_word"      // iw
-	ActionTextObjectAWord          Action = "a_word"          // aw
-	ActionTextObjectInnerWORD      Action = "inner_WORD"      // iW
-	ActionTextObjectAWORD          Action = "a_WORD"          // aW
-	ActionTextObjectInnerParagraph Action = "inner_paragraph" // ip
-	ActionTextObjectAParagraph     Action = "a_paragraph"     // ap
+	ActionTextObjectInnerWord        Action = "inner_word"         // iw
+	ActionTextObjectAWord            Action = "a_word"             // aw
+	ActionTextObjectInnerWORD        Action = "inner_WORD"         // iW
+	ActionTextObjectAWORD            Action = "a_WORD"             // aW
+	ActionTextObjectInnerParagraph   Action = "inner_paragraph"    // ip
+	ActionTextObjectAParagraph       Action = "a_paragraph"        // ap
 	ActionTextObjectInnerQuote       Action = "inner_quote"        // i"
 	ActionTextObjectAQuote           Action = "a_quote"            // a"
 	ActionTextObjectInnerSingleQuote Action = "inner_single_quote" // i'
 	ActionTextObjectASingleQuote     Action = "a_single_quote"     // a'
 	ActionTextObjectInnerBacktick    Action = "inner_backtick"     // i`
 	ActionTextObjectABacktick        Action = "a_backtick"         // a`
-	ActionTextObjectInnerParen     Action = "inner_paren"     // ib / i(
-	ActionTextObjectAParen         Action = "a_paren"         // ab / a(
-	ActionTextObjectInnerBrace     Action = "inner_brace"     // iB / i{
-	ActionTextObjectABrace         Action = "a_brace"         // aB / a{
-	ActionTextObjectInnerBracket   Action = "inner_bracket"   // i[
-	ActionTextObjectABracket       Action = "a_bracket"       // a[
-	ActionTextObjectInnerAngle     Action = "inner_angle"     // i<
-	ActionTextObjectAAngle         Action = "a_angle"         // a<
+	ActionTextObjectInnerParen       Action = "inner_paren"        // ib / i(
+	ActionTextObjectAParen           Action = "a_paren"            // ab / a(
+	ActionTextObjectInnerBrace       Action = "inner_brace"        // iB / i{
+	ActionTextObjectABrace           Action = "a_brace"            // aB / a{
+	ActionTextObjectInnerBracket     Action = "inner_bracket"      // i[
+	ActionTextObjectABracket         Action = "a_bracket"          // a[
+	ActionTextObjectInnerAngle       Action = "inner_angle"        // i<
+	ActionTextObjectAAngle           Action = "a_angle"            // a<
 
 	// Search control
 	ActionClearSearch Action = "clear_search" // \ — clear search highlights
@@ -275,4 +275,3 @@ func (mk *ModeKeymap) ForMode(isVisual bool) Keymap {
 	}
 	return mk.normal
 }
-

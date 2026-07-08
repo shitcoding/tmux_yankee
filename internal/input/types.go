@@ -19,46 +19,46 @@ const (
 	CommandEscape
 	CommandQuit
 	CommandToggleLineMode
-	CommandMouseScroll // set when a mouse wheel event is received
-	CommandYankLine    // yy: yank current line without requiring a visual selection
-	CommandCharSearch  // f/t/F/T/;/,: character search on current line
-	CommandDemoNext      // Tab: next demo page
-	CommandDemoPrev      // Shift+Tab: previous demo page
-	CommandDemoThemeNext    // ]: next demo theme
-	CommandDemoThemePrev    // [: previous demo theme
-	CommandToggleWrapMode    // gw: toggle wrap on/off
-	CommandDisplayLineDown  // gj: move down one display row (wrap mode)
-	CommandDisplayLineUp    // gk: move up one display row (wrap mode)
-	CommandMouseLeftPress       // left mouse button pressed
-	CommandMouseLeftDrag        // left mouse button drag (motion with button held)
-	CommandMouseRelease         // mouse button released
-	CommandSearchForward        // '/' — enter search input mode (forward)
-	CommandSearchBackward       // '?' — enter search input mode (backward)
-	CommandSearchConfirm        // Enter during search input
-	CommandSearchCancel         // Escape during search input
-	CommandSearchUpdate         // char typed/deleted during search — incremental update
-	CommandSearchNext           // 'n' — next match
-	CommandSearchPrev           // 'N' — previous match
-	CommandSearchWordForward    // '*' — search word under cursor forward
-	CommandSearchWordBackward   // '#' — search word under cursor backward
-	CommandScrollLineUp         // Ctrl-Y — viewport scroll up without cursor move
-	CommandScrollLineDown       // Ctrl-E — viewport scroll down without cursor move
-	CommandJumpBack             // `` or '' — jump to previous position
-	CommandJumpListBack         // Ctrl-O — jump list backward
-	CommandJumpListForward      // Ctrl-I — jump list forward
-	CommandSetMark              // m{char} — set mark at cursor
-	CommandGoToMark             // `{char} or '{char} — go to mark
-	CommandTextObject           // iw, aw, etc. — text object (visual mode)
-	CommandSearchSelect         // gn — search and select next match
-	CommandSearchSelectBack     // gN — search and select previous match
-	CommandClearSearch          // \ — clear search highlights
-	CommandColonEnter           // ':' pressed — enter colon mode
-	CommandColonUpdate          // digit typed — update colon buffer
-	CommandColonExecute         // Enter pressed — execute colon command
-	CommandColonCancel          // Escape/invalid — cancel colon mode
-	CommandFlashEnter          // Enter flash search mode
-	CommandThemeNext           // Alt+t: next theme (works in all modes)
-	CommandThemePrev           // previous theme (works in all modes)
+	CommandMouseScroll        // set when a mouse wheel event is received
+	CommandYankLine           // yy: yank current line without requiring a visual selection
+	CommandCharSearch         // f/t/F/T/;/,: character search on current line
+	CommandDemoNext           // Tab: next demo page
+	CommandDemoPrev           // Shift+Tab: previous demo page
+	CommandDemoThemeNext      // ]: next demo theme
+	CommandDemoThemePrev      // [: previous demo theme
+	CommandToggleWrapMode     // gw: toggle wrap on/off
+	CommandDisplayLineDown    // gj: move down one display row (wrap mode)
+	CommandDisplayLineUp      // gk: move up one display row (wrap mode)
+	CommandMouseLeftPress     // left mouse button pressed
+	CommandMouseLeftDrag      // left mouse button drag (motion with button held)
+	CommandMouseRelease       // mouse button released
+	CommandSearchForward      // '/' — enter search input mode (forward)
+	CommandSearchBackward     // '?' — enter search input mode (backward)
+	CommandSearchConfirm      // Enter during search input
+	CommandSearchCancel       // Escape during search input
+	CommandSearchUpdate       // char typed/deleted during search — incremental update
+	CommandSearchNext         // 'n' — next match
+	CommandSearchPrev         // 'N' — previous match
+	CommandSearchWordForward  // '*' — search word under cursor forward
+	CommandSearchWordBackward // '#' — search word under cursor backward
+	CommandScrollLineUp       // Ctrl-Y — viewport scroll up without cursor move
+	CommandScrollLineDown     // Ctrl-E — viewport scroll down without cursor move
+	CommandJumpBack           // `` or '' — jump to previous position
+	CommandJumpListBack       // Ctrl-O — jump list backward
+	CommandJumpListForward    // Ctrl-I — jump list forward
+	CommandSetMark            // m{char} — set mark at cursor
+	CommandGoToMark           // `{char} or '{char} — go to mark
+	CommandTextObject         // iw, aw, etc. — text object (visual mode)
+	CommandSearchSelect       // gn — search and select next match
+	CommandSearchSelectBack   // gN — search and select previous match
+	CommandClearSearch        // \ — clear search highlights
+	CommandColonEnter         // ':' pressed — enter colon mode
+	CommandColonUpdate        // digit typed — update colon buffer
+	CommandColonExecute       // Enter pressed — execute colon command
+	CommandColonCancel        // Escape/invalid — cancel colon mode
+	CommandFlashEnter         // Enter flash search mode
+	CommandThemeNext          // Alt+t: next theme (works in all modes)
+	CommandThemePrev          // previous theme (works in all modes)
 )
 
 // ScrollDirection indicates mouse wheel direction for CommandMouseScroll.
@@ -87,7 +87,7 @@ type Command struct {
 	Type            CommandType
 	Motion          motion.Motion   // Only valid if Type == CommandMotion
 	Count           int             // Repeat count (0 if not specified)
-	ScrollDirection ScrollDirection  // set when Type == CommandMouseScroll
+	ScrollDirection ScrollDirection // set when Type == CommandMouseScroll
 	SearchKind      SearchKind      // valid when Type == CommandCharSearch
 	SearchChar      byte            // target character (0 for ;/,)
 	MouseRow        int             // 0-based terminal row (mouse events)

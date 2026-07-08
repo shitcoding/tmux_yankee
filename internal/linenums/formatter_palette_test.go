@@ -11,8 +11,8 @@ import (
 // for hybrid mode rendering rather than hardcoded ANSI color codes.
 func TestFormatter_GutterColorFromPalette(t *testing.T) {
 	pal := theme.LineNumPalette{
-		CursorFG:   "#00ffff",  // cyan for cursor line
-		RelativeFG: "#ff00ff",  // magenta for relative lines
+		CursorFG:    "#00ffff", // cyan for cursor line
+		RelativeFG:  "#ff00ff", // magenta for relative lines
 		CursorStyle: theme.TextStyle{Bold: true},
 	}
 

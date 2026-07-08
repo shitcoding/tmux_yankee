@@ -51,21 +51,21 @@ type CLIOptions struct {
 	Theme           string
 	Demo            bool
 
-	CursorFG          string
-	CursorBG          string
-	SelectionFG       string
-	SelectionBG       string
-	GutterFG          string
-	GutterBG          string
-	GutterSeparatorFG string
-	GutterSeparatorBG string
+	CursorFG            string
+	CursorBG            string
+	SelectionFG         string
+	SelectionBG         string
+	GutterFG            string
+	GutterBG            string
+	GutterSeparatorFG   string
+	GutterSeparatorBG   string
 	GutterSeparatorChar string
-	LineNumAbsoluteFG string
-	LineNumRelativeFG string
-	LineNumCursorFG   string
-	LineNumCursorBold string
-	StatusFG          string
-	StatusBG          string
+	LineNumAbsoluteFG   string
+	LineNumRelativeFG   string
+	LineNumCursorFG     string
+	LineNumCursorBold   string
+	StatusFG            string
+	StatusBG            string
 
 	// TextStyle override flags ("on"/"off"/"")
 	LineNumAbsoluteBold   string
@@ -83,26 +83,26 @@ type CLIOptions struct {
 	SelectionDim          string
 	SelectionItalic       string
 
-	ToggleModeKey string
-	WrapKey       string
-	CopyTarget    string
-	ExitOnYank    string
-	StartPosition string
-	WrapMode      string
-	Mouse         string
+	ToggleModeKey  string
+	WrapKey        string
+	CopyTarget     string
+	ExitOnYank     string
+	StartPosition  string
+	WrapMode       string
+	Mouse          string
 	StatusBar      string
 	Bindings       string
 	NormalBindings string
 	VisualBindings string
 
 	// Flash navigation
-	Flash         string // "on" or "off"
-	FlashMinChars string // digits: minimum chars before labels
-	FlashFT       string // "on" or "off"
-	FlashLabelFG  string
-	FlashLabelBG  string
-	FlashMatchFG  string
-	FlashMatchBG  string
+	Flash           string // "on" or "off"
+	FlashMinChars   string // digits: minimum chars before labels
+	FlashFT         string // "on" or "off"
+	FlashLabelFG    string
+	FlashLabelBG    string
+	FlashMatchFG    string
+	FlashMatchBG    string
 	FlashBackdrop   string
 	FlashJumpPos    string // "match_start", "match_end", "word_start", "word_end"
 	FlashAltJumpPos string // same values + "off"
@@ -129,8 +129,8 @@ type Settings struct {
 	ModeKeymap    keymap.ModeKeymap
 
 	// Flash navigation
-	FlashEnabled   bool
-	FlashMinChars  int
+	FlashEnabled    bool
+	FlashMinChars   int
 	FlashFTEnabled  bool
 	FlashJumpPos    int // matches flash.JumpPos values
 	FlashAltJumpPos int // matches flash.JumpPos values
