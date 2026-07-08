@@ -16,13 +16,7 @@ func Resolve(opts CLIOptions) (Settings, error) {
 	}
 
 	// Clamp ScrollbackLines to [MinScrollbackLines, MaxScrollbackLines]
-	scrollback := opts.ScrollbackLines
-	if scrollback < MinScrollbackLines {
-		scrollback = MinScrollbackLines
-	}
-	if scrollback > MaxScrollbackLines {
-		scrollback = MaxScrollbackLines
-	}
+	scrollback := min(max(opts.ScrollbackLines, MinScrollbackLines), MaxScrollbackLines)
 
 	// Parse bool strings
 	exitOnYank := opts.ExitOnYank == "on"
@@ -69,10 +63,7 @@ func Resolve(opts CLIOptions) (Settings, error) {
 		FlashBackdrop:         opts.FlashBackdrop,
 	}
 
-	palette, err := theme.Resolve(theme.ThemeName(opts.Theme), overrides)
-	if err != nil {
-		return Settings{}, fmt.Errorf("theme: %w", err)
-	}
+	palette := theme.Resolve(theme.ThemeName(opts.Theme), overrides)
 
 	wrapMode := WrapMode(opts.WrapMode)
 

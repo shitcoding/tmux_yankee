@@ -425,13 +425,13 @@ func (t *TUI) selectionStats(region selection.Region) (lines, chars int) {
 func cellPaletteSGR(p theme.CellPalette) string {
 	var codes []string
 	if p.FG != "" {
-		r, g, b, ok := parseStatusHex(string(p.FG))
+		r, g, b, ok := theme.ParseHex(string(p.FG))
 		if ok {
 			codes = append(codes, fmt.Sprintf("38;2;%d;%d;%d", r, g, b))
 		}
 	}
 	if p.BG != "" {
-		r, g, b, ok := parseStatusHex(string(p.BG))
+		r, g, b, ok := theme.ParseHex(string(p.BG))
 		if ok {
 			codes = append(codes, fmt.Sprintf("48;2;%d;%d;%d", r, g, b))
 		}
@@ -460,13 +460,13 @@ func cellPaletteSGR(p theme.CellPalette) string {
 func transitionSGR(fromBG, toBG theme.HexColor) string {
 	var codes []string
 	if fromBG != "" {
-		r, g, b, ok := parseStatusHex(string(fromBG))
+		r, g, b, ok := theme.ParseHex(string(fromBG))
 		if ok {
 			codes = append(codes, fmt.Sprintf("38;2;%d;%d;%d", r, g, b))
 		}
 	}
 	if toBG != "" {
-		r, g, b, ok := parseStatusHex(string(toBG))
+		r, g, b, ok := theme.ParseHex(string(toBG))
 		if ok {
 			codes = append(codes, fmt.Sprintf("48;2;%d;%d;%d", r, g, b))
 		}

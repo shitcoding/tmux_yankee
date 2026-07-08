@@ -1,6 +1,7 @@
 package flash
 
 import (
+	"slices"
 	"sort"
 	"strings"
 )
@@ -38,10 +39,7 @@ func FindMatches(lines []string, pattern string, viewportTop, viewportHeight int
 
 	var matches []Match
 
-	end := viewportTop + viewportHeight
-	if end > len(lines) {
-		end = len(lines)
-	}
+	end := min(viewportTop+viewportHeight, len(lines))
 
 	for lineIdx := viewportTop; lineIdx < end; lineIdx++ {
 		if lineIdx < 0 {
@@ -58,7 +56,7 @@ func FindMatches(lines []string, pattern string, viewportTop, viewportHeight int
 		lineLen := len(lineRunes)
 
 		for col := 0; col <= lineLen-patternLen; col++ {
-			if runesEqual(lineRunes[col:col+patternLen], patternRunes) {
+			if slices.Equal(lineRunes[col:col+patternLen], patternRunes) {
 				matches = append(matches, Match{
 					Line:     lineIdx,
 					ColStart: col,
@@ -76,16 +74,4 @@ func FindMatches(lines []string, pattern string, viewportTop, viewportHeight int
 	})
 
 	return matches
-}
-
-func runesEqual(a, b []rune) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

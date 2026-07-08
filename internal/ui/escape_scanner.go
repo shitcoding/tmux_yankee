@@ -107,10 +107,7 @@ func scanCSI(runes []rune, start int) int {
 // position mid-payload, which would otherwise leak the unterminated
 // payload back to the caller as printable text.
 func scanStringControl(runes []rune, start int) int {
-	end := start + stringControlMaxLen
-	if end > len(runes) {
-		end = len(runes)
-	}
+	end := min(start+stringControlMaxLen, len(runes))
 	for j := start; j < end; j++ {
 		if runes[j] == 0x07 {
 			return j + 1

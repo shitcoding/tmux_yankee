@@ -213,7 +213,7 @@ func hexToBGAnsi(hex theme.HexColor) string {
 	if hex == "" {
 		return ""
 	}
-	r, g, b, ok := parseHexColor(string(hex))
+	r, g, b, ok := theme.ParseHex(string(hex))
 	if !ok {
 		return ""
 	}
@@ -226,32 +226,11 @@ func hexToFGAnsi(hex theme.HexColor) string {
 	if hex == "" {
 		return ""
 	}
-	r, g, b, ok := parseHexColor(string(hex))
+	r, g, b, ok := theme.ParseHex(string(hex))
 	if !ok {
 		return ""
 	}
 	return fmt.Sprintf("38;2;%d;%d;%d", r, g, b)
-}
-
-// parseHexColor parses a "#rrggbb" string into r, g, b int components.
-func parseHexColor(hex string) (r, g, b int, ok bool) {
-	hex = strings.TrimPrefix(hex, "#")
-	if len(hex) != 6 {
-		return 0, 0, 0, false
-	}
-	rv, err := strconv.ParseUint(hex[0:2], 16, 8)
-	if err != nil {
-		return 0, 0, 0, false
-	}
-	gv, err := strconv.ParseUint(hex[2:4], 16, 8)
-	if err != nil {
-		return 0, 0, 0, false
-	}
-	bv, err := strconv.ParseUint(hex[4:6], 16, 8)
-	if err != nil {
-		return 0, 0, 0, false
-	}
-	return int(rv), int(gv), int(bv), true
 }
 
 // runeDisplayWidth returns the terminal display width of a rune.

@@ -126,10 +126,7 @@ func (h *VimHandler) moveVertical(doc Document, cursor Cursor, delta int) Cursor
 	// Cursor should be ON last character, not past it
 	newCol := h.goalCol
 	lineLen := doc.LineRuneCount(newLine)
-	maxCol := lineLen - 1
-	if maxCol < 0 {
-		maxCol = 0
-	}
+	maxCol := max(lineLen-1, 0)
 	if newCol > maxCol {
 		newCol = maxCol
 	}
@@ -142,10 +139,7 @@ func (h *VimHandler) moveVertical(doc Document, cursor Cursor, delta int) Cursor
 
 // moveLeft moves the cursor left by count columns.
 func (h *VimHandler) moveLeft(doc Document, cursor Cursor, count int) Cursor {
-	newCol := cursor.Col - count
-	if newCol < 0 {
-		newCol = 0
-	}
+	newCol := max(cursor.Col-count, 0)
 
 	// Set goal column to new position
 	h.goalCol = newCol
@@ -158,15 +152,9 @@ func (h *VimHandler) moveLeft(doc Document, cursor Cursor, count int) Cursor {
 func (h *VimHandler) moveRight(doc Document, cursor Cursor, count int) Cursor {
 	lineLen := doc.LineRuneCount(cursor.Line)
 	// Cursor can go to last character, not past it (lineLen-1 max)
-	maxCol := lineLen - 1
-	if maxCol < 0 {
-		maxCol = 0
-	}
+	maxCol := max(lineLen-1, 0)
 
-	newCol := cursor.Col + count
-	if newCol > maxCol {
-		newCol = maxCol
-	}
+	newCol := min(cursor.Col+count, maxCol)
 
 	// Set goal column to new position
 	h.goalCol = newCol
@@ -187,10 +175,7 @@ func (h *VimHandler) moveLineEnd(doc Document, cursor Cursor) Cursor {
 	lineLen := doc.LineRuneCount(cursor.Line)
 	// Vim places cursor ON the last character, not past it
 	// For empty lines (lineLen=0), cursor stays at col 0
-	targetCol := lineLen - 1
-	if targetCol < 0 {
-		targetCol = 0
-	}
+	targetCol := max(lineLen-1, 0)
 	h.goalCol = targetCol
 	h.hasGoal = true
 	return Cursor{Line: cursor.Line, Col: targetCol}
@@ -276,21 +261,12 @@ func (h *VimHandler) moveLastLine(doc Document, cursor Cursor, count int) Cursor
 
 // moveHalfPageUp scrolls viewport and cursor up by half a page.
 func (h *VimHandler) moveHalfPageUp(doc Document, cursor Cursor, viewport Viewport) Result {
-	halfPage := viewport.Height / 2
-	if halfPage < 1 {
-		halfPage = 1
-	}
+	halfPage := max(viewport.Height/2, 1)
 
-	newTop := viewport.Top - halfPage
-	if newTop < 0 {
-		newTop = 0
-	}
+	newTop := max(viewport.Top-halfPage, 0)
 
 	// Cursor moves with viewport (maintains relative position)
-	newCursorLine := cursor.Line - halfPage
-	if newCursorLine < 0 {
-		newCursorLine = 0
-	}
+	newCursorLine := max(cursor.Line-halfPage, 0)
 
 	// Apply goal column
 	if !h.hasGoal {
@@ -315,19 +291,13 @@ func (h *VimHandler) moveHalfPageUp(doc Document, cursor Cursor, viewport Viewpo
 
 // moveHalfPageDown scrolls viewport and cursor down by half a page.
 func (h *VimHandler) moveHalfPageDown(doc Document, cursor Cursor, viewport Viewport) Result {
-	halfPage := viewport.Height / 2
-	if halfPage < 1 {
-		halfPage = 1
-	}
+	halfPage := max(viewport.Height/2, 1)
 
 	lineCount := doc.LineCount()
 
 	newTop := viewport.Top + halfPage
 	// Don't scroll viewport past end of document
-	maxTop := lineCount - viewport.Height
-	if maxTop < 0 {
-		maxTop = 0
-	}
+	maxTop := max(lineCount-viewport.Height, 0)
 	if newTop > maxTop {
 		newTop = maxTop
 	}
@@ -384,10 +354,7 @@ func (h *VimHandler) adjustViewport(cursor Cursor, viewport Viewport, lineCount 
 	}
 
 	// Ensure viewport doesn't scroll past end of document
-	maxTop := lineCount - viewport.Height
-	if maxTop < 0 {
-		maxTop = 0
-	}
+	maxTop := max(lineCount-viewport.Height, 0)
 	if newViewport.Top > maxTop {
 		newViewport.Top = maxTop
 	}
@@ -1033,10 +1000,7 @@ func (h *VimHandler) positionViewportTop(doc Document, cursor Cursor, viewport V
 
 	// Ensure viewport doesn't go past document end
 	lineCount := doc.LineCount()
-	maxTop := lineCount - viewport.Height
-	if maxTop < 0 {
-		maxTop = 0
-	}
+	maxTop := max(lineCount-viewport.Height, 0)
 	if newTop > maxTop {
 		newTop = maxTop
 	}
@@ -1052,19 +1016,12 @@ func (h *VimHandler) positionViewportTop(doc Document, cursor Cursor, viewport V
 // positionViewportCenter positions the cursor line at the center of the viewport (zz motion).
 func (h *VimHandler) positionViewportCenter(doc Document, cursor Cursor, viewport Viewport) Viewport {
 	halfHeight := viewport.Height / 2
-	newTop := cursor.Line - halfHeight
-
 	// Ensure viewport doesn't go negative
-	if newTop < 0 {
-		newTop = 0
-	}
+	newTop := max(cursor.Line-halfHeight, 0)
 
 	// Ensure viewport doesn't go past document end
 	lineCount := doc.LineCount()
-	maxTop := lineCount - viewport.Height
-	if maxTop < 0 {
-		maxTop = 0
-	}
+	maxTop := max(lineCount-viewport.Height, 0)
 	if newTop > maxTop {
 		newTop = maxTop
 	}
@@ -1074,19 +1031,12 @@ func (h *VimHandler) positionViewportCenter(doc Document, cursor Cursor, viewpor
 
 // positionViewportBottom positions the cursor line at the bottom of the viewport (zb motion).
 func (h *VimHandler) positionViewportBottom(doc Document, cursor Cursor, viewport Viewport) Viewport {
-	newTop := cursor.Line - viewport.Height + 1
-
 	// Ensure viewport doesn't go negative
-	if newTop < 0 {
-		newTop = 0
-	}
+	newTop := max(cursor.Line-viewport.Height+1, 0)
 
 	// Ensure viewport doesn't go past document end
 	lineCount := doc.LineCount()
-	maxTop := lineCount - viewport.Height
-	if maxTop < 0 {
-		maxTop = 0
-	}
+	maxTop := max(lineCount-viewport.Height, 0)
 	if newTop > maxTop {
 		newTop = maxTop
 	}
@@ -1165,20 +1115,11 @@ func (h *VimHandler) moveScreenBottom(doc Document, cursor Cursor, viewport View
 
 // movePageUp scrolls viewport and cursor up by one full page (Ctrl-B).
 func (h *VimHandler) movePageUp(doc Document, cursor Cursor, viewport Viewport) Result {
-	page := viewport.Height
-	if page < 1 {
-		page = 1
-	}
+	page := max(viewport.Height, 1)
 
-	newTop := viewport.Top - page
-	if newTop < 0 {
-		newTop = 0
-	}
+	newTop := max(viewport.Top-page, 0)
 
-	newCursorLine := cursor.Line - page
-	if newCursorLine < 0 {
-		newCursorLine = 0
-	}
+	newCursorLine := max(cursor.Line-page, 0)
 
 	if !h.hasGoal {
 		h.goalCol = cursor.Col
@@ -1202,18 +1143,12 @@ func (h *VimHandler) movePageUp(doc Document, cursor Cursor, viewport Viewport) 
 
 // movePageDown scrolls viewport and cursor down by one full page (Ctrl-F).
 func (h *VimHandler) movePageDown(doc Document, cursor Cursor, viewport Viewport) Result {
-	page := viewport.Height
-	if page < 1 {
-		page = 1
-	}
+	page := max(viewport.Height, 1)
 
 	lineCount := doc.LineCount()
 
 	newTop := viewport.Top + page
-	maxTop := lineCount - viewport.Height
-	if maxTop < 0 {
-		maxTop = 0
-	}
+	maxTop := max(lineCount-viewport.Height, 0)
 	if newTop > maxTop {
 		newTop = maxTop
 	}
@@ -1543,13 +1478,7 @@ func (h *VimHandler) movePercentage(doc Document, cursor Cursor, count int) Curs
 	if totalLines == 0 {
 		return cursor
 	}
-	pct := count
-	if pct > 100 {
-		pct = 100
-	}
-	if pct < 1 {
-		pct = 1
-	}
+	pct := max(min(count, 100), 1)
 	targetLine := (totalLines - 1) * pct / 100
 	col := firstNonBlankCol(doc, targetLine)
 	return Cursor{Line: targetLine, Col: col}

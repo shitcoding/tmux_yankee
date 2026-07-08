@@ -5,10 +5,7 @@ import (
 )
 
 func TestResolve_DefaultPreset(t *testing.T) {
-	p, err := Resolve(ThemeDefault, ThemeOverrides{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	p := Resolve(ThemeDefault, ThemeOverrides{})
 
 	if p.Cursor.FG != "#ebdbb2" {
 		t.Errorf("Cursor.FG: got %q, want %q", p.Cursor.FG, "#ebdbb2")
@@ -55,10 +52,7 @@ func TestResolve_OverridePrecedence(t *testing.T) {
 	overrides := ThemeOverrides{
 		CursorFG: "#aabbcc",
 	}
-	p, err := Resolve(ThemeDefault, overrides)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	p := Resolve(ThemeDefault, overrides)
 
 	// Only CursorFG should be overridden
 	if p.Cursor.FG != "#aabbcc" {
@@ -74,10 +68,7 @@ func TestResolve_OverridePrecedence(t *testing.T) {
 }
 
 func TestResolve_UnknownThemeFallsBackToDefault(t *testing.T) {
-	p, err := Resolve(ThemeName("nonexistent"), ThemeOverrides{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	p := Resolve(ThemeName("nonexistent"), ThemeOverrides{})
 
 	// Should match default preset
 	defaultPreset := Presets[ThemeDefault]
@@ -90,10 +81,7 @@ func TestResolve_LineNumCursorBoldOverrideOn(t *testing.T) {
 	overrides := ThemeOverrides{
 		LineNumCursorBold: "on",
 	}
-	p, err := Resolve(ThemeDefault, overrides)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	p := Resolve(ThemeDefault, overrides)
 	if !p.LineNum.CursorStyle.Bold {
 		t.Errorf("LineNum.CursorStyle.Bold: got false, want true")
 	}
@@ -103,10 +91,7 @@ func TestResolve_LineNumCursorBoldOverrideOff(t *testing.T) {
 	overrides := ThemeOverrides{
 		LineNumCursorBold: "off",
 	}
-	p, err := Resolve(ThemeDefault, overrides)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	p := Resolve(ThemeDefault, overrides)
 	if p.LineNum.CursorStyle.Bold {
 		t.Errorf("LineNum.CursorStyle.Bold: got true, want false")
 	}
@@ -117,10 +102,7 @@ func TestResolve_LineNumCursorBoldOverrideEmpty(t *testing.T) {
 	overrides := ThemeOverrides{
 		LineNumCursorBold: "",
 	}
-	p, err := Resolve(ThemeDefault, overrides)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	p := Resolve(ThemeDefault, overrides)
 	// Default preset has CursorStyle.Bold = true
 	if !p.LineNum.CursorStyle.Bold {
 		t.Errorf("LineNum.CursorStyle.Bold: got false, want true (preset value preserved)")
@@ -141,10 +123,7 @@ func TestResolve_AllFivePresets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(string(tt.name), func(t *testing.T) {
-			p, err := Resolve(tt.name, ThemeOverrides{})
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			p := Resolve(tt.name, ThemeOverrides{})
 			if p.Cursor.BG != tt.wantBG {
 				t.Errorf("Cursor.BG: got %q, want %q", p.Cursor.BG, tt.wantBG)
 			}
@@ -163,10 +142,7 @@ func TestResolve_NewStyleOverrides(t *testing.T) {
 		GutterSeparatorBG:     "#112233",
 		GutterSeparatorChar:   "▎",
 	}
-	p, err := Resolve(ThemeDefault, overrides)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	p := Resolve(ThemeDefault, overrides)
 
 	if !p.LineNum.AbsoluteStyle.Dim {
 		t.Error("LineNum.AbsoluteStyle.Dim: got false, want true")

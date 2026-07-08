@@ -72,10 +72,7 @@ the end of the story`)
 		t.Errorf("label press: expected ActionJump, got %d", act.Type)
 	}
 	// Default jumpPos is JumpPosMatchEnd: col = ColEnd - 1
-	wantCol := target.ColEnd - 1
-	if wantCol < target.ColStart {
-		wantCol = target.ColStart
-	}
+	wantCol := max(target.ColEnd-1, target.ColStart)
 	if act.Line != target.Line || act.Col != wantCol {
 		t.Errorf("jump target = (%d,%d), want (%d,%d)",
 			act.Line, act.Col, target.Line, wantCol)

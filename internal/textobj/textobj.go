@@ -366,10 +366,7 @@ func innerBracket(doc motion.Document, cursor motion.Cursor, open, close rune) R
 		if eLine < sLine {
 			return Range{StartLine: sLine, StartCol: sCol, EndLine: sLine, EndCol: sCol, OK: true}
 		}
-		eCol = len([]rune(doc.Line(eLine))) - 1
-		if eCol < 0 {
-			eCol = 0
-		}
+		eCol = max(len([]rune(doc.Line(eLine)))-1, 0)
 	}
 
 	return Range{StartLine: sLine, StartCol: sCol, EndLine: eLine, EndCol: eCol, OK: true}

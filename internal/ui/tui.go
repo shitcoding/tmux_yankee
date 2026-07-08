@@ -181,9 +181,7 @@ func NewTUI(cfg config.Settings, content []string) *TUI {
 	default: // StartPositionBottom or unset
 		initialCursorLine = maxLine - 1
 	}
-	if initialCursorLine < 0 {
-		initialCursorLine = 0
-	}
+	initialCursorLine = max(initialCursorLine, 0)
 
 	// Use configured toggle key; default to 'L' if zero
 	toggleKey := cfg.ToggleModeKey
@@ -253,10 +251,7 @@ func NewDemoTUI(cfg config.Settings, pages [][]string, pageNames []string) *TUI 
 	}
 
 	// Start at middle of content
-	initialCursorLine := (maxLine - 1) / 2
-	if initialCursorLine < 0 {
-		initialCursorLine = 0
-	}
+	initialCursorLine := max((maxLine-1)/2, 0)
 
 	toggleKey := cfg.ToggleModeKey
 	if toggleKey == 0 {
@@ -341,19 +336,13 @@ func (t *TUI) Run() error {
 			if t.cfg.WrapMode == config.WrapModeOn {
 				t.centerViewportWrap(t.wrapContentWidth())
 			} else {
-				t.viewportTop = t.cursorLine - visibleRows/2
-				if t.viewportTop < 0 {
-					t.viewportTop = 0
-				}
+				t.viewportTop = max(t.cursorLine-visibleRows/2, 0)
 			}
 		case config.StartPositionBottom:
 			if t.cfg.WrapMode == config.WrapModeOn {
 				t.bottomViewportWrap(t.wrapContentWidth(), visibleRows)
 			} else {
-				t.viewportTop = t.cursorLine - visibleRows + 1
-				if t.viewportTop < 0 {
-					t.viewportTop = 0
-				}
+				t.viewportTop = max(t.cursorLine-visibleRows+1, 0)
 			}
 			// StartPositionTop: viewportTop = 0 (already default)
 		}
@@ -593,10 +582,7 @@ func (t *TUI) clampViewportAndCursor() {
 	ch := t.contentHeight()
 
 	// Keep viewport in valid range
-	maxTop := lineCount - ch
-	if maxTop < 0 {
-		maxTop = 0
-	}
+	maxTop := max(lineCount-ch, 0)
 	if t.viewportTop < 0 {
 		t.viewportTop = 0
 	}
@@ -640,13 +626,7 @@ func (t *TUI) ensureCursorVisibleH(contentWidth int) {
 // wrapContentWidth returns the number of content columns available after the
 // line-number gutter. Used by wrap-mode viewport helpers.
 func (t *TUI) wrapContentWidth() int {
-	sampleGutter := t.formatter.RenderGutter(1, 1)
-	gutterWidth := utf8.RuneCountInString(stripANSI(sampleGutter))
-	cw := t.width - gutterWidth
-	if cw < 1 {
-		cw = 1
-	}
-	return cw
+	return max(t.width-t.gutterWidth(), 1)
 }
 
 // maxViewportTopWrap returns the largest viewportTop value for which the
@@ -679,10 +659,7 @@ func (t *TUI) maxViewportTopWrap(contentWidth, rows int) int {
 			// last line alone wraps taller than `rows`, the largest sane
 			// viewport top is `lineCount-1` so that last line is at least
 			// the only visible source line.
-			top := i + 1
-			if top > lineCount-1 {
-				top = lineCount - 1
-			}
+			top := min(i+1, lineCount-1)
 			return top
 		}
 		used += n
@@ -791,10 +768,7 @@ func (t *TUI) maxViewportTopWrapToFit(targetLine, contentWidth, rows int) int {
 			// Adding this line would overflow. The viewport top is one line
 			// below i. Cap at targetLine so the helper never returns a top
 			// past the target itself.
-			top := i + 1
-			if top > targetLine {
-				top = targetLine
-			}
+			top := min(i+1, targetLine)
 			return top
 		}
 		used += n
@@ -940,14 +914,10 @@ func (t *TUI) visibleDocLineRange() (top, height int) {
 	return firstLine, lastLine - firstLine + 1
 }
 
-// centerViewportWrap sets viewportTop so the cursor line starts approximately
-// at the vertical middle of the screen, accounting for wrapped display rows.
-// Used once on startup to give a centered initial view.
-func (t *TUI) centerViewportWrap(contentWidth int) {
-	if t.height <= 0 || contentWidth <= 0 {
-		return
-	}
-	targetRowsAbove := t.height / 2
+// viewportTopForRowsAbove walks source lines backward from the cursor line,
+// summing wrapped display rows, and returns the highest line whose chunks still
+// fit within targetRowsAbove display rows above the cursor.
+func (t *TUI) viewportTopForRowsAbove(targetRowsAbove, contentWidth int) int {
 	rowsAbove := 0
 	vt := t.cursorLine
 	for vt > 0 {
@@ -958,7 +928,17 @@ func (t *TUI) centerViewportWrap(contentWidth int) {
 		rowsAbove += len(chunks)
 		vt--
 	}
-	t.viewportTop = vt
+	return vt
+}
+
+// centerViewportWrap sets viewportTop so the cursor line starts approximately
+// at the vertical middle of the screen, accounting for wrapped display rows.
+// Used once on startup to give a centered initial view.
+func (t *TUI) centerViewportWrap(contentWidth int) {
+	if t.height <= 0 || contentWidth <= 0 {
+		return
+	}
+	t.viewportTop = t.viewportTopForRowsAbove(t.height/2, contentWidth)
 }
 
 // bottomViewportWrap sets viewportTop so the cursor line appears at the bottom
@@ -976,17 +956,7 @@ func (t *TUI) bottomViewportWrap(contentWidth, visibleRows int) {
 		t.viewportTop = t.cursorLine
 		return
 	}
-	rowsAbove := 0
-	vt := t.cursorLine
-	for vt > 0 {
-		chunks := t.cachedWrapChunks(vt-1, t.doc.Cells(vt-1), contentWidth)
-		if rowsAbove+len(chunks) > targetRowsAbove {
-			break
-		}
-		rowsAbove += len(chunks)
-		vt--
-	}
-	t.viewportTop = vt
+	t.viewportTop = t.viewportTopForRowsAbove(targetRowsAbove, contentWidth)
 }
 
 // ensureCursorVisibleWrap adjusts viewportTop so the cursor line is visible
@@ -1378,10 +1348,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 				cw := t.wrapContentWidth()
 				if cw > 0 {
 					maxTop := t.maxViewportTopWrap(cw, t.contentHeight())
-					t.viewportTop = t.cursorLine
-					if t.viewportTop > maxTop {
-						t.viewportTop = maxTop
-					}
+					t.viewportTop = min(t.cursorLine, maxTop)
 					t.clampCursorIntoWrapViewport(cw)
 				} else {
 					t.viewportTop = result.Viewport.Top
@@ -1713,10 +1680,7 @@ func (t *TUI) handleCommand(cmd input.Command) bool {
 		if t.cfg.WrapMode == config.WrapModeOn {
 			maxTop = t.maxViewportTopWrap(t.wrapContentWidth(), t.contentHeight())
 		} else {
-			maxTop = t.doc.LineCount() - t.contentHeight()
-			if maxTop < 0 {
-				maxTop = 0
-			}
+			maxTop = max(t.doc.LineCount()-t.contentHeight(), 0)
 		}
 		if t.viewportTop < maxTop {
 			t.viewportTop++
@@ -2019,14 +1983,10 @@ func (t *TUI) mouseToDocPos(termRow, termCol int) (selection.Pos, bool) {
 	}
 
 	// Compute gutter width (same as render path)
-	sampleGutter := t.formatter.RenderGutter(1, 1)
-	gutterWidth := utf8.RuneCountInString(stripANSI(sampleGutter))
+	gutterWidth := t.gutterWidth()
 
-	// Content column: subtract gutter, clamp to 0
-	contentCol := termCol - gutterWidth
-	if contentCol < 0 {
-		contentCol = 0 // clicking on gutter → column 0
-	}
+	// Content column: subtract gutter, clamp to 0 (clicking on gutter → column 0)
+	contentCol := max(termCol-gutterWidth, 0)
 
 	if t.cfg.WrapMode == config.WrapModeOn {
 		return t.mouseToDocPosWrap(termRow, contentCol, gutterWidth)
@@ -2037,12 +1997,8 @@ func (t *TUI) mouseToDocPos(termRow, termCol int) (selection.Pos, bool) {
 // mouseToDocPosScroll maps terminal position to document position in non-wrap mode.
 func (t *TUI) mouseToDocPosScroll(termRow, contentCol int) (selection.Pos, bool) {
 	lineCount := t.doc.LineCount()
-	docLine := t.viewportTop + termRow
-
 	// Clamp to valid line range
-	if docLine < 0 {
-		docLine = 0
-	}
+	docLine := max(t.viewportTop+termRow, 0)
 	if docLine >= lineCount {
 		docLine = lineCount - 1
 	}
@@ -2056,10 +2012,7 @@ func (t *TUI) mouseToDocPosScroll(termRow, contentCol int) (selection.Pos, bool)
 // mouseToDocPosWrap maps terminal position to document position in wrap mode.
 func (t *TUI) mouseToDocPosWrap(termRow, contentCol, gutterWidth int) (selection.Pos, bool) {
 	lineCount := t.doc.LineCount()
-	contentWidth := t.width - gutterWidth
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
+	contentWidth := max(t.width-gutterWidth, 1)
 
 	// Walk display rows from viewportTop to find which logical line + chunk
 	// corresponds to termRow.
@@ -2071,10 +2024,7 @@ func (t *TUI) mouseToDocPosWrap(termRow, contentCol, gutterWidth int) (selection
 			if displayRow == termRow {
 				// Found the target display row — map contentCol to rune within chunk
 				runeCol := ch.start + t.displayColToRuneInChunk(lineIdx, ch, contentCol)
-				maxCol := t.doc.LineRuneCount(lineIdx) - 1
-				if maxCol < 0 {
-					maxCol = 0
-				}
+				maxCol := max(t.doc.LineRuneCount(lineIdx)-1, 0)
 				if runeCol > maxCol {
 					runeCol = maxCol
 				}
@@ -2090,10 +2040,7 @@ func (t *TUI) mouseToDocPosWrap(termRow, contentCol, gutterWidth int) (selection
 
 	// Click below rendered content — clamp to last line, last column
 	lastLine := lineCount - 1
-	maxCol := t.doc.LineRuneCount(lastLine) - 1
-	if maxCol < 0 {
-		maxCol = 0
-	}
+	maxCol := max(t.doc.LineRuneCount(lastLine)-1, 0)
 	return selection.Pos{Line: lastLine, Col: maxCol}, true
 }
 
@@ -2116,10 +2063,7 @@ func (t *TUI) displayColToRune(lineIdx, displayCol int) int {
 		runeIdx++
 	}
 	// Clamp to last valid position
-	maxCol := len(runes) - 1
-	if maxCol < 0 {
-		maxCol = 0
-	}
+	maxCol := max(len(runes)-1, 0)
 	if runeIdx > maxCol {
 		runeIdx = maxCol
 	}
@@ -2427,10 +2371,7 @@ func (t *TUI) cycleDemoPage(delta int) {
 	t.invalidateGutterCache()
 
 	// Reset cursor to middle
-	t.cursorLine = (maxLine - 1) / 2
-	if t.cursorLine < 0 {
-		t.cursorLine = 0
-	}
+	t.cursorLine = max((maxLine-1)/2, 0)
 	t.cursorCol = 0
 	t.viewportTop = 0
 	t.hOffset = 0
@@ -2450,11 +2391,7 @@ func (t *TUI) cycleTheme(delta int) {
 	t.demoThemeName = theme.ThemeOrder[t.demoThemeIndex]
 
 	// Resolve the new theme palette (pure preset, no overrides)
-	palette, err := theme.Resolve(t.demoThemeName, theme.ThemeOverrides{})
-	if err != nil {
-		return
-	}
-	t.palette = palette
+	t.palette = theme.Resolve(t.demoThemeName, theme.ThemeOverrides{})
 
 	// Recreate formatter with new palette colors
 	lineNumMode, modeErr := linenums.ModeFromString(t.lineNumMode)
@@ -2465,7 +2402,7 @@ func (t *TUI) cycleTheme(delta int) {
 	if maxLine == 0 {
 		maxLine = 1
 	}
-	t.formatter = linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, palette.Gutter, palette.LineNum)
+	t.formatter = linenums.NewFormatterWithFullPalette(lineNumMode, maxLine, t.palette.Gutter, t.palette.LineNum)
 	t.invalidateGutterCache()
 	t.dirty = true
 }
@@ -2490,10 +2427,7 @@ func (t *TUI) lineSelection(lineIdx int, region selection.Region) (cursorCol, se
 		start, end = end, start
 	}
 
-	lastCol := t.doc.LineRuneCount(lineIdx) - 1
-	if lastCol < 0 {
-		lastCol = 0
-	}
+	lastCol := max(t.doc.LineRuneCount(lineIdx)-1, 0)
 
 	if region.Kind == selection.KindChar {
 		if lineIdx == start.Line && lineIdx == end.Line {
@@ -2585,10 +2519,7 @@ func (t *TUI) computeSearchMatches(pattern string) {
 			}
 			// Convert byte offsets to rune offsets.
 			colStart := byteOffsetToRuneOffset(line, loc[0])
-			colEnd := byteOffsetToRuneOffset(line, loc[1]) - 1
-			if colEnd < colStart {
-				colEnd = colStart
-			}
+			colEnd := max(byteOffsetToRuneOffset(line, loc[1])-1, colStart)
 			t.searchMatches = append(t.searchMatches, searchMatch{
 				Line:     i,
 				ColStart: colStart,
@@ -2599,15 +2530,10 @@ func (t *TUI) computeSearchMatches(pattern string) {
 }
 
 // byteOffsetToRuneOffset converts a byte offset in a string to a rune offset.
+// byteOff must be in [0, len(s)] and lie on a UTF-8 rune boundary; the sole
+// caller passes regexp match offsets, which always satisfy both.
 func byteOffsetToRuneOffset(s string, byteOff int) int {
-	runeIdx := 0
-	for i := range s {
-		if i >= byteOff {
-			return runeIdx
-		}
-		runeIdx++
-	}
-	return runeIdx
+	return utf8.RuneCountInString(s[:byteOff])
 }
 
 // nearestMatch finds the nearest match index from position in the given direction.
@@ -2907,10 +2833,7 @@ func (t *TUI) renderScroll() {
 	region := t.modeMachine.Region()
 
 	gutterWidth := t.gutterWidth()
-	contentWidth := t.width - gutterWidth
-	if contentWidth < 0 {
-		contentWidth = 0
-	}
+	contentWidth := max(t.width-gutterWidth, 0)
 
 	t.ensureCursorVisibleH(contentWidth)
 
@@ -2984,10 +2907,7 @@ func (t *TUI) cachedWrapChunks(lineIdx int, cells []Cell, contentWidth int) []wr
 	t.wrapCache[lineIdx] = chunks
 
 	// Evict entries far from the viewport when cache grows too large.
-	maxEntries := t.height * 20
-	if maxEntries < 100 {
-		maxEntries = 100
-	}
+	maxEntries := max(t.height*20, 100)
 	if len(t.wrapCache) > maxEntries {
 		margin := t.height * 5
 		lo := t.viewportTop - margin
@@ -3070,10 +2990,7 @@ func (t *TUI) renderWrap() {
 	region := t.modeMachine.Region()
 
 	gutterWidth := t.gutterWidth()
-	contentWidth := t.width - gutterWidth
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
+	contentWidth := max(t.width-gutterWidth, 1)
 	blankGutter := t.blankGutter()
 
 	// Adjust viewport so cursor is on-screen (wrap-aware).
@@ -3152,19 +3069,6 @@ func (t *TUI) renderWrap() {
 	}
 
 	fmt.Print(b.String())
-}
-
-// parseStatusHex parses a "#rrggbb" string into RGB components (for status bar).
-func parseStatusHex(hex string) (r, g, b int, ok bool) {
-	hex = strings.TrimPrefix(hex, "#")
-	if len(hex) != 6 {
-		return 0, 0, 0, false
-	}
-	rv, err := fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b)
-	if err != nil || rv != 3 {
-		return 0, 0, 0, false
-	}
-	return r, g, b, true
 }
 
 // GetMode returns the current line number mode

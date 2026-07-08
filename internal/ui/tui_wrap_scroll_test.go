@@ -480,10 +480,7 @@ func TestCountedL_WrapMode_CountsFromWrapAwareBottom(t *testing.T) {
 	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionScreenBottom, Count: 2})
 
 	lastVis := ti.lastVisibleLineWrap(ti.wrapContentWidth())
-	want := lastVis - 1
-	if want < ti.viewportTop {
-		want = ti.viewportTop
-	}
+	want := max(lastVis-1, ti.viewportTop)
 	if ti.cursorLine != want {
 		t.Errorf("L 2 wrap mode: cursorLine=%d, want %d (lastVis=%d - count(2) + 1, clamped to viewportTop)",
 			ti.cursorLine, want, lastVis)
@@ -537,13 +534,7 @@ func TestH_WrapMode_CursorClampedToLastVisible(t *testing.T) {
 	ti.handleCommand(input.Command{Type: input.CommandMotion, Motion: motion.MotionScreenTop, Count: 5})
 
 	lastVis := ti.lastVisibleLineWrap(ti.wrapContentWidth())
-	want := ti.viewportTop + 5 - 1
-	if want > lastVis {
-		want = lastVis
-	}
-	if want < ti.viewportTop {
-		want = ti.viewportTop
-	}
+	want := max(min(ti.viewportTop+5-1, lastVis), ti.viewportTop)
 	if ti.cursorLine != want {
 		t.Errorf("H 5 wrap mode: cursorLine=%d, want min(viewportTop+count-1, lastVis)=%d (lastVis=%d)",
 			ti.cursorLine, want, lastVis)

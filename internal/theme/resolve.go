@@ -1,13 +1,10 @@
 package theme
 
-import (
-	"fmt"
-	"strings"
-)
+import "strings"
 
 // Resolve loads the named preset and applies any non-empty overrides.
-// Returns an error if the theme name is unknown or a color value is invalid.
-func Resolve(name ThemeName, overrides ThemeOverrides) (Palette, error) {
+// Color values are validated upstream by config.Validate, so resolution cannot fail.
+func Resolve(name ThemeName, overrides ThemeOverrides) Palette {
 	preset, ok := Presets[name]
 	if !ok {
 		// Fall back to default if name is unknown (shouldn't happen after validation, but be safe)
@@ -16,45 +13,19 @@ func Resolve(name ThemeName, overrides ThemeOverrides) (Palette, error) {
 
 	p := preset // copy to apply overrides
 
-	if err := applyColorOverride(overrides.CursorFG, &p.Cursor.FG); err != nil {
-		return Palette{}, fmt.Errorf("cursor-fg: %w", err)
-	}
-	if err := applyColorOverride(overrides.CursorBG, &p.Cursor.BG); err != nil {
-		return Palette{}, fmt.Errorf("cursor-bg: %w", err)
-	}
-	if err := applyColorOverride(overrides.SelectionFG, &p.Selection.FG); err != nil {
-		return Palette{}, fmt.Errorf("selection-fg: %w", err)
-	}
-	if err := applyColorOverride(overrides.SelectionBG, &p.Selection.BG); err != nil {
-		return Palette{}, fmt.Errorf("selection-bg: %w", err)
-	}
-	if err := applyColorOverride(overrides.GutterFG, &p.Gutter.FG); err != nil {
-		return Palette{}, fmt.Errorf("gutter-fg: %w", err)
-	}
-	if err := applyColorOverride(overrides.GutterBG, &p.Gutter.BG); err != nil {
-		return Palette{}, fmt.Errorf("gutter-bg: %w", err)
-	}
-	if err := applyColorOverride(overrides.GutterSeparatorFG, &p.Gutter.SeparatorFG); err != nil {
-		return Palette{}, fmt.Errorf("gutter-separator-fg: %w", err)
-	}
-	if err := applyColorOverride(overrides.GutterSeparatorBG, &p.Gutter.SeparatorBG); err != nil {
-		return Palette{}, fmt.Errorf("gutter-separator-bg: %w", err)
-	}
-	if err := applyColorOverride(overrides.LineNumAbsoluteFG, &p.LineNum.AbsoluteFG); err != nil {
-		return Palette{}, fmt.Errorf("linenum-absolute-fg: %w", err)
-	}
-	if err := applyColorOverride(overrides.LineNumRelativeFG, &p.LineNum.RelativeFG); err != nil {
-		return Palette{}, fmt.Errorf("linenum-relative-fg: %w", err)
-	}
-	if err := applyColorOverride(overrides.LineNumCursorFG, &p.LineNum.CursorFG); err != nil {
-		return Palette{}, fmt.Errorf("linenum-cursor-fg: %w", err)
-	}
-	if err := applyColorOverride(overrides.StatusFG, &p.StatusBar.Fill.FG); err != nil {
-		return Palette{}, fmt.Errorf("status-fg: %w", err)
-	}
-	if err := applyColorOverride(overrides.StatusBG, &p.StatusBar.Fill.BG); err != nil {
-		return Palette{}, fmt.Errorf("status-bg: %w", err)
-	}
+	applyColorOverride(overrides.CursorFG, &p.Cursor.FG)
+	applyColorOverride(overrides.CursorBG, &p.Cursor.BG)
+	applyColorOverride(overrides.SelectionFG, &p.Selection.FG)
+	applyColorOverride(overrides.SelectionBG, &p.Selection.BG)
+	applyColorOverride(overrides.GutterFG, &p.Gutter.FG)
+	applyColorOverride(overrides.GutterBG, &p.Gutter.BG)
+	applyColorOverride(overrides.GutterSeparatorFG, &p.Gutter.SeparatorFG)
+	applyColorOverride(overrides.GutterSeparatorBG, &p.Gutter.SeparatorBG)
+	applyColorOverride(overrides.LineNumAbsoluteFG, &p.LineNum.AbsoluteFG)
+	applyColorOverride(overrides.LineNumRelativeFG, &p.LineNum.RelativeFG)
+	applyColorOverride(overrides.LineNumCursorFG, &p.LineNum.CursorFG)
+	applyColorOverride(overrides.StatusFG, &p.StatusBar.Fill.FG)
+	applyColorOverride(overrides.StatusBG, &p.StatusBar.Fill.BG)
 
 	// Separator char override
 	if overrides.GutterSeparatorChar != "" {
@@ -87,33 +58,22 @@ func Resolve(name ThemeName, overrides ThemeOverrides) (Palette, error) {
 	applyBoolOverride(overrides.SelectionItalic, &p.Selection.Style.Italic)
 
 	// Flash color overrides
-	if err := applyColorOverride(overrides.FlashLabelFG, &p.FlashLabel.FG); err != nil {
-		return Palette{}, fmt.Errorf("flash-label-fg: %w", err)
-	}
-	if err := applyColorOverride(overrides.FlashLabelBG, &p.FlashLabel.BG); err != nil {
-		return Palette{}, fmt.Errorf("flash-label-bg: %w", err)
-	}
-	if err := applyColorOverride(overrides.FlashMatchFG, &p.FlashMatch.FG); err != nil {
-		return Palette{}, fmt.Errorf("flash-match-fg: %w", err)
-	}
-	if err := applyColorOverride(overrides.FlashMatchBG, &p.FlashMatch.BG); err != nil {
-		return Palette{}, fmt.Errorf("flash-match-bg: %w", err)
-	}
-	if err := applyColorOverride(overrides.FlashBackdrop, &p.FlashBackdrop.FG); err != nil {
-		return Palette{}, fmt.Errorf("flash-backdrop: %w", err)
-	}
+	applyColorOverride(overrides.FlashLabelFG, &p.FlashLabel.FG)
+	applyColorOverride(overrides.FlashLabelBG, &p.FlashLabel.BG)
+	applyColorOverride(overrides.FlashMatchFG, &p.FlashMatch.FG)
+	applyColorOverride(overrides.FlashMatchBG, &p.FlashMatch.BG)
+	applyColorOverride(overrides.FlashBackdrop, &p.FlashBackdrop.FG)
 
-	return p, nil
+	return p
 }
 
 // applyColorOverride sets *dst to the normalized hex color if override is non-empty.
-func applyColorOverride(override string, dst *HexColor) error {
+// Values are validated upstream by config.Validate; this only lowercases.
+func applyColorOverride(override string, dst *HexColor) {
 	if override == "" {
-		return nil
+		return
 	}
-	// Colors were already validated by config.Validate, but normalize to lowercase
 	*dst = HexColor(strings.ToLower(override))
-	return nil
 }
 
 // applyBoolOverride applies an "on"/"off"/"" override to a bool pointer.

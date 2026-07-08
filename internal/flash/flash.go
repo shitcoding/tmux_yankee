@@ -54,10 +54,7 @@ type State struct {
 
 // New creates a new flash State with the given options.
 func New(opts Options) *State {
-	minChars := opts.MinChars
-	if minChars < 1 {
-		minChars = 1
-	}
+	minChars := max(opts.MinChars, 1)
 	// AltJumpPos defaults to JumpPosMatchStart (iota value 1) when Options
 	// is zero-initialized. Since JumpPosMatchEnd is iota 0 and that's also
 	// the zero value, we use a sentinel: if both are zero (default), set

@@ -246,7 +246,7 @@ func styleCodes(s theme.TextStyle) []string {
 
 // hexToFGCode returns a 24-bit foreground SGR code for "#rrggbb".
 func hexToFGCode(hex string) string {
-	r, g, b, ok := parseHex(hex)
+	r, g, b, ok := theme.ParseHex(hex)
 	if !ok {
 		return ""
 	}
@@ -255,7 +255,7 @@ func hexToFGCode(hex string) string {
 
 // hexToBGCode returns a 24-bit background SGR code for "#rrggbb".
 func hexToBGCode(hex string) string {
-	r, g, b, ok := parseHex(hex)
+	r, g, b, ok := theme.ParseHex(hex)
 	if !ok {
 		return ""
 	}
@@ -269,27 +269,6 @@ func hexBGEscape(hex string) string {
 		return ""
 	}
 	return "\x1b[" + code + "m"
-}
-
-// parseHex parses a "#rrggbb" string into r, g, b components.
-func parseHex(hex string) (r, g, b int, ok bool) {
-	hex = strings.TrimPrefix(hex, "#")
-	if len(hex) != 6 {
-		return 0, 0, 0, false
-	}
-	rv, err := strconv.ParseUint(hex[0:2], 16, 8)
-	if err != nil {
-		return 0, 0, 0, false
-	}
-	gv, err := strconv.ParseUint(hex[2:4], 16, 8)
-	if err != nil {
-		return 0, 0, 0, false
-	}
-	bv, err := strconv.ParseUint(hex[4:6], 16, 8)
-	if err != nil {
-		return 0, 0, 0, false
-	}
-	return int(rv), int(gv), int(bv), true
 }
 
 // CalculateGutterWidth calculates the width needed for the gutter

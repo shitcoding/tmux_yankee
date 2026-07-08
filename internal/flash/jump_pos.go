@@ -97,10 +97,7 @@ func ResolveJumpCol(lineText string, m Match, pos JumpPos) int {
 		return col
 
 	case JumpPosWordEnd:
-		endCol := m.ColEnd - 1
-		if endCol < 0 {
-			endCol = 0
-		}
+		endCol := max(m.ColEnd-1, 0)
 		if len(runes) == 0 || endCol >= len(runes) {
 			if len(runes) > 0 {
 				return len(runes) - 1
