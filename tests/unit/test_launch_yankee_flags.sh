@@ -5,8 +5,8 @@
 # emits them as null-delimited CLI flag pairs.
 #
 # Strategy: define a mock tmux function, then source only the two functions
-# we need (_append_yankee_opt and build_yankee_args) by extracting them into
-# a temporary file via awk, bypassing the top-level side effects of the launcher.
+# we need (_get_yankee_opt_from_dump and build_yankee_args) by extracting them
+# into a temporary file via awk, bypassing the top-level side effects of the launcher.
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ fi
 
 # ---- Extract testable functions from launcher ----
 # We cannot source the full launcher because it executes tmux at top level.
-# Extract _append_yankee_opt and build_yankee_args into a temp file.
+# Extract _get_yankee_opt_from_dump and build_yankee_args into a temp file.
 
 _TMP_FUNCS="$(mktemp /tmp/test_launch_yankee_funcs.XXXXXX)"
 # Register with the framework's temp-file cleanup (via _TEMP_FILES array).
@@ -33,7 +33,7 @@ _TEMP_FILES+=("$_TMP_FUNCS")
 
 # awk collects function bodies by tracking brace depth.
 awk '
-    /^(_append_yankee_opt|_get_yankee_opt_from_dump|build_yankee_args)\(\)/ { in_fn=1; depth=0 }
+    /^(_get_yankee_opt_from_dump|build_yankee_args)\(\)/ { in_fn=1; depth=0 }
     in_fn {
         print
         for (i=1; i<=length($0); i++) {
@@ -65,16 +65,6 @@ tmux() {
         printf '%s\n' "@yankee_cursor_bg #ff5555"
         printf '%s\n' "@yankee_toggle_mode_key M"
         printf '%s\n' "@yankee_display_mode popup"
-    elif [[ "${1:-}" == "show-option" ]]; then
-        local opt="${3:-}"
-        case "$opt" in
-            @yankee_mode)             printf '%s\n' "absolute" ;;
-            @yankee_scrollback_lines) printf '%s\n' "5000" ;;
-            @yankee_theme)            printf '%s\n' "dracula" ;;
-            @yankee_cursor_bg)        printf '%s\n' "#ff5555" ;;
-            @yankee_toggle_mode_key)  printf '%s\n' "M" ;;
-            *)                        printf '%s\n' "" ;;
-        esac
     fi
 }
 export -f tmux

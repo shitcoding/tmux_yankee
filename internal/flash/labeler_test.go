@@ -4,6 +4,12 @@ import (
 	"testing"
 )
 
+// newTestLabeler builds a Labeler with a custom label pool, used by
+// exhaustion/collision tests that need a small deterministic pool.
+func newTestLabeler(pool string) *Labeler {
+	return &Labeler{pool: []byte(pool), used: make(map[string]byte)}
+}
+
 func TestLabeler_BasicAssignment(t *testing.T) {
 	lab := NewLabeler()
 	matches := []Match{
@@ -12,7 +18,7 @@ func TestLabeler_BasicAssignment(t *testing.T) {
 		{Line: 1, ColStart: 0, ColEnd: 3},
 	}
 
-	lab.Assign(matches, 0, 0)
+	lab.AssignWithForbidden(matches, 0, 0, nil, nil)
 
 	for i, m := range matches {
 		if m.Label == 0 {
@@ -38,7 +44,7 @@ func TestLabeler_DistanceSorting(t *testing.T) {
 		{Line: 0, ColStart: 0, ColEnd: 3},  // near cursor
 	}
 
-	lab.Assign(matches, 0, 0)
+	lab.AssignWithForbidden(matches, 0, 0, nil, nil)
 
 	// The nearest match (line 0) should get first label ('a')
 	if matches[1].Label != 'a' {
@@ -54,7 +60,7 @@ func TestLabeler_PositionMemory(t *testing.T) {
 		{Line: 0, ColStart: 0, ColEnd: 3},
 		{Line: 1, ColStart: 0, ColEnd: 3},
 	}
-	lab.Assign(matches1, 0, 0)
+	lab.AssignWithForbidden(matches1, 0, 0, nil, nil)
 
 	label0 := matches1[0].Label
 	label1 := matches1[1].Label
@@ -64,7 +70,7 @@ func TestLabeler_PositionMemory(t *testing.T) {
 		{Line: 0, ColStart: 0, ColEnd: 3},
 		{Line: 1, ColStart: 0, ColEnd: 3},
 	}
-	lab.Assign(matches2, 0, 0)
+	lab.AssignWithForbidden(matches2, 0, 0, nil, nil)
 
 	if matches2[0].Label != label0 {
 		t.Errorf("position memory: line 0 label changed from '%c' to '%c'",
@@ -85,7 +91,7 @@ func TestLabeler_Exhaustion(t *testing.T) {
 		matches[i] = Match{Line: i, ColStart: 0, ColEnd: 3}
 	}
 
-	lab.Assign(matches, 0, 0)
+	lab.AssignWithForbidden(matches, 0, 0, nil, nil)
 
 	labeled := 0
 	unlabeled := 0
@@ -119,7 +125,7 @@ func TestLabeler_CollisionAvoidance(t *testing.T) {
 		{Line: 0, ColStart: 0, ColEnd: 2},
 	}
 
-	lab.AssignWithContext(matches, 0, 0, lines)
+	lab.AssignWithForbidden(matches, 0, 0, lines, nil)
 
 	// The first pool label 'a' should be assigned since next char is 's', not 'a'
 	if matches[0].Label != 'a' {
@@ -128,7 +134,7 @@ func TestLabeler_CollisionAvoidance(t *testing.T) {
 }
 
 func TestLabeler_CollisionSkipsLabel(t *testing.T) {
-	lab := NewLabelerWithPool("sa")
+	lab := newTestLabeler("sa")
 
 	// Match "xx", next char is 's' - should skip 's' label, assign 'a'
 	lines := []string{
@@ -138,7 +144,7 @@ func TestLabeler_CollisionSkipsLabel(t *testing.T) {
 		{Line: 0, ColStart: 0, ColEnd: 2},
 	}
 
-	lab.AssignWithContext(matches, 0, 0, lines)
+	lab.AssignWithForbidden(matches, 0, 0, lines, nil)
 
 	if matches[0].Label == 's' {
 		t.Error("collision avoidance: label 's' was assigned despite collision with next char 's'")
@@ -159,7 +165,7 @@ func TestLabeler_CollisionEndOfLine(t *testing.T) {
 		{Line: 0, ColStart: 3, ColEnd: 5}, // "lo" at end
 	}
 
-	lab.AssignWithContext(matches, 0, 3, lines)
+	lab.AssignWithForbidden(matches, 0, 3, lines, nil)
 
 	if matches[0].Label == 0 {
 		t.Error("end of line: should still get a label when no next char to collide with")
@@ -167,14 +173,14 @@ func TestLabeler_CollisionEndOfLine(t *testing.T) {
 }
 
 func TestLabeler_NoCollisionWithoutContext(t *testing.T) {
-	lab := NewLabelerWithPool("s")
+	lab := newTestLabeler("s")
 
-	// Without context (Assign, not AssignWithContext), no collision check
+	// Without line context (nil lines), no collision check is performed.
 	matches := []Match{
 		{Line: 0, ColStart: 0, ColEnd: 2},
 	}
 
-	lab.Assign(matches, 0, 0)
+	lab.AssignWithForbidden(matches, 0, 0, nil, nil)
 
 	if matches[0].Label != 's' {
 		t.Errorf("no context: expected label 's', got '%c'", matches[0].Label)
@@ -189,7 +195,7 @@ func TestLabeler_UniqueLabels(t *testing.T) {
 		matches[i] = Match{Line: i, ColStart: 0, ColEnd: 3}
 	}
 
-	lab.Assign(matches, 5, 0)
+	lab.AssignWithForbidden(matches, 5, 0, nil, nil)
 
 	seen := make(map[byte]bool)
 	for i, m := range matches {

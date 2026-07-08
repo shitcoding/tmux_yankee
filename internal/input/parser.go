@@ -353,11 +353,6 @@ func (p *Parser) clearPending() {
 	p.pending = Pending{}
 }
 
-// Pending returns the current pending state (for testing/debugging).
-func (p *Parser) PendingState() Pending {
-	return p.pending
-}
-
 // HasPendingYPrefix returns true if 'y' prefix is pending (waiting for second key).
 // The TUI uses this to short-circuit to yank-selection when a visual selection is active.
 func (p *Parser) HasPendingYPrefix() bool {

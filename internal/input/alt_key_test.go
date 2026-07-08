@@ -157,9 +157,9 @@ func TestAltKeyWithDigitDoesNotAccumulateCount(t *testing.T) {
 	if cmd.Type != CommandNone {
 		t.Fatalf("Alt+5 (unbound) should be CommandNone, got %v", cmd.Type)
 	}
-	// Verify no count was accumulated
-	pending := p.PendingState()
-	if pending.HasCount {
-		t.Fatalf("Alt+5 should not accumulate count, got count=%d", pending.Count)
+	// Verify no count was accumulated: a following 'j' moves by 1 (count 0), not 5.
+	cmd = p.Parse('j')
+	if cmd.Type != CommandMotion || cmd.Count != 0 {
+		t.Fatalf("Alt+5 should not accumulate count; 'j' = {Type:%v, Count:%d}, want {CommandMotion, 0}", cmd.Type, cmd.Count)
 	}
 }

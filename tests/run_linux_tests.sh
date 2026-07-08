@@ -80,17 +80,13 @@ phase_binary_smoke() {
 run_phase "Binary smoke test" phase_binary_smoke
 
 # --- Phase 2: Portable shell unit tests ---
-# test_launch_yankee_flags.sh has an awk extraction pattern that is stale after
-# build_yankee_args was refactored to use _get_yankee_opt_from_dump; it is skipped
-# until the pattern is updated. (Go unit tests run separately via `go test ./...`.)
+# test_launch_yankee_flags.sh runs here as a Linux smoke check (it also runs in
+# run_all_tests.sh). test_install_atomic.sh is intentionally NOT run here: the
+# Docker image runs as root, and its readonly-dir case relies on DAC write
+# denial, which root bypasses. It runs in run_all_tests.sh (non-root).
 phase_shell_unit_tests() {
     local exit_code=0
-
-    # test_launch_yankee_flags.sh is skipped: its awk extraction targets
-    # _append_yankee_opt which was replaced by _get_yankee_opt_from_dump.
-    # TODO: Update the awk pattern to extract current function signatures.
-    printf "  ${CLR_YELLOW}SKIP${CLR_RESET}: test_launch_yankee_flags.sh (awk extraction pattern stale after refactor)\n"
-
+    bash "$TESTS_DIR/unit/test_launch_yankee_flags.sh" || exit_code=1
     return "$exit_code"
 }
 run_phase "Shell unit tests" phase_shell_unit_tests

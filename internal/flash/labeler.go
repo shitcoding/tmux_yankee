@@ -24,14 +24,6 @@ func NewLabeler() *Labeler {
 	}
 }
 
-// NewLabelerWithPool creates a Labeler with a custom label pool.
-func NewLabelerWithPool(pool string) *Labeler {
-	return &Labeler{
-		pool: []byte(pool),
-		used: make(map[string]byte),
-	}
-}
-
 // posKey builds the map key for position memory.
 func posKey(line, col int) string {
 	return fmt.Sprintf("%d:%d", line, col)
@@ -50,27 +42,10 @@ func matchDistance(m Match, cursorLine, cursorCol int) int {
 	return dl*1000 + dc
 }
 
-// Assign assigns labels to matches sorted by distance from cursor.
-// No collision avoidance is performed.
-func (l *Labeler) Assign(matches []Match, cursorLine, cursorCol int) {
-	l.assignInternal(matches, cursorLine, cursorCol, nil, nil)
-}
-
-// AssignWithContext assigns labels with collision avoidance.
-// A label is skipped if it case-insensitively matches the character immediately
-// following the match in the source text, OR if it appears in the forbidden set
-// (characters that would extend the pattern to produce new matches).
-func (l *Labeler) AssignWithContext(matches []Match, cursorLine, cursorCol int, lines []string) {
-	l.assignInternal(matches, cursorLine, cursorCol, lines, nil)
-}
-
-// AssignWithForbidden assigns labels with collision avoidance and a forbidden character set.
-// Forbidden characters are never used as labels (typically chars that extend the current pattern).
+// AssignWithForbidden assigns labels to matches sorted by distance from the
+// cursor, avoiding collisions with the character following each match and never
+// using a forbidden character (typically chars that extend the current pattern).
 func (l *Labeler) AssignWithForbidden(matches []Match, cursorLine, cursorCol int, lines []string, forbidden map[byte]bool) {
-	l.assignInternal(matches, cursorLine, cursorCol, lines, forbidden)
-}
-
-func (l *Labeler) assignInternal(matches []Match, cursorLine, cursorCol int, lines []string, forbidden map[byte]bool) {
 	if len(matches) == 0 {
 		return
 	}

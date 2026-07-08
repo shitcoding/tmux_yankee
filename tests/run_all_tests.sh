@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # run_all_tests.sh - Main test runner for tmux-yankee
 #
-# Runs the bash integration test suite. Reports a pass/fail summary and exits
-# with a proper code. (Go unit tests run separately via `go test ./...`.)
+# Runs the bash test suite: portable unit tests, then integration tests
+# (integration requires tmux). Reports a pass/fail summary and exits with a
+# proper code. (Go unit tests run separately via `go test ./...`.)
 #
 # Usage:
-#   ./tests/run_all_tests.sh              # Run all (integration) tests
+#   ./tests/run_all_tests.sh              # Run all tests
+#   ./tests/run_all_tests.sh unit         # Run only unit tests
 #   ./tests/run_all_tests.sh integration  # Run only integration tests
 
 set -euo pipefail
@@ -31,11 +33,11 @@ else
 fi
 
 # --- Configuration ---
-FILTER="${1:-all}"  # "all" or "integration"
+FILTER="${1:-all}"  # "all", "unit", or "integration"
 case "$FILTER" in
-    all | integration) ;;
+    all | unit | integration) ;;
     *)
-        printf "Unknown filter: %s (use 'all' or 'integration')\n" "$FILTER" >&2
+        printf "Unknown filter: %s (use 'all', 'unit', or 'integration')\n" "$FILTER" >&2
         exit 2
         ;;
 esac
@@ -83,7 +85,10 @@ run_test_file() {
     TOTAL_FAIL=$(( TOTAL_FAIL + ${file_fail:-0} ))
     TOTAL_SKIP=$(( TOTAL_SKIP + ${file_skip:-0} ))
 
-    if [[ $exit_code -ne 0 ]]; then
+    if [[ $exit_code -eq 77 ]]; then
+        # 77 is the conventional "skip" exit code — not a failure.
+        TOTAL_SKIP=$(( TOTAL_SKIP + 1 ))
+    elif [[ $exit_code -ne 0 ]]; then
         FAILED_FILES+=("$file_basename")
     fi
 
@@ -96,6 +101,20 @@ printf "${CLR_BOLD}${CLR_CYAN}  tmux-yankee test suite${CLR_RESET}\n"
 printf "${CLR_BOLD}${CLR_CYAN}========================================${CLR_RESET}\n"
 printf "  Filter: %s\n" "$FILTER"
 printf "  Project: %s\n" "$PROJECT_ROOT"
+
+# --- Run unit tests ---
+if [[ "$FILTER" == "all" ]] || [[ "$FILTER" == "unit" ]]; then
+    printf "\n${CLR_BOLD}${CLR_CYAN}--- Unit Tests ---${CLR_RESET}\n"
+
+    unit_tests=(
+        "$TESTS_DIR/unit/test_install_atomic.sh"
+        "$TESTS_DIR/unit/test_launch_yankee_flags.sh"
+    )
+
+    for test_file in "${unit_tests[@]}"; do
+        run_test_file "$test_file" "$(basename "$test_file")"
+    done
+fi
 
 # --- Run integration tests ---
 if [[ "$FILTER" == "all" ]] || [[ "$FILTER" == "integration" ]]; then
@@ -147,8 +166,10 @@ fi
 printf "\n"
 
 # --- Exit code ---
-if [[ $TOTAL_FAIL -gt 0 ]]; then
-    printf "${CLR_RED}${CLR_BOLD}RESULT: FAIL${CLR_RESET} (%d test(s) failed)\n\n" "$TOTAL_FAIL"
+# Fail on any counted failure OR any test file that errored (non-zero exit),
+# including one that crashed before printing a parsable summary.
+if [[ $TOTAL_FAIL -gt 0 || ${#FAILED_FILES[@]} -gt 0 ]]; then
+    printf "${CLR_RED}${CLR_BOLD}RESULT: FAIL${CLR_RESET} (%d test(s) failed, %d file(s) errored)\n\n" "$TOTAL_FAIL" "${#FAILED_FILES[@]}"
     exit 1
 else
     printf "${CLR_GREEN}${CLR_BOLD}RESULT: PASS${CLR_RESET} (all %d tests passed)\n\n" "$TOTAL_PASS"

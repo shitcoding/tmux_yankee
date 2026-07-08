@@ -335,45 +335,6 @@ func TestParser_CustomToggleKey(t *testing.T) {
 	})
 }
 
-func TestParser_PendingState(t *testing.T) {
-	t.Run("count accumulation", func(t *testing.T) {
-		p := NewParser()
-
-		p.Parse('5')
-		pending := p.PendingState()
-		if !pending.HasCount || pending.Count != 5 {
-			t.Errorf("After '5': HasCount=%v, Count=%v, want true, 5", pending.HasCount, pending.Count)
-		}
-
-		p.Parse('2')
-		pending = p.PendingState()
-		if !pending.HasCount || pending.Count != 52 {
-			t.Errorf("After '52': HasCount=%v, Count=%v, want true, 52", pending.HasCount, pending.Count)
-		}
-	})
-
-	t.Run("g prefix", func(t *testing.T) {
-		p := NewParser()
-
-		p.Parse('g')
-		pending := p.PendingState()
-		if pending.Prefix != 'g' {
-			t.Errorf("After 'g': Prefix=%v, want 'g'", pending.Prefix)
-		}
-	})
-
-	t.Run("clear after command", func(t *testing.T) {
-		p := NewParser()
-
-		p.Parse('5')
-		p.Parse('j')
-		pending := p.PendingState()
-		if pending.HasCount || pending.Count != 0 || pending.Prefix != 0 {
-			t.Errorf("After '5j': pending should be cleared, got %+v", pending)
-		}
-	})
-}
-
 func TestParser_CountWithMultipleDigits(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -900,34 +861,26 @@ func TestParser_SetKeymap(t *testing.T) {
 }
 
 func TestFlush_ClearsCSIPendingState(t *testing.T) {
-	// M3: Flush() must clear pending count/prefix when discarding incomplete CSI.
-	// Simulate: user types "3" (count), then ESC [ 5 (incomplete CSI param), then Flush.
-	// After flush, the pending count must be zero so the next key isn't affected.
+	// M3: Flush() must clear a pending count when discarding an incomplete CSI,
+	// so the stale count does not leak into the next key.
 	p := NewParserWithKeys('L', 'w')
 
-	// Type a count prefix
-	p.Parse('3')
-	ps := p.PendingState()
-	if ps.Count != 3 {
-		t.Fatalf("expected pending count 3, got %d", ps.Count)
-	}
-
-	// Start a CSI sequence with a parameter byte to enter inCSI mode:
+	// Type a count prefix, then start an incomplete CSI sequence:
 	// ESC → mouseBuf=[ESC], [ → mouseBuf=[ESC,[], 5 → inCSI=true
+	p.Parse('3')
 	p.Parse(0x1b) // ESC
 	p.Parse('[')  // ESC [
 	p.Parse('5')  // CSI parameter byte → enters inCSI mode
 
-	// Flush discards incomplete CSI
-	cmd := p.Flush()
-	if cmd.Type != CommandNone {
+	// Flush discards the incomplete CSI.
+	if cmd := p.Flush(); cmd.Type != CommandNone {
 		t.Errorf("Flush() returned %v, want CommandNone", cmd.Type)
 	}
 
-	// Pending state must be cleared
-	ps = p.PendingState()
-	if ps.Count != 0 {
-		t.Errorf("after Flush of incomplete CSI, pending count = %d, want 0", ps.Count)
+	// The discarded count of 3 must not leak: 'j' moves by 1 (count 0), not 3.
+	cmd := p.Parse('j')
+	if cmd.Type != CommandMotion || cmd.Count != 0 {
+		t.Errorf("after Flush, 'j' = {Type:%v, Count:%d}, want {CommandMotion, 0}", cmd.Type, cmd.Count)
 	}
 }
 

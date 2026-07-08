@@ -3,9 +3,12 @@
 #
 # Tests install_atomic helper using a fake curl stubbed via PATH. Verifies:
 #   - successful download produces the final binary and no leftover temp
-#   - failed download (non-zero curl exit) leaves no final binary and
-#     cleans up its temp file
-#   - failed mv (e.g. dest is a directory) cleans up the temp file
+#   - failed download before any bytes (non-zero curl exit) leaves no final
+#     binary and cleans up its temp file
+#   - failed download after a partial write cleans up the temp file and leaves
+#     no final binary
+#   - an unwritable destination dir leaves any pre-existing binary untouched
+#     and cleans up the temp file
 
 set -euo pipefail
 
