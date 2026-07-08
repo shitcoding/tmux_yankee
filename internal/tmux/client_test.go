@@ -12,18 +12,14 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
-// Note: CapturePane, GetFormatVar, etc. require a running tmux session
-// These tests would need integration test setup with actual tmux
-// For now, we verify the API contract exists
+// Note: CapturePane requires a running tmux session and would need integration
+// test setup with actual tmux. For now, we verify the API contract exists.
 
 func TestClientHasRequiredMethods(t *testing.T) {
 	client := NewClient(context.Background())
 
 	// Verify methods exist (compilation check)
 	_ = client.CapturePane
-	_ = client.GetFormatVar
-	_ = client.GetHistorySize
-	_ = client.GetScrollPosition
 	_ = client.SetBuffer
 }
 

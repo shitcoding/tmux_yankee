@@ -318,7 +318,7 @@ func TestParser_OtherCommands(t *testing.T) {
 
 func TestParser_CustomToggleKey(t *testing.T) {
 	// Parser with 'P' as toggle key: 'P' produces ToggleMode (P is not in keymap)
-	p := NewParserWithToggleKey('P')
+	p := NewParserWithKeys('P', 'w')
 
 	t.Run("P produces ToggleMode", func(t *testing.T) {
 		cmd := p.Parse('P')

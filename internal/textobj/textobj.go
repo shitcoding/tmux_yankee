@@ -378,18 +378,14 @@ func innerBracket(doc motion.Document, cursor motion.Cursor, open, close rune) R
 
 // aBracket selects including the brackets.
 func aBracket(doc motion.Document, cursor motion.Cursor, open, close rune) Range {
-	type searchFunc struct {
-		name string
-		fn   func() (int, int)
-	}
-	strategies := []searchFunc{
-		{"findOpenBracket", func() (int, int) { return findOpenBracket(doc, cursor, open, close) }},
-		{"findOpenBracketForward", func() (int, int) { return findOpenBracketForward(doc, cursor, open) }},
-		{"findOpenBracketBackward", func() (int, int) { return findOpenBracketBackward(doc, cursor, open) }},
+	strategies := []func() (int, int){
+		func() (int, int) { return findOpenBracket(doc, cursor, open, close) },
+		func() (int, int) { return findOpenBracketForward(doc, cursor, open) },
+		func() (int, int) { return findOpenBracketBackward(doc, cursor, open) },
 	}
 
-	for _, s := range strategies {
-		sl, sc := s.fn()
+	for _, strategy := range strategies {
+		sl, sc := strategy()
 		if sl < 0 {
 			continue
 		}

@@ -174,13 +174,13 @@ func TestResolve_ModeSpecificBindings(t *testing.T) {
 	}
 
 	// Normal mode: H should be line_start (normal override wins over shared)
-	nm := cfg.ModeKeymap.Normal()
+	nm := cfg.ModeKeymap.ForMode(false)
 	if a, ok := nm.Lookup(keymap.Key('H')); !ok || a != keymap.ActionLineStart {
 		t.Errorf("normal H: got (%q, %v), want line_start", a, ok)
 	}
 
 	// Visual mode: H should be first_nonblank (shared override, no visual override for H)
-	vm := cfg.ModeKeymap.Visual()
+	vm := cfg.ModeKeymap.ForMode(true)
 	if a, ok := vm.Lookup(keymap.Key('H')); !ok || a != keymap.ActionFirstNonBlank {
 		t.Errorf("visual H: got (%q, %v), want first_nonblank", a, ok)
 	}

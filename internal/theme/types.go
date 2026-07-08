@@ -52,13 +52,6 @@ type LineNumPalette struct {
 	RelativeStyle TextStyle
 }
 
-// StatusPalette holds colors for the legacy status bar (demo mode fallback).
-type StatusPalette struct {
-	FG    HexColor
-	BG    HexColor
-	Style TextStyle
-}
-
 // StatusBarPalette holds per-mode colors for the powerline status bar.
 type StatusBarPalette struct {
 	ModeNormal     CellPalette // NORMAL mode segment
@@ -81,7 +74,6 @@ type Palette struct {
 	FlashBackdrop CellPalette // dimmed non-match text during flash
 	Gutter        GutterPalette
 	LineNum       LineNumPalette
-	Status        StatusPalette
 	StatusBar     StatusBarPalette
 }
 

@@ -7,6 +7,10 @@ import (
 	"github.com/shitcoding/tmux_yankee/internal/theme"
 )
 
+// These tests exercise palette application through the production
+// RenderCellsWithPalette path (rendering a single-cell line), so coverage does
+// not depend on any thin per-cell wrapper.
+
 // TestRenderCell_CursorColorFromPalette verifies the cursor cell uses palette.Cursor.BG/FG
 // rather than any hardcoded orange color.
 func TestRenderCell_CursorColorFromPalette(t *testing.T) {
@@ -14,8 +18,8 @@ func TestRenderCell_CursorColorFromPalette(t *testing.T) {
 		Cursor: theme.CellPalette{FG: "#ff0000", BG: "#0000ff"},
 	}
 
-	cell := Cell{Rune: 'A', Style: DefaultStyle()}
-	rendered := RenderCellWithPalette(cell, true, false, pal)
+	cells := []Cell{{Rune: 'A', Style: DefaultStyle()}}
+	rendered := RenderCellsWithPalette(cells, 0, -1, -1, nil, [2]int{-1, -1}, 0, 1, pal, nil, 0)
 
 	// Must contain the blue background we set (#0000ff = rgb(0,0,255))
 	if !strings.Contains(rendered, "48;2;0;0;255") {
@@ -40,8 +44,8 @@ func TestRenderCell_SelectionColorFromPalette(t *testing.T) {
 		Selection: theme.CellPalette{FG: "#00ff00", BG: "#ff00ff"},
 	}
 
-	cell := Cell{Rune: 'B', Style: DefaultStyle()}
-	rendered := RenderCellWithPalette(cell, false, true, pal)
+	cells := []Cell{{Rune: 'B', Style: DefaultStyle()}}
+	rendered := RenderCellsWithPalette(cells, -1, 0, 0, nil, [2]int{-1, -1}, 0, 1, pal, nil, 0)
 
 	// Must contain the magenta background we set (#ff00ff = rgb(255,0,255))
 	if !strings.Contains(rendered, "48;2;255;0;255") {
@@ -66,8 +70,8 @@ func TestRenderCell_EmptyPaletteUsesTerminalDefault(t *testing.T) {
 		Cursor: theme.CellPalette{FG: "", BG: ""},
 	}
 
-	cell := Cell{Rune: 'C', Style: DefaultStyle()}
-	rendered := RenderCellWithPalette(cell, true, false, pal)
+	cells := []Cell{{Rune: 'C', Style: DefaultStyle()}}
+	rendered := RenderCellsWithPalette(cells, 0, -1, -1, nil, [2]int{-1, -1}, 0, 1, pal, nil, 0)
 
 	// With empty colors, no 48;2 or 38;2 sequences should appear
 	if strings.Contains(rendered, "48;2") {

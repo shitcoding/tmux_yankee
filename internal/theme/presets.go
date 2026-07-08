@@ -19,7 +19,6 @@ var Presets = map[ThemeName]Palette{
 		FlashBackdrop: CellPalette{FG: "#665c54"},
 		Gutter:    GutterPalette{FG: "#665c54", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#7c6f64", RelativeFG: "#7c6f64", CursorFG: "#FF8700", CursorStyle: TextStyle{Bold: true}},
-		Status:    StatusPalette{FG: "#a89984", BG: "#3c3836"},
 		StatusBar: StatusBarPalette{
 			// Gruvbox airline: Normal=bright_green, Visual=bright_purple, Insert=bright_blue
 			ModeNormal:     CellPalette{FG: "#3c3836", BG: "#b8bb26", Style: TextStyle{Bold: true}}, // dark1 on bright_green
@@ -41,7 +40,6 @@ var Presets = map[ThemeName]Palette{
 		FlashBackdrop: CellPalette{FG: "#6272a4"},
 		Gutter:    GutterPalette{FG: "#6272a4", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#bd93f9", RelativeFG: "#6272a4", CursorFG: "#50fa7b", CursorStyle: TextStyle{Bold: true}},
-		Status:    StatusPalette{FG: "#f8f8f2", BG: "#44475a"},
 		StatusBar: StatusBarPalette{
 			// Dracula airline: Normal=purple, Visual=yellow, Insert=green
 			ModeNormal:     CellPalette{FG: "#282a36", BG: "#bd93f9", Style: TextStyle{Bold: true}}, // bg on purple
@@ -64,7 +62,6 @@ var Presets = map[ThemeName]Palette{
 		FlashBackdrop: CellPalette{FG: "#928374"},
 		Gutter:    GutterPalette{FG: "#665c54", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#7c6f64", RelativeFG: "#7c6f64", CursorFG: "#fabd2f", CursorStyle: TextStyle{Bold: true}},
-		Status:    StatusPalette{FG: "#a89984", BG: "#3c3836"},
 		StatusBar: StatusBarPalette{
 			ModeNormal:     CellPalette{FG: "#3c3836", BG: "#b8bb26", Style: TextStyle{Bold: true}}, // dark1 on bright_green
 			ModeVisualChar: CellPalette{FG: "#3c3836", BG: "#d3869b", Style: TextStyle{Bold: true}}, // dark1 on bright_purple
@@ -86,7 +83,6 @@ var Presets = map[ThemeName]Palette{
 		FlashBackdrop: CellPalette{FG: "#4c566a"},
 		Gutter:    GutterPalette{FG: "#4c566a", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#d8dee9", RelativeFG: "#81a1c1", CursorFG: "#a3be8c", CursorStyle: TextStyle{Bold: true}},
-		Status:    StatusPalette{FG: "#eceff4", BG: "#3b4252"},
 		StatusBar: StatusBarPalette{
 			ModeNormal:     CellPalette{FG: "#3b4252", BG: "#88c0d0", Style: TextStyle{Bold: true}}, // nord1 on nord8 (cyan)
 			ModeVisualChar: CellPalette{FG: "#3b4252", BG: "#8fbcbb", Style: TextStyle{Bold: true}}, // nord1 on nord7 (teal)
@@ -108,7 +104,6 @@ var Presets = map[ThemeName]Palette{
 		FlashBackdrop: CellPalette{FG: "#586e75"},
 		Gutter:    GutterPalette{FG: "#586e75", BG: "", SeparatorChar: "│"},
 		LineNum:   LineNumPalette{AbsoluteFG: "#93a1a1", RelativeFG: "#b58900", CursorFG: "#2aa198", CursorStyle: TextStyle{Bold: true}},
-		Status:    StatusPalette{FG: "#eee8d5", BG: "#073642"},
 		StatusBar: StatusBarPalette{
 			ModeNormal:     CellPalette{FG: "#fdf6e3", BG: "#859900", Style: TextStyle{Bold: true}}, // base3 on green
 			ModeVisualChar: CellPalette{FG: "#fdf6e3", BG: "#d33682", Style: TextStyle{Bold: true}}, // base3 on magenta

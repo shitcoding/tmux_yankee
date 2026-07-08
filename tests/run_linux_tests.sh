@@ -80,20 +80,11 @@ phase_binary_smoke() {
 run_phase "Binary smoke test" phase_binary_smoke
 
 # --- Phase 2: Portable shell unit tests ---
-# Note: test_math.sh has a legacy test (test_math_with_renderer_integration) that
-# depends on scripts/renderer.sh (now replaced by Go TUI). The pure math tests pass.
 # test_launch_yankee_flags.sh has an awk extraction pattern that is stale after
-# build_yankee_args was refactored to use _get_yankee_opt_from_dump.
-# Both are pre-existing issues, not Linux-specific. We run test_math.sh (5/6 pass)
-# and tolerate the one legacy failure. test_launch_yankee_flags.sh is skipped until
-# the awk pattern is updated to match current function signatures.
+# build_yankee_args was refactored to use _get_yankee_opt_from_dump; it is skipped
+# until the pattern is updated. (Go unit tests run separately via `go test ./...`.)
 phase_shell_unit_tests() {
     local exit_code=0
-
-    if [ -f "$TESTS_DIR/unit/test_math.sh" ]; then
-        printf "  Running test_math.sh (note: renderer integration test will fail — legacy dependency)...\n"
-        bash "$TESTS_DIR/unit/test_math.sh" || true  # tolerate legacy failure
-    fi
 
     # test_launch_yankee_flags.sh is skipped: its awk extraction targets
     # _append_yankee_opt which was replaced by _get_yankee_opt_from_dump.

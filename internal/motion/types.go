@@ -31,8 +31,6 @@ const (
 	MotionScreenBottom      // L - cursor to bottom of visible screen
 	MotionPageUp            // Ctrl-B - full page up
 	MotionPageDown          // Ctrl-F - full page down
-	MotionScrollLineUp      // Ctrl-Y - scroll viewport up 1 line
-	MotionScrollLineDown    // Ctrl-E - scroll viewport down 1 line
 	MotionWordEndBackward   // ge - end of previous word
 	MotionWORDEndBackward   // gE - end of previous WORD
 	MotionLastNonBlank      // g_ - last non-blank char on line

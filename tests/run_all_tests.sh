@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # run_all_tests.sh - Main test runner for tmux-yankee
 #
-# Runs all unit tests first, then integration tests.
-# Reports pass/fail summary and exits with proper code.
+# Runs the bash integration test suite. Reports a pass/fail summary and exits
+# with a proper code. (Go unit tests run separately via `go test ./...`.)
 #
 # Usage:
-#   ./tests/run_all_tests.sh              # Run all tests
-#   ./tests/run_all_tests.sh unit         # Run only unit tests
+#   ./tests/run_all_tests.sh              # Run all (integration) tests
 #   ./tests/run_all_tests.sh integration  # Run only integration tests
 
 set -euo pipefail
@@ -32,7 +31,14 @@ else
 fi
 
 # --- Configuration ---
-FILTER="${1:-all}"  # "all", "unit", or "integration"
+FILTER="${1:-all}"  # "all" or "integration"
+case "$FILTER" in
+    all | integration) ;;
+    *)
+        printf "Unknown filter: %s (use 'all' or 'integration')\n" "$FILTER" >&2
+        exit 2
+        ;;
+esac
 
 TOTAL_PASS=0
 TOTAL_FAIL=0
@@ -90,50 +96,6 @@ printf "${CLR_BOLD}${CLR_CYAN}  tmux-yankee test suite${CLR_RESET}\n"
 printf "${CLR_BOLD}${CLR_CYAN}========================================${CLR_RESET}\n"
 printf "  Filter: %s\n" "$FILTER"
 printf "  Project: %s\n" "$PROJECT_ROOT"
-
-# --- Check for implementation files ---
-printf "\n${CLR_BOLD}Pre-flight checks:${CLR_RESET}\n"
-
-impl_files=(
-    "plugin.tmux"
-    "scripts/renderer.sh"
-    "scripts/config.sh"
-    "scripts/copy_filter.sh"
-    "scripts/line_numbers.sh"
-    "scripts/state_cleanup.sh"
-    "scripts/utils.sh"
-)
-
-missing_count=0
-for f in "${impl_files[@]}"; do
-    if [[ -f "$PROJECT_ROOT/$f" ]]; then
-        printf "  ${CLR_GREEN}found${CLR_RESET}   %s\n" "$f"
-    else
-        printf "  ${CLR_RED}missing${CLR_RESET} %s\n" "$f"
-        missing_count=$(( missing_count + 1 ))
-    fi
-done
-
-if [[ $missing_count -gt 0 ]]; then
-    printf "\n  ${CLR_YELLOW}NOTE: %d implementation file(s) missing.${CLR_RESET}\n" "$missing_count"
-    printf "  ${CLR_YELLOW}This is expected for TDD RED phase -- tests should FAIL.${CLR_RESET}\n"
-fi
-
-# --- Run unit tests ---
-if [[ "$FILTER" == "all" ]] || [[ "$FILTER" == "unit" ]]; then
-    printf "\n${CLR_BOLD}${CLR_CYAN}--- Unit Tests ---${CLR_RESET}\n"
-
-    unit_tests=(
-        "$TESTS_DIR/unit/test_renderer.sh"
-        "$TESTS_DIR/unit/test_config.sh"
-        "$TESTS_DIR/unit/test_copy_filter.sh"
-        "$TESTS_DIR/unit/test_math.sh"
-    )
-
-    for test_file in "${unit_tests[@]}"; do
-        run_test_file "$test_file" "$(basename "$test_file")"
-    done
-fi
 
 # --- Run integration tests ---
 if [[ "$FILTER" == "all" ]] || [[ "$FILTER" == "integration" ]]; then

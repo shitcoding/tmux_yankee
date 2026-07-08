@@ -121,14 +121,14 @@ func TestModeKeymapForModeHelpers(t *testing.T) {
 	empty := Keymap{}
 	mk := NewModeKeymap(base, empty, empty, empty)
 
-	// Normal() and Visual() should match ForMode
-	nm := mk.Normal()
-	vm := mk.Visual()
+	// ForMode returns the correct per-mode keymap
+	nm := mk.ForMode(false)
+	vm := mk.ForMode(true)
 
 	if a, _ := nm.Lookup(Key('h')); a != ActionMoveLeft {
-		t.Error("Normal() keymap mismatch")
+		t.Error("ForMode(false) keymap mismatch")
 	}
 	if a, _ := vm.Lookup(Key('h')); a != ActionMoveLeft {
-		t.Error("Visual() keymap mismatch")
+		t.Error("ForMode(true) keymap mismatch")
 	}
 }

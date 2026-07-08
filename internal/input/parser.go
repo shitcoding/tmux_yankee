@@ -34,11 +34,6 @@ func NewParser() *Parser {
 	return &Parser{toggleKey: 'L', wrapKey: 'w', km: keymap.DefaultKeymap()}
 }
 
-// NewParserWithToggleKey creates a new input parser with a configurable toggle key.
-func NewParserWithToggleKey(toggleKey byte) *Parser {
-	return &Parser{toggleKey: toggleKey, wrapKey: 'w', km: keymap.DefaultKeymap()}
-}
-
 // NewParserWithKeys creates a parser with custom toggle and wrap keys.
 func NewParserWithKeys(toggleKey, wrapKey byte) *Parser {
 	return &Parser{toggleKey: toggleKey, wrapKey: wrapKey, km: keymap.DefaultKeymap()}
@@ -479,12 +474,6 @@ func (p *Parser) InSearchMode() bool {
 // SearchDir returns the search direction character ('/' or '?').
 func (p *Parser) SearchDir() byte {
 	return p.searchDir
-}
-
-// CancelSearch clears the parser's search input state.
-func (p *Parser) CancelSearch() {
-	p.inSearch = false
-	p.searchBuf = p.searchBuf[:0]
 }
 
 // parseColonByte handles a single byte while in colon input mode.

@@ -142,22 +142,6 @@ func (m *mockTmuxClient) SetBuffer(text string) error {
 	return m.setBufferErr
 }
 
-func (m *mockTmuxClient) CapturePane(paneID string, start, end int) ([]string, error) {
-	return nil, nil
-}
-
-func (m *mockTmuxClient) GetFormatVar(paneID, formatVar string) (string, error) {
-	return "", nil
-}
-
-func (m *mockTmuxClient) GetHistorySize(paneID string) (int, error) {
-	return 0, nil
-}
-
-func (m *mockTmuxClient) GetScrollPosition(paneID string) (int, error) {
-	return 0, nil
-}
-
 // newTestTUIWithSettings creates a TUI for testing with explicit config.Settings.
 func newTestTUIWithSettings(cfg config.Settings, content []string) *TUI {
 	return NewTUI(cfg, content)

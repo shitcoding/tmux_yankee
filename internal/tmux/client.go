@@ -81,49 +81,6 @@ func (c *Client) CapturePane(paneID string, start, end int, preserveColors bool)
 	return content, nil
 }
 
-// GetFormatVar queries a tmux format variable.
-// NOTE: Only called with hardcoded format strings — do not pass user input.
-func (c *Client) GetFormatVar(paneID, formatVar string) (string, error) {
-	cmd, cancel := c.command("tmux", "display-message", "-p", "-t", paneID, formatVar)
-	defer cancel()
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("display-message failed: %w", err)
-	}
-
-	return strings.TrimSpace(string(output)), nil
-}
-
-// GetHistorySize returns the pane's history size
-func (c *Client) GetHistorySize(paneID string) (int, error) {
-	val, err := c.GetFormatVar(paneID, "#{history_size}")
-	if err != nil {
-		return 0, err
-	}
-
-	size, err := strconv.Atoi(val)
-	if err != nil {
-		return 0, fmt.Errorf("invalid history_size: %w", err)
-	}
-
-	return size, nil
-}
-
-// GetScrollPosition returns the pane's scroll position
-func (c *Client) GetScrollPosition(paneID string) (int, error) {
-	val, err := c.GetFormatVar(paneID, "#{scroll_position}")
-	if err != nil {
-		return 0, err
-	}
-
-	pos, err := strconv.Atoi(val)
-	if err != nil {
-		return 0, fmt.Errorf("invalid scroll_position: %w", err)
-	}
-
-	return pos, nil
-}
-
 // SetBuffer sets the tmux paste buffer. Text is delivered via stdin
 // (load-buffer -) to avoid ARG_MAX limits on large selections and to keep
 // the buffer contents out of process argv (visible in ps).

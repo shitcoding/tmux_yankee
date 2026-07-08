@@ -77,9 +77,6 @@ func Resolve(opts CLIOptions) (Settings, error) {
 	wrapMode := WrapMode(opts.WrapMode)
 
 	statusBar := StatusBarMode(opts.StatusBar)
-	if statusBar != StatusBarOn && statusBar != StatusBarOff {
-		statusBar = StatusBarOn
-	}
 
 	// Build ModeKeymap: defaults + shared overrides + mode-specific overrides
 	base := keymap.DefaultKeymap()

@@ -163,26 +163,6 @@ func Alt(b byte) KeySpec {
 	return KeySpec{Key: b, Mod: ModAlt}
 }
 
-// ToByte converts a KeySpec to the byte the terminal sends.
-// For Ctrl keys: Ctrl+A = 1, Ctrl+B = 2, ..., Ctrl+Z = 26.
-// For Alt keys: returns the key byte (ESC prefix handled separately by parser).
-// For plain keys: returns the key byte directly.
-func (k KeySpec) ToByte() byte {
-	switch k.Mod {
-	case ModCtrl:
-		// Ctrl+a = 1, Ctrl+b = 2, ..., Ctrl+z = 26
-		if k.Key >= 'a' && k.Key <= 'z' {
-			return k.Key - 'a' + 1
-		}
-		if k.Key >= 'A' && k.Key <= 'Z' {
-			return k.Key - 'A' + 1
-		}
-		return k.Key
-	default:
-		return k.Key
-	}
-}
-
 // Keymap holds all keybinding mappings organized by binding type.
 type Keymap struct {
 	// Direct: single key → action
@@ -296,12 +276,3 @@ func (mk *ModeKeymap) ForMode(isVisual bool) Keymap {
 	return mk.normal
 }
 
-// Normal returns the normal-mode keymap.
-func (mk *ModeKeymap) Normal() Keymap {
-	return mk.normal
-}
-
-// Visual returns the visual-mode keymap.
-func (mk *ModeKeymap) Visual() Keymap {
-	return mk.visual
-}

@@ -5,9 +5,8 @@ import (
 	"unicode/utf8"
 )
 
-// Line represents a single line in the document with both raw ANSI and plain text.
+// Line represents a single line in the document with plain text and parsed cells.
 type Line struct {
-	RawANSI   string // Original line with ANSI escape codes
 	Plain     string // Line with ANSI codes stripped (for motion calculations)
 	Cells     []Cell // Pre-parsed ANSI cells (cached at load time to avoid per-frame reparse)
 	RuneCount int    // Number of runes in Plain (cached to avoid repeated allocation)
@@ -24,7 +23,6 @@ func NewDocument(rawLines []string) *Document {
 	for i, raw := range rawLines {
 		plain := stripANSI(raw)
 		lines[i] = Line{
-			RawANSI:   raw,
 			Plain:     plain,
 			Cells:     ParseANSILine(raw),
 			RuneCount: utf8.RuneCountInString(plain),
@@ -44,14 +42,6 @@ func (d *Document) Line(index int) string {
 		return ""
 	}
 	return d.lines[index].Plain
-}
-
-// RawLine returns the raw ANSI content of the line at the given index.
-func (d *Document) RawLine(index int) string {
-	if index < 0 || index >= len(d.lines) {
-		return ""
-	}
-	return d.lines[index].RawANSI
 }
 
 // Cells returns the pre-parsed ANSI cells for the line at the given index.
