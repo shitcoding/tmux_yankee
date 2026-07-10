@@ -147,6 +147,40 @@ func newTestTUIWithSettings(cfg config.Settings, content []string) *TUI {
 	return NewTUI(cfg, content)
 }
 
+// TestDispatchCopy_NilClient_NoPanic verifies that copying with no tmux client
+// (as in demo mode, where NewDemoTUI leaves client nil) does not panic: the
+// tmux paste-buffer write is skipped and the clipboard still receives the text.
+func TestDispatchCopy_NilClient_NoPanic(t *testing.T) {
+	cfg := config.Settings{
+		PaneID:        "test-pane",
+		Mode:          config.LineNumberModeAbsolute,
+		Palette:       theme.Presets[theme.ThemeDefault],
+		CopyTarget:    config.CopyTargetBoth, // default: writes tmux buffer AND clipboard
+		ExitOnYank:    true,
+		StartPosition: config.StartPositionBottom,
+		ToggleModeKey: 'L',
+	}
+	tui := newTestTUIWithSettings(cfg, []string{"hello world"})
+	tui.client = nil // demo mode: no tmux client
+
+	var got string
+	tui.clipboardFunc = func(s string) error { got = s; return nil }
+
+	// CopyTargetBoth with a nil client must not panic; clipboard still gets the text.
+	tui.dispatchCopy("hello world", "test")
+	if got != "hello world" {
+		t.Errorf("clipboard got %q, want %q", got, "hello world")
+	}
+
+	// CopyTargetTmux with a nil client must also be a no-op, not a panic.
+	tui.cfg.CopyTarget = config.CopyTargetTmux
+	got = ""
+	tui.dispatchCopy("second", "test")
+	if got != "" {
+		t.Errorf("tmux-only target must not touch the clipboard, got %q", got)
+	}
+}
+
 // TestYank_CopyTargetTmuxOnly verifies that CopyTarget=tmux sets tmux buffer but not clipboard.
 func TestYank_CopyTargetTmuxOnly(t *testing.T) {
 	content := []string{"line 1", "line 2"}

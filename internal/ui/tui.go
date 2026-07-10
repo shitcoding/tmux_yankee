@@ -3102,20 +3102,24 @@ func (t *TUI) dispatchCopy(text, caller string) {
 		}
 		return t.copyToClipboard(s)
 	}
+	tmuxCopy := func(s string) {
+		if t.client == nil {
+			return // no tmux client (e.g. demo mode) — skip the paste-buffer write
+		}
+		if err := t.client.SetBuffer(s); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: SetBuffer failed: %v\n", caller, err)
+		}
+	}
 
 	switch t.cfg.CopyTarget {
 	case config.CopyTargetTmux:
-		if err := t.client.SetBuffer(text); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: SetBuffer failed: %v\n", caller, err)
-		}
+		tmuxCopy(text)
 	case config.CopyTargetClipboard:
 		if err := clipboardCopy(text); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: copyToClipboard failed: %v\n", caller, err)
 		}
 	default: // CopyTargetBoth or unset
-		if err := t.client.SetBuffer(text); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: SetBuffer failed: %v\n", caller, err)
-		}
+		tmuxCopy(text)
 		if err := clipboardCopy(text); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: copyToClipboard failed: %v\n", caller, err)
 		}
