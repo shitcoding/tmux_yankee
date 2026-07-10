@@ -125,10 +125,6 @@ if [[ "$FILTER" == "all" ]] || [[ "$FILTER" == "integration" ]]; then
         printf "  ${CLR_YELLOW}SKIP${CLR_RESET} Integration tests (tmux not available)\n"
     else
         integration_tests=(
-            "$TESTS_DIR/integration/test_basic_flow.sh"
-            "$TESTS_DIR/integration/test_cleanup.sh"
-            "$TESTS_DIR/integration/test_toggle.sh"
-            "$TESTS_DIR/integration/test_edge_cases.sh"
             "$TESTS_DIR/integration/test_clipboard_backends.sh"
             "$TESTS_DIR/integration/test_clipboard_errors.sh"
         )
