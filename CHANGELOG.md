@@ -4,6 +4,32 @@ All notable changes to tmux-yankee are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 loosely follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] — 2026-07-14
+
+Maintenance release: bug fixes and internal cleanup. No new features and no
+configuration changes — upgrading is a drop-in replacement.
+
+### Fixed
+
+- Demo mode (`--demo`): yanking no longer crashes. Demo mode has no tmux
+  backend, and the default copy target dereferenced the nil tmux client.
+- Input: an escape sequence fragmented across reads (e.g. an SGR mouse
+  sequence split by a TCP-segment boundary over SSH) is no longer misparsed
+  as a lone `Esc` followed by literal keys. A short (25 ms) escape-flush
+  debounce waits for the rest of the sequence before treating `Esc` as
+  standalone — standalone `Esc` stays responsive.
+- Resize: the SIGWINCH debounce no longer races a superseded timer, so a
+  stray resize can no longer render the pane at an intermediate (mid
+  zoom-swap) size. Both debounces now use race-free timers.
+
+### Changed
+
+- Internal: removed dead code across the Go packages, consolidated duplicated
+  helpers (repo-wide `min`/`max` builtins, a single hex-color parser and
+  escape-flush path), and split the monolithic `internal/ui/tui.go` into
+  focused files (wrap-mode viewport math, mouse handling, yank). No
+  user-visible behavior change.
+
 ## [1.0.0] — 2026-06-12
 
 First public release. Replaces tmux's native copy-mode with a Go TUI overlay
