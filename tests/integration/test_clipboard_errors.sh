@@ -87,14 +87,14 @@ _test_tmux_buffer_fallback_documented() {
     #   "clipboard":      clipboard copy only, skips set-buffer
     #
     # Verify the Go code actually implements this by checking the yank path
-    local tui_file="$PROJECT_ROOT/internal/ui/tui.go"
+    local tui_file="$PROJECT_ROOT/internal/ui/tui_yank.go"
 
     # CopyTargetClipboard should skip set-buffer
     if ! grep -q 'CopyTargetClipboard' "$tui_file"; then
-        printf "    ASSERTION FAILED: tui.go should reference CopyTargetClipboard\n"
+        printf "    ASSERTION FAILED: tui_yank.go should reference CopyTargetClipboard\n"
         return 1
     fi
-    printf "    ✓ tui.go implements copy-target modes (both/tmux/clipboard)\n"
+    printf "    ✓ tui_yank.go implements copy-target modes (both/tmux/clipboard)\n"
 
     # The test file for yank behavior should test the clipboard-only path
     local test_file="$PROJECT_ROOT/internal/ui/tui_yank_test.go"

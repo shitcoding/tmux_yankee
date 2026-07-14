@@ -927,3 +927,64 @@ func TestParseSearchByte_Unicode(t *testing.T) {
 		t.Errorf("confirmed pattern = %q, want %q", cmd.SearchPattern, "ñ日")
 	}
 }
+
+// TestParser_PendingEscape_FragmentedSequence covers M2: an escape sequence
+// split across reads must not be flushed as a lone ESC mid-way. PendingEscape
+// reports the incomplete state so the event loop waits for the continuation,
+// and the sequence resolves correctly once the rest of the bytes arrive.
+func TestParser_PendingEscape_FragmentedSequence(t *testing.T) {
+	p := NewParser()
+
+	// Read #1 ends on a bare ESC — the parser holds it, emitting nothing yet.
+	if cmd := p.Parse(0x1b); cmd.Type != CommandNone {
+		t.Fatalf("lone ESC: got %v, want CommandNone", cmd.Type)
+	}
+	if !p.PendingEscape() {
+		t.Fatal("PendingEscape should be true after a bare ESC at a read boundary")
+	}
+
+	// ESC[ is still incomplete (could become a mouse or CSI sequence).
+	p.Parse('[')
+	if !p.PendingEscape() {
+		t.Fatal("PendingEscape should be true after ESC[")
+	}
+
+	// Read #2 delivers the rest of an SGR left-press: <0;5;5M → 0-based (4,4).
+	var cmd Command
+	for _, b := range []byte("<0;5;5M") {
+		cmd = p.Parse(b)
+	}
+	if cmd.Type != CommandMouseLeftPress {
+		t.Fatalf("completed sequence: got %v, want CommandMouseLeftPress", cmd.Type)
+	}
+	if cmd.MouseCol != 4 || cmd.MouseRow != 4 {
+		t.Errorf("mouse pos = (%d,%d), want (4,4)", cmd.MouseCol, cmd.MouseRow)
+	}
+	if p.PendingEscape() {
+		t.Fatal("PendingEscape should be false once the sequence completes")
+	}
+
+	// A normal key is never pending.
+	if p.Parse('j'); p.PendingEscape() {
+		t.Fatal("PendingEscape should be false after a normal key")
+	}
+
+	// An in-progress mouse sequence is intentionally excluded: Flush lets it
+	// persist across reads, so PendingEscape must not force an early flush.
+	for _, b := range []byte{0x1b, '[', '<'} {
+		p.Parse(b)
+	}
+	if p.PendingEscape() {
+		t.Fatal("PendingEscape should be false while inMouse (mouse persists across reads)")
+	}
+
+	// An in-progress non-mouse CSI (e.g. ESC [ 5 …) must report pending too —
+	// Flush would otherwise silently discard it, stranding a fragmented CSI.
+	p2 := NewParser()
+	for _, b := range []byte{0x1b, '[', '5'} {
+		p2.Parse(b)
+	}
+	if !p2.PendingEscape() {
+		t.Fatal("PendingEscape should be true for an in-progress non-mouse CSI")
+	}
+}

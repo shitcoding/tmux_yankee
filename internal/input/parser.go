@@ -365,6 +365,20 @@ func (p *Parser) ClearPending() {
 	p.clearPending()
 }
 
+// PendingEscape reports whether the parser is part-way through an escape
+// sequence that Flush would otherwise resolve at a read boundary: a bare ESC or
+// ESC[ held awaiting the next byte, or an in-progress non-mouse CSI. In-progress
+// mouse sequences are excluded because Flush already lets them persist across
+// reads (see the !inMouse guard in Flush).
+//
+// The TUI event loop uses this to briefly wait for the rest of a sequence that
+// was fragmented across reads (e.g. an SGR mouse sequence split by a TCP segment
+// boundary over SSH) before flushing a lone ESC — otherwise the trailing bytes
+// are misparsed as literal keys.
+func (p *Parser) PendingEscape() bool {
+	return p.inCSI || (!p.inMouse && len(p.mouseBuf) > 0)
+}
+
 // Flush resolves any buffered state that is waiting for the next byte.
 // Call this after processing all bytes from a single read to avoid requiring
 // a second keypress for standalone ESC or deferred commands.
