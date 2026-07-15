@@ -4,6 +4,26 @@ All notable changes to tmux-yankee are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 loosely follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] — 2026-07-14
+
+Maintenance release: the plugin now upgrades like a regular tmux plugin.
+
+### Added
+
+- `tmux-yankee -version` prints the installed version.
+
+### Fixed
+
+- The bundled binary now upgrades automatically when the plugin is updated
+  (`prefix + U` with TPM, or `git pull` for a manual install). Previously the
+  installer skipped the download whenever *any* binary already existed, so an
+  update pulled new source but kept the old binary — you stayed on the old
+  version indefinitely. A `VERSION` file is now the source of truth: the binary
+  is stamped with it, and `scripts/install.sh` re-downloads the matching
+  release (`releases/tags/v<VERSION>`) whenever the installed binary's version
+  differs. Local `go build` dev binaries (version `dev`) are left untouched, and
+  a failed upgrade keeps the existing binary working instead of erroring.
+
 ## [1.0.1] — 2026-07-14
 
 Maintenance release: bug fixes and internal cleanup. No new features and no
