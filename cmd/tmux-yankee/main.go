@@ -13,6 +13,12 @@ import (
 	"github.com/shitcoding/tmux_yankee/internal/ui"
 )
 
+// version is stamped at build time via -ldflags "-X main.version=<VERSION>"
+// (see the VERSION file, Makefile, and .github/workflows/release.yml). It is
+// what `tmux-yankee -version` prints; scripts/install.sh compares it against
+// the checkout's VERSION file to decide whether the binary needs updating.
+var version = "dev"
+
 // trimTrailingEmptyLines removes empty lines from the end of content
 func trimTrailingEmptyLines(lines []string) []string {
 	for len(lines) > 0 && lines[len(lines)-1] == "" {
@@ -23,8 +29,15 @@ func trimTrailingEmptyLines(lines []string) []string {
 
 func main() {
 	var opts config.CLIOptions
+	var showVersion bool
+	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	config.RegisterFlags(flag.CommandLine, &opts)
 	flag.Parse()
+
+	if showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	cfg, err := config.Resolve(opts)
 	if err != nil {

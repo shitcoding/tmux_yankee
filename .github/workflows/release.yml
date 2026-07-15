@@ -20,12 +20,24 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Verify tag matches VERSION
+        run: |
+          want="v$(tr -d '[:space:]' < VERSION)"
+          if [ "${GITHUB_REF_NAME}" != "$want" ]; then
+            echo "::error::pushed tag ${GITHUB_REF_NAME} does not match VERSION file (${want}); binaries would self-report the wrong version and clients would re-download every load"
+            exit 1
+          fi
+
       - name: Cross-compile binaries
         run: |
           mkdir -p bin
 
           GOFLAGS="-trimpath"
-          LDFLAGS="-s -w"
+          # Stamp the version from the VERSION file so `tmux-yankee -version`
+          # reports it and install.sh can detect a stale binary. The VERSION
+          # file must match the release tag (v<VERSION>).
+          VERSION="$(cat VERSION)"
+          LDFLAGS="-s -w -X main.version=${VERSION}"
 
           GOOS=darwin GOARCH=arm64 go build $GOFLAGS -ldflags "$LDFLAGS" \
             -o bin/tmux-yankee-darwin-arm64 ./cmd/tmux-yankee

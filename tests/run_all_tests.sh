@@ -108,6 +108,7 @@ if [[ "$FILTER" == "all" ]] || [[ "$FILTER" == "unit" ]]; then
 
     unit_tests=(
         "$TESTS_DIR/unit/test_install_atomic.sh"
+        "$TESTS_DIR/unit/test_install_version.sh"
         "$TESTS_DIR/unit/test_launch_yankee_flags.sh"
     )
 

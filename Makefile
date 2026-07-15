@@ -6,8 +6,12 @@ BIN_DIR=bin
 CMD_DIR=cmd/tmux-yankee
 
 # Go build flags
+# VERSION is the single source of truth (see the VERSION file); it is stamped
+# into the binary so `tmux-yankee -version` reports it and install.sh can tell
+# whether the installed binary matches the checkout.
+VERSION := $(shell cat VERSION 2>/dev/null || echo dev)
 GOFLAGS=-trimpath
-LDFLAGS=-s -w
+LDFLAGS=-s -w -X main.version=$(VERSION)
 
 # Build local development binary
 build:

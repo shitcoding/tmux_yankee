@@ -84,9 +84,12 @@ tmux set-option -gq @yankee_flash_jump_pos "match_end"
 tmux set-option -gq @yankee_flash_alt_jump_pos "match_start"
 
 ensure_binary() {
-    if [[ ! -x "${CURRENT_DIR}/bin/tmux-yankee" ]]; then
-        "${SCRIPTS_DIR}/install.sh"
-    fi
+    # install.sh is version-aware: it exits fast (no network) when the binary
+    # already matches the checkout's VERSION, and (re)installs when the binary is
+    # missing or stale. Running it on every load is what makes `prefix + U`
+    # (git pull bumps VERSION) pick up the matching binary — regular-plugin
+    # upgrade behavior.
+    "${SCRIPTS_DIR}/install.sh"
 }
 
 main() {
